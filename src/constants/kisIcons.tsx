@@ -36,12 +36,18 @@ export type KISIconName =
   | 'play'
   | 'pause'
   | 'volume'
-  // NEW for message actions
+  // Message actions
   | 'forward'
   | 'copy'
   | 'more-vert'
   | 'report'
-  | 'reply';   //  👈 NEW ICON ADDED HERE
+  | 'reply'
+  // NEW SUB-ROOM / THREAD / LAYERS ICON
+  | 'layers'
+  | 'thread'
+  | 'sub-channel'
+  // NEW optional message info
+  | 'info';
 
 type IconPair = { filled: string; outline: string };
 
@@ -82,7 +88,6 @@ const ion: IonMap = {
   // Special UI
   filter: { filled: 'options', outline: 'options-outline' },
   menu: { filled: 'ellipsis-vertical', outline: 'ellipsis-vertical' },
-
   mention: { filled: 'at', outline: 'at-outline' },
   unread: { filled: 'mail-unread', outline: 'mail-unread-outline' },
 
@@ -97,23 +102,32 @@ const ion: IonMap = {
   // Emojis
   smiley: { filled: 'happy', outline: 'happy-outline' },
 
-  // Numeric keypad
   keypad: { filled: 'keypad', outline: 'keypad-outline' },
 
   // Forward messages
   forward: { filled: 'arrow-forward', outline: 'arrow-forward-outline' },
 
-  // Copy to clipboard
+  // Copy
   copy: { filled: 'copy', outline: 'copy-outline' },
 
-  // Vertical menu (3 dots)
+  // Vertical menu
   'more-vert': { filled: 'ellipsis-vertical', outline: 'ellipsis-vertical' },
 
-  // Report message
+  // Report
   report: { filled: 'alert-circle', outline: 'alert-circle-outline' },
 
-  // NEW — Reply to message
+  // Reply
   reply: { filled: 'arrow-undo', outline: 'arrow-undo-outline' },
+
+  // NEW — Sub-rooms (layers)
+  layers: { filled: 'layers', outline: 'layers-outline' },
+
+  // Aliases for layers
+  thread: { filled: 'layers', outline: 'layers-outline' },
+  'sub-channel': { filled: 'layers', outline: 'layers-outline' },
+
+  // NEW — Message info (optional)
+  info: { filled: 'information-circle', outline: 'information-circle-outline' },
 };
 
 export interface KISIconProps {
@@ -131,7 +145,7 @@ export const KISIcon: React.FC<KISIconProps> = ({
   focused = false,
   style,
 }) => {
-  // SPECIAL OVERRIDE (Material Community Icons)
+  // Material icon overrides
   if (name === 'keyboard') {
     return (
       <MaterialCommunityIcons
@@ -143,7 +157,6 @@ export const KISIcon: React.FC<KISIconProps> = ({
     );
   }
 
-  // fallback for safety
   const pair = ion[name] ?? ion['home']!;
   const iconName = focused ? pair.filled : pair.outline;
 

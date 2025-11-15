@@ -25,6 +25,11 @@ import {
 } from './componets/TextCardComposer';
 import { StickerEditor, Sticker } from './componets/StickerEditor';
 import { ForwardChatSheet } from './componets/ForwardChatSheet';
+/**
+ * pinned + sub-room sheets
+ */
+import { PinnedMessagesSheet } from './componets/PinnedMessagesSheet';
+import { SubRoomsSheet } from './componets/SubRoomsSheet';
 
 import {
   useChatPersistence,
@@ -97,6 +102,17 @@ export type ChatMessage = {
   isPinned?: boolean;
 
   reactions?: Record<string, string[]>;
+};
+
+/**
+ * Minimal sub-room type for now (will be refined when we wire backend + store).
+ * This supports the header count + sheets.
+ */
+export type SubRoom = {
+  id: string;
+  parentRoomId: string;
+  rootMessageId?: string;
+  title?: string;
 };
 
 export type ChatRoomPageProps = {
@@ -196,12 +212,31 @@ export const ChatRoomPage: React.FC<ChatRoomPageProps> = ({
   const [replyTo, setReplyTo] = useState<ChatMessage | null>(null);
   const [editing, setEditing] = useState<ChatMessage | null>(null);
 
-  // NEW: selection
+  // Selection
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
   // Forward sheet
   const [forwardSheetVisible, setForwardSheetVisible] = useState(false);
+
+  // pinned & sub-room UI sheets
+  const [pinnedSheetVisible, setPinnedSheetVisible] = useState(false);
+  const [subRoomsSheetVisible, setSubRoomsSheetVisible] = useState(false);
+
+  // local sub-rooms list (to be replaced by backend/store later)
+  const [subRooms] = useState<SubRoom[]>([]);
+
+  /**
+   * NEW: locator helpers from MessageList
+   * This lets us:
+   *  - Scroll to a specific message
+   *  - Highlight it
+   * When user taps a pinned message in PinnedMessagesSheet.
+   */
+  const [messageLocator, setMessageLocator] = useState<{
+    scrollToMessage: (messageId: string) => void;
+    highlightMessage: (messageId: string) => void;
+  } | null>(null);
 
   const {
     messages,
@@ -270,6 +305,19 @@ export const ChatRoomPage: React.FC<ChatRoomPageProps> = ({
     () => messages.filter((m) => selectedIds.includes(m.id)),
     [messages, selectedIds],
   );
+
+  // Single-selection flag → used to gate "Continue in sub-room" UI
+  const isSingleSelection = selectedIds.length === 1;
+
+  // Pinned messages derived from main list
+  const pinnedMessages = useMemo(
+    () => messages.filter((m) => m.isPinned && !m.isDeleted),
+    [messages],
+  );
+  const pinnedCount = pinnedMessages.length;
+
+  // Sub-room count (future backend)
+  const subRoomCount = subRooms.length;
 
   // ====== Sending ======
 
@@ -379,13 +427,16 @@ export const ChatRoomPage: React.FC<ChatRoomPageProps> = ({
 
   // ====== Message interaction ======
 
-  const handleReplyRequest = useCallback((message: ChatMessage) => {
-    if (selectionMode) {
-      toggleSelectMessage(message);
-      return;
-    }
-    setReplyTo(message);
-  }, [selectionMode, toggleSelectMessage]);
+  const handleReplyRequest = useCallback(
+    (message: ChatMessage) => {
+      if (selectionMode) {
+        toggleSelectMessage(message);
+        return;
+      }
+      setReplyTo(message);
+    },
+    [selectionMode, toggleSelectMessage],
+  );
 
   const handleEditRequest = useCallback(
     (message: ChatMessage) => {
@@ -442,7 +493,11 @@ export const ChatRoomPage: React.FC<ChatRoomPageProps> = ({
         `Delete ${selectedIds.length} message(s)?`,
         [
           { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
-          { text: 'Delete', style: 'destructive', onPress: () => resolve(true) },
+          {
+            text: 'Delete',
+            style: 'destructive',
+            onPress: () => resolve(true),
+          },
         ],
       );
     });
@@ -478,6 +533,22 @@ export const ChatRoomPage: React.FC<ChatRoomPageProps> = ({
     setForwardSheetVisible(true);
   }, [selectedMessages]);
 
+  // Single-selection-only action: continue in sub-room (placeholder)
+  const handleContinueInSubRoom = useCallback(() => {
+    if (!isSingleSelection) {
+      return;
+    }
+
+    const msgId = selectedIds[0];
+    const message = messages.find((m) => m.id === msgId);
+    if (!message) return;
+
+    Alert.alert(
+      'Sub-room',
+      'This will create or open a dedicated sub-room for this message once backend + navigation are wired.',
+    );
+  }, [isSingleSelection, selectedIds, messages]);
+
   const handleMoreSelected = useCallback(() => {
     if (!selectedMessages.length) return;
 
@@ -502,7 +573,7 @@ export const ChatRoomPage: React.FC<ChatRoomPageProps> = ({
       },
       { text: 'Cancel', style: 'cancel' },
     ]);
-  }, [handleCopySelected, handlePinSelected, exitSelectionMode]);
+  }, [handleCopySelected, handlePinSelected, exitSelectionMode, selectedMessages]);
 
   // Forward confirm from sheet
   const handleConfirmForward = useCallback(
@@ -517,7 +588,6 @@ export const ChatRoomPage: React.FC<ChatRoomPageProps> = ({
           messages: selectedMessages,
         });
       } else {
-        // No integration yet: let dev know
         console.log('Forward messages to chats', { chatIds, selectedMessages });
       }
 
@@ -551,6 +621,14 @@ export const ChatRoomPage: React.FC<ChatRoomPageProps> = ({
         onForwardSelected={handleForwardSelected}
         onCopySelected={handleCopySelected}
         onMoreSelected={handleMoreSelected}
+        // header indicators + expand handlers
+        pinnedCount={pinnedCount}
+        subRoomCount={subRoomCount}
+        onOpenPinned={() => setPinnedSheetVisible(true)}
+        onOpenSubRooms={() => setSubRoomsSheetVisible(true)}
+        // single-selection-only sub-room action
+        isSingleSelection={isSingleSelection}
+        onContinueInSubRoom={handleContinueInSubRoom}
       />
 
       <KeyboardAvoidingView
@@ -570,6 +648,11 @@ export const ChatRoomPage: React.FC<ChatRoomPageProps> = ({
           selectedMessageIds={selectedIds}
           onStartSelection={enterSelectionMode}
           onToggleSelect={toggleSelectMessage}
+          /**
+           * NEW: hook to get scroll/highlight helpers from MessageList.
+           * We'll use this for "jump to pinned message" from the sheet.
+           */
+          onMessageLocatorReady={setMessageLocator}
         />
 
         <MessageComposer
@@ -619,6 +702,37 @@ export const ChatRoomPage: React.FC<ChatRoomPageProps> = ({
         maxTargets={5}
         onClose={() => setForwardSheetVisible(false)}
         onConfirm={handleConfirmForward}
+      />
+
+      {/* Pinned messages sheet */}
+      <PinnedMessagesSheet
+        visible={pinnedSheetVisible}
+        onClose={() => setPinnedSheetVisible(false)}
+        roomId={roomId}
+        pinnedMessages={pinnedMessages}
+        palette={palette}
+        /**
+         * NEW: when user taps a pinned message in the sheet,
+         *  - Close the sheet
+         *  - Scroll to that message
+         *  - Highlight it
+         * (The sheet component will call this; we'll wire it when we update the sheet.)
+         */
+        onJumpToMessage={(messageId: string) => {
+          if (!messageLocator) return;
+          setPinnedSheetVisible(false);
+          messageLocator.scrollToMessage(messageId);
+          messageLocator.highlightMessage(messageId);
+        }}
+      />
+
+      {/* Sub-rooms sheet */}
+      <SubRoomsSheet
+        visible={subRoomsSheetVisible}
+        onClose={() => setSubRoomsSheetVisible(false)}
+        parentRoomId={roomId}
+        subRooms={subRooms}
+        palette={palette}
       />
     </View>
   );

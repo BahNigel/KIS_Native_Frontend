@@ -16,7 +16,7 @@ export const chatRoomStyles = StyleSheet.create({
     marginLeft: 4,
   },
 
-  // only if you don't already have it
+  // used across header / composer
   iconTextButton: {
     width: 32,
     height: 32,
@@ -68,6 +68,8 @@ export const chatRoomStyles = StyleSheet.create({
     marginHorizontal: 2,
   },
 
+  /* COMPOSER */
+
   composerContainer: {
     flexDirection: 'column',   // stack banner + preview + main row
     paddingHorizontal: 6,
@@ -83,11 +85,6 @@ export const chatRoomStyles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-end',
   },
-
-  // iconTextButton: {
-  //   paddingHorizontal: 4,
-  //   paddingVertical: 6,
-  // },
 
   composerInputWrapper: {
     flex: 1,
@@ -290,13 +287,10 @@ export const chatRoomStyles = StyleSheet.create({
     justifyContent: 'center',
   },
 
- 
-
   voiceRecordingText: {
     fontSize: 13,
     fontWeight: '600',
   },
-  
 
   /* Voice preview row */
 
@@ -308,11 +302,6 @@ export const chatRoomStyles = StyleSheet.create({
     marginRight: 8,
   },
 
-
-  /* Locked recording actions row */
-
- 
- 
   iconEmoji: {
     fontSize: 22,
   },
@@ -322,5 +311,24 @@ export const chatRoomStyles = StyleSheet.create({
   composerActionIcon: {
     fontSize: 18,
     fontWeight: '600',
+  },
+
+  /* ────────────────────────────────────────
+   *  BOTTOM SHEETS (Forward / Pinned / Sub-rooms)
+   * ────────────────────────────────────── */
+
+  sheetOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0,0,0,0.4)',
+  },
+  sheetBackdrop: {
+    flex: 1,
+  },
+  sheetContainer: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    maxHeight: '70%',
   },
 });

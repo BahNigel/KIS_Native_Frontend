@@ -20,11 +20,21 @@ type MessageListProps = {
   onPressMessage?: (message: ChatMessage) => void;
   onLongPressMessage?: (message: ChatMessage) => void;
 
-  // NEW: selection
+  // Selection
   selectionMode?: boolean;
   selectedMessageIds?: string[];
   onStartSelection?: (message: ChatMessage) => void;
   onToggleSelect?: (message: ChatMessage) => void;
+
+  /**
+   * NEW: allow parent (ChatRoomPage) and things like PinnedMessagesSheet
+   * to get access to scroll/highlight helpers for a given message id.
+   * This is how we'll "jump to pinned message" or "jump to root message of sub-room".
+   */
+  onMessageLocatorReady?: (helpers: {
+    scrollToMessage: (messageId: string) => void;
+    highlightMessage: (messageId: string) => void;
+  }) => void;
 };
 
 export const MessageList: React.FC<MessageListProps> = ({
@@ -39,6 +49,7 @@ export const MessageList: React.FC<MessageListProps> = ({
   selectedMessageIds = [],
   onStartSelection,
   onToggleSelect,
+  onMessageLocatorReady,
 }) => {
   const listRef = useRef<FlatList<ChatMessage>>(null);
 
@@ -105,6 +116,19 @@ export const MessageList: React.FC<MessageListProps> = ({
     },
     [scrollToMessage, highlightMessage],
   );
+
+  /**
+   * NEW: expose scrollToMessage + highlightMessage to the parent when ready.
+   * This will let PinnedMessagesSheet call into MessageList to jump to a pinned item.
+   */
+  useEffect(() => {
+    if (!onMessageLocatorReady) return;
+
+    onMessageLocatorReady({
+      scrollToMessage,
+      highlightMessage,
+    });
+  }, [onMessageLocatorReady, scrollToMessage, highlightMessage]);
 
   if (isEmpty) {
     return (

@@ -25,7 +25,7 @@ type MessageBubbleProps = {
   // highlight when scrolled-to from reply
   isHighlighted?: boolean;
 
-  // NEW: selection visual
+  // selection visual
   isSelected?: boolean;
 };
 
@@ -56,6 +56,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
   const voice = message.voice;
   const styled = message.styledText;
   const sticker = message.sticker;
+  const isPinned = !!message.isPinned;
 
   const isVoiceOnly = !!voice && !message.text && !styled && !sticker;
 
@@ -143,6 +144,17 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
       }
     : null;
 
+  /**
+   * Subtle border for pinned messages.
+   * This is intentionally lighter than the selection/highlight styling.
+   */
+  const pinnedStyle = isPinned
+    ? {
+        borderWidth: 1,
+        borderColor: palette.pinnedBorder ?? (palette.primarySoft ?? '#4F46E533'),
+      }
+    : null;
+
   const selectedStyle = isSelected
     ? {
         borderWidth: 2,
@@ -164,6 +176,23 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
     status === 'read'
       ? palette.readStatus ?? '#34B7F1'
       : metaColor;
+
+  /* ─────────────────────────────────────────
+   * Helper: small "Pinned" icon next to time
+   * ──────────────────────────────────────── */
+  const renderPinnedIcon = () => {
+    if (!isPinned) return null;
+
+    return (
+      <View style={{ marginLeft: 4 }}>
+        <KISIcon
+          name="pin"
+          size={12}
+          color={metaColor}
+        />
+      </View>
+    );
+  };
 
   /* ─────────────────────────────────────────
    * Helper: reply preview
@@ -246,6 +275,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
             {
               backgroundColor: palette.deletedBubbleBg ?? '#333',
             },
+            pinnedStyle || undefined,
             selectedStyle || undefined,
             highlightedStyle || undefined,
           ]}
@@ -263,16 +293,19 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
           </Text>
 
           <View style={styles.messageMetaRow}>
-            <Text
-              style={[
-                styles.messageTime,
-                {
-                  color: metaColor,
-                },
-              ]}
-            >
-              {timeLabel}
-            </Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <Text
+                style={[
+                  styles.messageTime,
+                  {
+                    color: metaColor,
+                  },
+                ]}
+              >
+                {timeLabel}
+              </Text>
+              {renderPinnedIcon()}
+            </View>
 
             {isMe && status && (
               <Text
@@ -314,6 +347,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
               overflow: 'visible',
               backgroundColor: 'transparent',
             },
+            pinnedStyle || undefined,
             selectedStyle || undefined,
             highlightedStyle || undefined,
           ]}
@@ -333,17 +367,20 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
               { paddingHorizontal: 6, paddingBottom: 4 },
             ]}
           >
-            <Text
-              style={[
-                styles.messageTime,
-                {
-                  color: metaColor,
-                },
-              ]}
-            >
-              {timeLabel}
-              {message.isEdited ? ' • edited' : ''}
-            </Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <Text
+                style={[
+                  styles.messageTime,
+                  {
+                    color: metaColor,
+                  },
+                ]}
+              >
+                {timeLabel}
+                {message.isEdited ? ' • edited' : ''}
+              </Text>
+              {renderPinnedIcon()}
+            </View>
 
             {isMe && status && (
               <Text
@@ -384,6 +421,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
               paddingHorizontal: 16,
               paddingVertical: 12,
             },
+            pinnedStyle || undefined,
             selectedStyle || undefined,
             highlightedStyle || undefined,
           ]}
@@ -403,17 +441,20 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
 
           {/* time + ticks row */}
           <View style={styles.messageMetaRow}>
-            <Text
-              style={[
-                styles.messageTime,
-                {
-                  color: metaColor,
-                },
-              ]}
-            >
-              {timeLabel}
-              {message.isEdited ? ' • edited' : ''}
-            </Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <Text
+                style={[
+                  styles.messageTime,
+                  {
+                    color: metaColor,
+                  },
+                ]}
+              >
+                {timeLabel}
+                {message.isEdited ? ' • edited' : ''}
+              </Text>
+              {renderPinnedIcon()}
+            </View>
 
             {isMe && status && (
               <Text
@@ -449,6 +490,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
         <View
           style={[
             bubbleBaseStyle,
+            pinnedStyle || undefined,
             selectedStyle || undefined,
             highlightedStyle || undefined,
           ]}
@@ -507,17 +549,20 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
 
           {/* time + ticks row */}
           <View style={styles.messageMetaRow}>
-            <Text
-              style={[
-                styles.messageTime,
-                {
-                  color: metaColor,
-                },
-              ]}
-            >
-              {timeLabel}
-              {message.isEdited ? ' • edited' : ''}
-            </Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <Text
+                style={[
+                  styles.messageTime,
+                  {
+                    color: metaColor,
+                  },
+                ]}
+              >
+                {timeLabel}
+                {message.isEdited ? ' • edited' : ''}
+              </Text>
+              {renderPinnedIcon()}
+            </View>
 
             {isMe && status && (
               <Text
@@ -550,6 +595,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
       <View
         style={[
           bubbleBaseStyle,
+          pinnedStyle || undefined,
           selectedStyle || undefined,
           highlightedStyle || undefined,
         ]}
@@ -570,17 +616,20 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
         )}
 
         <View style={styles.messageMetaRow}>
-          <Text
-            style={[
-              styles.messageTime,
-              {
-                color: metaColor,
-              },
-            ]}
-          >
-            {timeLabel}
-            {message.isEdited ? ' • edited' : ''}
-          </Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <Text
+              style={[
+                styles.messageTime,
+                {
+                  color: metaColor,
+                },
+              ]}
+            >
+              {timeLabel}
+              {message.isEdited ? ' • edited' : ''}
+            </Text>
+            {renderPinnedIcon()}
+          </View>
 
           {isMe && status && (
             <Text
