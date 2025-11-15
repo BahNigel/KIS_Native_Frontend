@@ -1,97 +1,228 @@
-This is a new [**React Native**](https://reactnative.dev) project, bootstrapped using [`@react-native-community/cli`](https://github.com/react-native-community/cli).
+# Kingdom Impact Social (KIS) — README
 
-# Getting Started
+## Overview
 
-> **Note**: Make sure you have completed the [Set Up Your Environment](https://reactnative.dev/docs/set-up-your-environment) guide before proceeding.
+Kingdom Impact Social (KIS) is a modern, faith‑driven social platform designed to empower communities with real‑time communication, creative expression, and safe interactions. The app supports messaging, multimedia sharing, stickers, themed UI, and cross‑platform extensibility.
 
-## Step 1: Start Metro
+This README provides:
 
-First, you will need to run **Metro**, the JavaScript build tool for React Native.
+* Project summary
+* Architecture overview
+* Tech stack
+* Folder structure
+* Setup & installation
+* Development scripts
+* Key features
+* Future roadmap
 
-To start the Metro dev server, run the following command from the root of your React Native project:
+---
 
-```sh
-# Using npm
-npm start
+## ✨ Key Features
 
-# OR using Yarn
-yarn start
+* **Real‑time Chat System** powered by NestJS + Fastify (backend) and React Native (mobile client).
+* **Socket.IO WebSocket Gateway** under `/ws` for real‑time messaging.
+* **Advanced Chat Composer**
+
+  * Emoji picker
+  * Avatar color picker
+  * Custom text-background messages
+  * Full sticker system
+  * Local sticker editor with image upload, draggable text, compression, and optional background removal.
+* **Stickers Library** saved locally via AsyncStorage using `KIS_STICKER_LIBRARY_V1`.
+* **Swipe to Reply**, message selection mode, forwarding, reply preview, action menus.
+* **Static File Uploads** served from `/uploads` on backend.
+* **React Native Theme System** using `useTheme.ts` and `constants.ts` defining `KIS_COLORS`.
+* **Modular Frontend Architecture** ready for React and React Native expansions.
+
+---
+
+## 🏛 Architecture
+
+### Backend (NestJS + Fastify)
+
+* REST API for authentication and user operations.
+* WebSockets using Socket.IO under `/ws`.
+* Static file hosting for uploads.
+* Modular architecture suitable for microservice separation.
+
+### Frontend
+
+* **React Native mobile app** using:
+
+  * Expo or bare RN workflow
+  * Advanced chat components
+  * AsyncStorage for local persistence
+  * ViewShot + ImageResizer for sticker generation
+* **Future web client** planned using React.js.
+
+---
+
+## 📁 Project Structure
+
+```
+kis/
+├── backend/               # NestJS backend
+│   ├── src/
+│   └── uploads/           # Static user uploads
+│
+├── mobile/                # React Native app
+│   ├── src/
+│   │   ├── components/
+│   │   ├── screens/
+│   │   ├── theme/
+│   │   │   ├── useTheme.ts
+│   │   │   └── constants.ts
+│   │   ├── chat/
+│   │   │   ├── composer/
+│   │   │   ├── stickers/
+│   │   │   ├── emoji/
+│   │   │   └── actions/
+│   └── assets/
+└── README.md
 ```
 
-## Step 2: Build and run your app
+---
 
-With Metro running, open a new terminal window/pane from the root of your React Native project, and use one of the following commands to build and run your Android or iOS app:
+## 🛠 Tech Stack
 
-### Android
+### Backend
 
-```sh
-# Using npm
-npm run android
+* **NestJS + Fastify** (REST + WebSockets)
+* **Socket.IO**
+* **TypeScript**
+* **Multer** (file uploads)
 
-# OR using Yarn
-yarn android
+### Mobile App
+
+* **React Native**
+* **AsyncStorage**
+* **ViewShot** (sticker rendering)
+* **ImageResizer**
+* **React Navigation**
+* **React Native Reanimated**
+
+---
+
+## 🚀 Getting Started
+
+### Requirements
+
+* Node.js 18+
+* pnpm
+* Java JDK 17 (for Android)
+* Android Studio / Xcode (depending on platform)
+
+---
+
+## 📦 Installation
+
+### Clone the project:
+
+```bash
+git clone https://github.com/your-org/kis.git
+cd kis
 ```
 
-### iOS
+### Install dependencies
 
-For iOS, remember to install CocoaPods dependencies (this only needs to be run on first clone or after updating native deps).
+#### Backend
 
-The first time you create a new project, run the Ruby bundler to install CocoaPods itself:
-
-```sh
-bundle install
+```bash
+cd backend
+pnpm install
 ```
 
-Then, and every time you update your native dependencies, run:
+#### Mobile
 
-```sh
-bundle exec pod install
+```bash
+cd mobile
+pnpm install
 ```
 
-For more information, please visit [CocoaPods Getting Started guide](https://guides.cocoapods.org/using/getting-started.html).
+---
 
-```sh
-# Using npm
-npm run ios
+## ▶️ Running the App
 
-# OR using Yarn
-yarn ios
+### Backend
+
+```bash
+cd backend
+pnpm start:dev
 ```
 
-If everything is set up correctly, you should see your new app running in the Android Emulator, iOS Simulator, or your connected device.
+This starts:
 
-This is one way to run your app — you can also build it directly from Android Studio or Xcode.
+* Fastify REST server on `http://localhost:3000`
+* WebSocket gateway at `ws://localhost:3000/ws`
 
-## Step 3: Modify your app
+### Mobile App
 
-Now that you have successfully run the app, let's make changes!
+```bash
+cd mobile
+pnpm run android   # or ios
+```
 
-Open `App.tsx` in your text editor of choice and make some changes. When you save, your app will automatically update and reflect these changes — this is powered by [Fast Refresh](https://reactnative.dev/docs/fast-refresh).
+Ensure emulator/device is running.
 
-When you want to forcefully reload, for example to reset the state of your app, you can perform a full reload:
+---
 
-- **Android**: Press the <kbd>R</kbd> key twice or select **"Reload"** from the **Dev Menu**, accessed via <kbd>Ctrl</kbd> + <kbd>M</kbd> (Windows/Linux) or <kbd>Cmd ⌘</kbd> + <kbd>M</kbd> (macOS).
-- **iOS**: Press <kbd>R</kbd> in iOS Simulator.
+## 🎨 Theme System
 
-## Congratulations! :tada:
+The theme is defined in:
 
-You've successfully run and modified your React Native App. :partying_face:
+```
+mobile/src/theme/useTheme.ts
+mobile/src/theme/constants.ts
+```
 
-### Now what?
+* `KIS_COLORS`
+* Typography tokens
+* Shadows, border radii, spacing system
 
-- If you want to add this new React Native code to an existing application, check out the [Integration guide](https://reactnative.dev/docs/integration-with-existing-apps).
-- If you're curious to learn more about React Native, check out the [docs](https://reactnative.dev/docs/getting-started).
+Used throughout screens and components.
 
-# Troubleshooting
+---
 
-If you're having issues getting the above steps to work, see the [Troubleshooting](https://reactnative.dev/docs/troubleshooting) page.
+## 🧩 Stickers System
 
-# Learn More
+* Created using **StickerEditor** component.
+* Saved as compressed PNG + `.kisstk` metadata file.
+* Indexed in AsyncStorage under:
 
-To learn more about React Native, take a look at the following resources:
+```
+KIS_STICKER_LIBRARY_V1
+```
 
-- [React Native Website](https://reactnative.dev) - learn more about React Native.
-- [Getting Started](https://reactnative.dev/docs/environment-setup) - an **overview** of React Native and how setup your environment.
-- [Learn the Basics](https://reactnative.dev/docs/getting-started) - a **guided tour** of the React Native **basics**.
-- [Blog](https://reactnative.dev/blog) - read the latest official React Native **Blog** posts.
-- [`@facebook/react-native`](https://github.com/facebook/react-native) - the Open Source; GitHub **repository** for React Native.
+* Loaded in MessageComposer under the **Stickers Tab**.
+
+---
+
+## 🛣 Roadmap
+
+* Voice messages (record + playback)
+* Video calls
+* Channels & Groups
+* Improved search
+* Cloud sync for stickers
+* User profile customization
+* Bible integration & verse sharing
+
+---
+
+## 🤝 Contribution
+
+1. Fork the repo
+2. Create a feature branch
+3. Submit a PR with clear descriptions
+
+---
+
+## 📄 License
+
+MIT License
+
+---
+
+## 📬 Contact
+
+For questions or support, reach out to the KIS development team.
