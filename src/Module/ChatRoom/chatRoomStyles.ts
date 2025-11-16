@@ -29,11 +29,12 @@ export const chatRoomStyles = StyleSheet.create({
   /* HEADER */
 
   header: {
-    height: 56,
+    paddingVertical: 0,
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 8,
     borderBottomWidth: StyleSheet.hairlineWidth,
+    top:-5,
   },
   headerBackButton: {
     padding: 8,
@@ -78,7 +79,9 @@ export const chatRoomStyles = StyleSheet.create({
   },
   composerMainRow: {
     flexDirection: 'row',
-    alignItems: 'flex-end',
+    alignItems: 'center',
+    paddingVertical: 10,
+    justifyContent: 'center',
   },
 
   composerLeft: {
@@ -103,8 +106,8 @@ export const chatRoomStyles = StyleSheet.create({
   },
 
   composerActionButton: {
-    width: 40,
-    height: 40,
+    width: 35,
+    height: 35,
     borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',

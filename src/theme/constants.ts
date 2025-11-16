@@ -113,7 +113,7 @@ export type KISPalette = {
   error: string;
   disabled: string;
 
-  // 🆕 Chat-specific fields (WhatsApp-like)
+  // 🆕 Chat-specific fields
   chatBg: string;           // main chat background
   chatHeaderBg: string;     // chat header bar
   chatComposerBg: string;   // composer bar background
@@ -156,21 +156,27 @@ export const createPalette = (tone: KISTone): KISPalette => {
       ? 'rgba(0,0,0,0.55)'
       : 'rgba(0,0,0,0.25)';
 
-  // 🆕 WhatsApp-like chat colors
+  // 🆕 KIS-style chat colors using both gradientStart & gradientEnd
+  // - Light: soft tints of orange (sender) & purple (receiver)
+  // - Dark: richer, deeper variants of orange & purple
+   // 🆕 KIS-style chat colors using deeper, desaturated variants in dark mode
   const chatBg =
     tone === 'dark'
-      ? '#0B141A' // WhatsApp dark-ish chat background
-      : '#ECE5DD'; // WhatsApp light chat background
+      ? '#0C0B0F'          // nearly-black violet/charcoal base
+      : '#FFF5EE';         // light warm background
 
+  // Outgoing (sender) bubble → dark muted burnt-orange
   const outgoingBubble =
     tone === 'dark'
-      ? '#005C4B' // WhatsApp dark outgoing
-      : '#DCF8C6'; // WhatsApp light outgoing
+      ? '#3F2A1F'          // 🔥 extremely dark warm orange tone (not using brand orange directly)
+      : '#FFE3CF';         // light orange-tinted bubble (unchanged)
 
+  // Incoming (receiver) bubble → deep muted purple/indigo
   const incomingBubble =
     tone === 'dark'
-      ? '#202C33' // WhatsApp dark incoming
-      : '#FFFFFF'; // WhatsApp light incoming
+      ? '#1E1A2B'          // 💜 deep desaturated purple, almost charcoal
+      : '#ECE6FF';         // light lavender bubble (unchanged)
+
 
   const chatHeaderBg = base.card;
   const chatComposerBg = base.card;

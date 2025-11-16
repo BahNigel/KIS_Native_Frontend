@@ -1,11 +1,6 @@
 // src/screens/chat/components/MessageComposer.tsx
 
-import React, {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-} from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View,
   TextInput,
@@ -219,8 +214,10 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
 
   /* ----------------------------- PANEL STATE ------------------------------ */
   const [keyboardMode, setKeyboardMode] = useState(true);
+
+  // DEFAULT TAB → emoji
   const [panelTab, setPanelTab] =
-    useState<'custom' | 'emoji' | 'stickers'>('custom');
+    useState<'custom' | 'emoji' | 'stickers'>('emoji');
 
   const textInputRef = useRef<TextInput | null>(null);
 
@@ -289,9 +286,9 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
   /* ----------------------------- PANEL TOGGLING --------------------------- */
   const toggleEmojiKeyboard = () => {
     if (keyboardMode) {
-      // OPEN PANEL → default to Stickers tab so user just taps a sticker to send
+      // OPEN PANEL → default to Emoji tab
       setKeyboardMode(false);
-      setPanelTab('stickers');
+      setPanelTab('emoji');
       textInputRef.current?.blur();
     } else {
       // CLOSE PANEL → go back to keyboard
@@ -300,7 +297,10 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
     }
   };
 
-  const showTextSend = canSend && !isRecording;
+  // Voice activity flag for hiding the text input + buttons
+  const isVoiceActive = isRecording || previewVisible;
+
+  const showTextSend = canSend && !isRecording && !previewVisible;
 
   /* -------------------------------------------------------------------------- */
   /*                             PANEL CONTENT                                  */
@@ -553,54 +553,57 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
 
       {/* MAIN INPUT ROW */}
       <View style={styles.composerMainRow}>
-        {/* TOGGLE BOTTOM PANEL */}
-        <Pressable
-          onPress={toggleEmojiKeyboard}
-          style={styles.iconTextButton}
-        >
-          <KISIcon
-            name={keyboardMode ? 'smiley' : 'keyboard'}
-            size={22}
-            color={palette.subtext}
-          />
-        </Pressable>
+        {/* TOGGLE + INPUT + ACTIONS (hidden during recording/preview) */}
+        {!isVoiceActive && (
+          <>
+            <Pressable
+              onPress={toggleEmojiKeyboard}
+              style={styles.iconTextButton}
+            >
+              <KISIcon
+                name={keyboardMode ? 'smiley' : 'keyboard'}
+                size={22}
+                color={palette.subtext}
+              />
+            </Pressable>
 
-        {/* INPUT */}
-        <View
-          style={[
-            styles.composerInputWrapper,
-            {
-              backgroundColor: palette.composerInputBg,
-              borderColor: palette.composerInputBorder ?? 'transparent',
-            },
-          ]}
-        >
-          <TextInput
-            ref={textInputRef}
-            value={value}
-            editable={!disabled}
-            onChangeText={onChangeText}
-            placeholder={
-              editing
-                ? 'Edit message'
-                : replyTo
-                ? 'Reply...'
-                : 'Message'
-            }
-            placeholderTextColor={palette.subtext}
-            multiline
-            style={[styles.composerInput, { color: palette.text }]}
-          />
-        </View>
+            <View
+              style={[
+                styles.composerInputWrapper,
+                {
+                  backgroundColor: palette.composerInputBg,
+                  borderColor: palette.composerInputBorder ?? 'transparent',
+                },
+              ]}
+            >
+              <TextInput
+                ref={textInputRef}
+                value={value}
+                editable={!disabled}
+                onChangeText={onChangeText}
+                placeholder={
+                  editing
+                    ? 'Edit message'
+                    : replyTo
+                    ? 'Reply...'
+                    : 'Message'
+                }
+                placeholderTextColor={palette.subtext}
+                multiline
+                style={[styles.composerInput, { color: palette.text }]}
+              />
+            </View>
 
-        {/* ACTIONS */}
-        <Pressable style={styles.iconTextButton}>
-          <KISIcon name="add" size={22} color={palette.subtext} />
-        </Pressable>
+            {/* ACTIONS */}
+            <Pressable style={styles.iconTextButton}>
+              <KISIcon name="add" size={22} color={palette.subtext} />
+            </Pressable>
 
-        <Pressable style={styles.iconTextButton}>
-          <KISIcon name="camera" size={22} color={palette.subtext} />
-        </Pressable>
+            <Pressable style={styles.iconTextButton}>
+              <KISIcon name="camera" size={22} color={palette.subtext} />
+            </Pressable>
+          </>
+        )}
 
         {/* SEND / VOICE */}
         {showTextSend ? (
@@ -608,21 +611,27 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
             onPress={handleTextSend}
             style={[
               styles.composerActionButton,
-              { backgroundColor: palette.primary },
+              {
+                backgroundColor: palette.primary,
+                marginRight: 12,
+                height: 50,
+                width: 50,
+              },
             ]}
           >
-            <KISIcon name="send" size={20} color={palette.onPrimary} />
+            <KISIcon name="send" size={18} color={palette.onPrimary} />
           </Pressable>
         ) : (
-          <HoldToLockComposer
+         <HoldToLockComposer
             palette={palette}
             onSendVoice={onSendVoice}
+            setIsRecording={setIsRecording}
           />
         )}
       </View>
 
       {/* PANEL */}
-      {!keyboardMode && !disabled && (
+      {!keyboardMode && !disabled && !isVoiceActive && (
         <View>
           {renderTabBar()}
           {renderPanelContent()}

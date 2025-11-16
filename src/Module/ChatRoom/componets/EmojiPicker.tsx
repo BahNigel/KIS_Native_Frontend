@@ -377,7 +377,7 @@ export const EmojiPicker: React.FC<EmojiPickerProps> = ({
             <Text
               style={{
                 color: palette.textSecondary ?? '#888',
-                fontSize: 12,
+                fontSize: 14,
                 marginVertical: 4,
               }}
             >
@@ -404,7 +404,7 @@ export const EmojiPicker: React.FC<EmojiPickerProps> = ({
                   }}
                   android_ripple={{ color: '#ccc', borderless: true }}
                 >
-                  <Text style={{ fontSize: 24 }}>{emoji}</Text>
+                  <Text style={{ fontSize: 30 }}>{emoji}</Text>
                 </Pressable>
               ))}
             </View>

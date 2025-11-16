@@ -1,7 +1,7 @@
 // src/screens/chat/components/MessageBubble.tsx
 
 import React, { useEffect, useState } from 'react';
-import { View, Text, Pressable, Image } from 'react-native';
+import { View, Text, Pressable, Image, Dimensions } from 'react-native';
 
 import { chatRoomStyles as styles } from '../chatRoomStyles';
 import type { ChatMessage } from '../ChatRoomPage';
@@ -62,6 +62,8 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
 
   const [isPlaying, setIsPlaying] = useState(false);
   const [progress, setProgress] = useState(0); // 0..1
+  const width = Dimensions.get('window').width;
+
 
   useEffect(() => {
     return () => {
@@ -165,7 +167,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
       }
     : null;
 
-  const textColor = isMe ? palette.onPrimary ?? '#fff' : palette.text;
+  const textColor = isMe ? palette.text ?? '#fff' : palette.text;
   const metaColor = isMe
     ? palette.onPrimaryMuted ?? '#e0e0e0'
     : palette.subtext;
@@ -493,6 +495,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
             pinnedStyle || undefined,
             selectedStyle || undefined,
             highlightedStyle || undefined,
+            {width: width/2}
           ]}
         >
           {renderReplyPreview()}
@@ -507,7 +510,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
             <KISIcon
               name={isPlaying ? 'pause' : 'play'}
               size={20}
-              color={palette.onPrimary ?? palette.primary ?? '#fff'}
+              color={palette.primary}
             />
 
             <View style={{ flex: 1, marginHorizontal: 8 }}>
@@ -516,9 +519,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
                 style={{
                   height: 3,
                   borderRadius: 999,
-                  backgroundColor: isMe
-                    ? (palette.onPrimaryMuted ?? '#ffffff55')
-                    : (palette.voiceTrackBg ?? '#555'),
+                  backgroundColor:palette.primary,
                   overflow: 'hidden',
                 }}
               >

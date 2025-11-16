@@ -28,6 +28,7 @@ type HoldToLockComposerProps = {
   palette: any;
   disabled?: boolean;
   onSendVoice?: (payload: { uri: string; durationMs: number }) => void;
+  setIsRecording: (e:boolean)=>void;
 };
 
 type VoiceMode = 'idle' | 'recordingHold' | 'recordingLocked' | 'preview';
@@ -38,6 +39,7 @@ export const HoldToLockComposer: React.FC<HoldToLockComposerProps> = ({
   palette,
   disabled,
   onSendVoice,
+  setIsRecording,
 }) => {
   const [voiceMode, setVoiceMode] = useState<VoiceMode>('idle');
   const [recordSeconds, setRecordSeconds] = useState(0);
@@ -99,6 +101,7 @@ export const HoldToLockComposer: React.FC<HoldToLockComposerProps> = ({
       recordMsRef.current = 0;
       setPreviewProgress(0);
       setIsPlayingPreview(false);
+      setIsRecording(true)
 
       setVoiceMode('recordingHold');
 
@@ -141,6 +144,7 @@ export const HoldToLockComposer: React.FC<HoldToLockComposerProps> = ({
     } catch (err) {
       console.warn('stopRecorder error', err);
     }
+    setIsRecording(false)
 
     try {
       audioRecorderPlayer.removeRecordBackListener();
@@ -169,6 +173,7 @@ export const HoldToLockComposer: React.FC<HoldToLockComposerProps> = ({
     }).start();
 
     const hasAudio = uri && recordMsRef.current > 0;
+    setIsRecording(false)
 
     if (hasAudio) {
       setVoiceMode('preview');
@@ -193,6 +198,7 @@ export const HoldToLockComposer: React.FC<HoldToLockComposerProps> = ({
     try {
       audioRecorderPlayer.removeRecordBackListener();
     } catch {}
+    setIsRecording(false)
 
     Animated.spring(micScale, {
       toValue: 1,
@@ -227,6 +233,7 @@ export const HoldToLockComposer: React.FC<HoldToLockComposerProps> = ({
     } catch (err) {
       console.warn('stop preview player error', err);
     }
+    setIsRecording(false)
     setIsPlayingPreview(false);
     setPreviewProgress(0);
   };

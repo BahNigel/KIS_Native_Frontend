@@ -214,7 +214,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
         styles.header,
         {
           borderBottomColor: palette.divider,
-          backgroundColor: palette.chatHeaderBg ?? palette.card,
+          backgroundColor: "transparent",
           // Override any row flexDirection so we can stack main row + info row
           flexDirection: 'column',
         },
