@@ -1,8 +1,10 @@
+// src/screens/chat/ChatRoomPage.tsx
 import React, {
   useMemo,
   useState,
   useCallback,
   useEffect,
+  useRef,
 } from 'react';
 import {
   View,
@@ -11,6 +13,8 @@ import {
   Alert,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { io, Socket } from 'socket.io-client';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { useKISTheme } from '../../theme/useTheme';
 import type { Chat } from '@/components/messaging/messagesUtils';
@@ -36,6 +40,7 @@ import {
   type SendOverNetworkFn,
 } from '../hooks/useChatPersistence';
 import Clipboard from '@react-native-clipboard/clipboard';
+import { CHAT_WS_URL, CHAT_WS_PATH } from '@/network/routes';
 
 // ====== Types from previous version ======
 
@@ -187,9 +192,31 @@ const buildInitialMessages = (
   ];
 };
 
-// Dummy WS sender for now
-const dummySendOverNetwork: SendOverNetworkFn = async (_message) => {
-  return false;
+// Helper to map backend payload -> ChatMessage
+const mapBackendToChatMessage = (
+  payload: any,
+  currentUserId: string,
+  roomId: string,
+): ChatMessage => {
+  const createdMs =
+    typeof payload.createdAt === 'number'
+      ? payload.createdAt
+      : Date.now();
+
+  const text = payload.ciphertext ?? '';
+
+  return {
+    id: String(payload.id ?? payload._id ?? Date.now().toString()),
+    createdAt: new Date(createdMs).toISOString(),
+    roomId: String(payload.conversationId ?? roomId),
+    senderId: String(payload.senderId ?? 'unknown'),
+    fromMe: String(payload.senderId ?? '') === currentUserId,
+    kind: 'text',
+    status: 'sent',
+    text,
+    replyToId: payload.replyToId,
+    // attachments etc can be mapped later when we fully wire them
+  };
 };
 
 export const ChatRoomPage: React.FC<ChatRoomPageProps> = ({
@@ -201,7 +228,28 @@ export const ChatRoomPage: React.FC<ChatRoomPageProps> = ({
   const { palette } = useKISTheme();
   const insets = useSafeAreaInsets();
 
-  const currentUserId = 'local-user';
+  // 🔐 Auth state from local storage
+  const [authToken, setAuthToken] = useState<string | null>(null);
+  const [currentUserId, setCurrentUserId] = useState<string>('local-user');
+
+  // Load token (and optionally user id) from AsyncStorage
+  useEffect(() => {
+    const loadAuth = async () => {
+      try {
+        const token = await AsyncStorage.getItem('access_token');
+        // If you store user id somewhere, adjust this key accordingly:
+        const storedUserId = await AsyncStorage.getItem('user_id');
+
+        if (token) setAuthToken(token);
+        if (storedUserId) setCurrentUserId(storedUserId);
+      } catch (e) {
+        console.warn('[ChatRoomPage] Failed to load auth from storage', e);
+      }
+    };
+
+    loadAuth();
+  }, []);
+
   const roomId = chat?.id ?? 'local-room';
 
   const [draft, setDraft] = useState('');
@@ -238,6 +286,51 @@ export const ChatRoomPage: React.FC<ChatRoomPageProps> = ({
     highlightMessage: (messageId: string) => void;
   } | null>(null);
 
+  // Socket.IO
+  const socketRef = useRef<Socket | null>(null);
+  const [isConnected, setIsConnected] = useState(false);
+
+  // Send messages over network using Nest chat backend
+  const sendOverNetwork = useCallback<SendOverNetworkFn>(
+    async (message) => {
+      const socket = socketRef.current;
+      if (!socket || !isConnected || !chat) {
+        return false;
+      }
+
+      // For now we send plaintext as ciphertext; later we can plug E2E
+      const ciphertext =
+        message.text ??
+        message.styledText?.text ??
+        '';
+
+      return new Promise<boolean>((resolve) => {
+        socket
+          .timeout(5000)
+          .emit(
+            'chat.send',
+            {
+              conversationId: roomId,
+              clientId: message.id,
+              senderName: undefined, // backend derives from principal
+              ciphertext,
+              attachments: [], // wire in when upload is ready
+              replyToId: message.replyToId,
+            },
+            (err: unknown, ack: any) => {
+              if (err) {
+                console.warn('chat.send timeout/error', err);
+                resolve(false);
+                return;
+              }
+              resolve(!!ack?.ok);
+            },
+          );
+      });
+    },
+    [chat, isConnected, roomId],
+  );
+
   const {
     messages,
     isLoading,
@@ -251,10 +344,16 @@ export const ChatRoomPage: React.FC<ChatRoomPageProps> = ({
   } = useChatPersistence({
     roomId,
     currentUserId,
-    sendOverNetwork: dummySendOverNetwork,
+    sendOverNetwork,
   });
 
-  // Seed initial demo messages
+  // Keep a ref to messages so socket listeners always see latest
+  const messagesRef = useRef<ChatMessage[]>(messages);
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
+
+  // Seed initial demo messages (still useful while backend is empty)
   useEffect(() => {
     if (!chat) return;
     if (isLoading) return;
@@ -265,6 +364,85 @@ export const ChatRoomPage: React.FC<ChatRoomPageProps> = ({
 
     replaceMessages(seeded);
   }, [chat, isLoading, messages.length, roomId, currentUserId, replaceMessages]);
+
+  // Connect Socket.IO to Nest backend
+  useEffect(() => {
+    if (!authToken) {
+      console.warn(
+        '[ChatRoomPage] No auth token – socket connection disabled. User must be logged in.',
+      );
+      return;
+    }
+
+    const socket = io(CHAT_WS_URL, {
+      path: CHAT_WS_PATH,
+      transports: ['websocket'],
+      extraHeaders: {
+        Authorization: `Bearer ${authToken}`,
+      },
+      auth: {
+        token: authToken,
+      },
+    });
+
+    socketRef.current = socket;
+
+    socket.on('connect', () => {
+      console.log('✅ Chat socket connected', socket.id);
+      setIsConnected(true);
+
+      // Join this room, then fetch history
+      socket.emit(
+        'chat.join',
+        { conversationId: roomId },
+        (resp: any) => {
+          console.log('chat.join ack', resp);
+
+          socket.emit(
+            'chat.history',
+            { conversationId: roomId, limit: 50 },
+            (items: any[]) => {
+              const mapped = items.map((m) =>
+                mapBackendToChatMessage(m, currentUserId, roomId),
+              );
+              replaceMessages(mapped);
+            },
+          );
+        },
+      );
+    });
+
+    socket.on('disconnect', (reason) => {
+      console.log('❌ Chat socket disconnected', reason);
+      setIsConnected(false);
+    });
+
+    // Live messages from room
+    socket.on('chat.message', (payload: any) => {
+      const mapped = mapBackendToChatMessage(payload, currentUserId, roomId);
+      const current = messagesRef.current;
+
+      // De-dupe by id or clientId if needed
+      if (current.some((m) => m.id === mapped.id)) {
+        return;
+      }
+
+      replaceMessages([...current, mapped]);
+    });
+
+    // Typing events (wire to UI later if desired)
+    socket.on('typing', (evt: any) => {
+      console.log('typing event', evt);
+    });
+
+    return () => {
+      try {
+        socket.emit('chat.leave', { conversationId: roomId });
+      } catch {}
+      socket.disconnect();
+      socketRef.current = null;
+    };
+  }, [authToken, roomId, currentUserId, replaceMessages]);
 
   // Example network-back-online hook
   const handleNetworkBackOnline = useCallback(() => {
@@ -711,13 +889,6 @@ export const ChatRoomPage: React.FC<ChatRoomPageProps> = ({
         roomId={roomId}
         pinnedMessages={pinnedMessages}
         palette={palette}
-        /**
-         * NEW: when user taps a pinned message in the sheet,
-         *  - Close the sheet
-         *  - Scroll to that message
-         *  - Highlight it
-         * (The sheet component will call this; we'll wire it when we update the sheet.)
-         */
         onJumpToMessage={(messageId: string) => {
           if (!messageLocator) return;
           setPinnedSheetVisible(false);

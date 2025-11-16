@@ -8,15 +8,32 @@ import { Platform } from 'react-native';
 const USE_EMULATOR = true;
 const LAN_IP = '127.0.0.1'; // Change only when using real device on LAN
 
+// Django API (HTTP)
 const API_PORT = 8000;
-const WS_PORT = 3000;
+
+// KIS Chat backend (NestJS + Fastify)
+const CHAT_PORT = 4000;
 
 const emulatorHost = Platform.OS === 'android' ? '10.0.2.2' : '127.0.0.1';
 const host = USE_EMULATOR ? emulatorHost : LAN_IP;
-console.log(host)
+console.log('KIS host =', host);
 
+// Django API base
 export const API_BASE_URL = `http://${host}:${API_PORT}`;
-export const WEBSOCKET_URL = `http://${host}:${WS_PORT}`;
+
+// Chat backend base (Nest)
+export const CHAT_BASE_URL = `http://${host}:${CHAT_PORT}`;
+
+// Socket.IO websocket endpoint (Nest gateway)
+// NOTE: Socket.IO client uses http(s) scheme; path is where the WS upgrade happens.
+export const CHAT_WS_URL = CHAT_BASE_URL;
+export const CHAT_WS_PATH = '/ws';
+
+// File uploads to Nest backend
+export const CHAT_UPLOAD_URL = `${CHAT_BASE_URL}/uploads/file`;
+
+// Backwards-compat: old WEBSOCKET_URL now points to the Nest chat backend
+export const WEBSOCKET_URL = CHAT_WS_URL;
 
 const ROUTES = {
   auth: {
@@ -26,7 +43,7 @@ const ROUTES = {
     checkLogin: `${API_BASE_URL}/api/v1/users/me/`,
     otp: `${API_BASE_URL}/api/v1/auth/otp/initiate/`,
     sendDeviceCode: `${API_BASE_URL}/api/v1/auth/otp/verify/`,
-    status: `${API_BASE_URL}/api/v1/auth/otp/status`
+    status: `${API_BASE_URL}/api/v1/auth/otp/status`,
   },
   user: {
     profile: `${API_BASE_URL}/user-info/`,
@@ -46,19 +63,22 @@ const ROUTES = {
     getChannelById: (id: string) => `${API_BASE_URL}/channels/${id}/`,
     createChannel: `${API_BASE_URL}/channels/create/`,
     addMembersToChannel: `${API_BASE_URL}/channels/add-members/`,
-    getChannelMembers: (channelId: string) => `${API_BASE_URL}/channels/${channelId}/members/`,
+    getChannelMembers: (channelId: string) =>
+      `${API_BASE_URL}/channels/${channelId}/members/`,
   },
   subchannels: {
     getAllSubchannels: `${API_BASE_URL}/subchannels/`,
     getSubchannelById: (id: string) => `${API_BASE_URL}/subchannels/${id}/`,
     createSubchannel: `${API_BASE_URL}/subchannels/create/`,
-    getSubchannelMembers: (id: string) => `${API_BASE_URL}/subchannels/${id}/members/`,
+    getSubchannelMembers: (id: string) =>
+      `${API_BASE_URL}/subchannels/${id}/members/`,
   },
   groups: {
     getAllGroups: `${API_BASE_URL}/groups/`,
     getGroupById: (id: string) => `${API_BASE_URL}/groups/${id}/`,
     addMembersToGroup: `${API_BASE_URL}/groups/members/`,
-    getGroupMembers: (id: string) => `${API_BASE_URL}/groups/${id}/members/`,
+    getGroupMembers: (id: string) =>
+      `${API_BASE_URL}/groups/${id}/members/`,
   },
   permissions: {
     getPermissionTypes: `${API_BASE_URL}/permissions/types/`,
@@ -66,11 +86,13 @@ const ROUTES = {
     removeUserRole: `${API_BASE_URL}/permissions/remove-user-role/`,
   },
   securityActions: {
-    getSecurityActions: (id: string) => `${API_BASE_URL}/security-actions/${id}/`,
+    getSecurityActions: (id: string) =>
+      `${API_BASE_URL}/security-actions/${id}/`,
   },
   community: {
     followCommunity: `${API_BASE_URL}/community_action/`,
   },
+  // Optional: chat backend REST endpoints could be added here later if needed
 };
 
 export default ROUTES;
