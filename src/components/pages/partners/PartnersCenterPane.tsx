@@ -2,7 +2,7 @@
 import React from 'react';
 import { FlatList, Pressable, ScrollView, Text, View } from 'react-native';
 import styles from './partnersStyles';
-import { useKISTheme } from '../../theme/useTheme';
+import { useKISTheme } from '../../../theme/useTheme';
 import {
   Partner,
   PartnerCommunity,

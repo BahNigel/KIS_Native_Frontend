@@ -33,9 +33,8 @@ import PartnersScreen from '../screens/tabs/PartnersScreen';
 import BibleScreen from '../screens/tabs/BibleScreen';
 import BroadcastScreen from '../screens/tabs/BroadcastScreen';
 import ProfileScreen from '../screens/tabs/ProfileScreen';
-
-import type { Chat } from '@/components/messaging/messagesUtils';
 import ChatRoomPage from '@/Module/ChatRoom/ChatRoomPage';
+import { Chat } from '@/Module/ChatRoom/componets/messagesUtils';
 
 type RouteKey = 'Partners' | 'Bible' | 'Messages' | 'Broadcast' | 'Profile';
 

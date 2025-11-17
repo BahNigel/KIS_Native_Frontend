@@ -2,7 +2,7 @@
 import React from 'react';
 import { FlatList, Pressable, Text, View } from 'react-native';
 import styles from './partnersStyles';
-import { useKISTheme } from '../../theme/useTheme';
+import { useKISTheme } from '../../../theme/useTheme';
 import { LEFT_RAIL_WIDTH } from './partnersTypes';
 import { MOCK_PARTNERS } from './partnersMockData';
 
