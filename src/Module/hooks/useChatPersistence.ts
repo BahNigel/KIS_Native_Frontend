@@ -1,11 +1,11 @@
 // src/screens/chat/hooks/useChatPersistence.ts
 
 import { useCallback, useEffect, useState } from 'react';
-import type { ChatMessage } from '../ChatRoom/ChatRoomPage';
 import {
   loadMessages,
   saveMessages,
 } from '@/Module/Storage/chatStorage';
+import { ChatMessage } from '../ChatRoom/componets/chatTypes';
 
 export type SendOverNetworkFn = (message: ChatMessage) => Promise<boolean>;
 
