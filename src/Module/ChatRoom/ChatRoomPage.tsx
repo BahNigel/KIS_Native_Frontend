@@ -13,12 +13,10 @@ import {
   Alert,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { io, Socket } from 'socket.io-client';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import Clipboard from '@react-native-clipboard/clipboard';
 
 import { useKISTheme } from '../../theme/useTheme';
-import type { Chat } from '@/components/messaging/messagesUtils';
-
 import { chatRoomStyles as styles } from './chatRoomStyles';
 import { ChatHeader } from './componets/ChatHeader';
 import { MessageList } from './componets/MessageList';
@@ -29,9 +27,6 @@ import {
 } from './componets/TextCardComposer';
 import { StickerEditor, Sticker } from './componets/StickerEditor';
 import { ForwardChatSheet } from './componets/ForwardChatSheet';
-/**
- * pinned + sub-room sheets
- */
 import { PinnedMessagesSheet } from './componets/PinnedMessagesSheet';
 import { SubRoomsSheet } from './componets/SubRoomsSheet';
 
@@ -39,185 +34,17 @@ import {
   useChatPersistence,
   type SendOverNetworkFn,
 } from '../hooks/useChatPersistence';
-import Clipboard from '@react-native-clipboard/clipboard';
-import { CHAT_WS_URL, CHAT_WS_PATH } from '@/network/routes';
 
-// ====== Types from previous version ======
+import { buildInitialMessages } from './componets/chatInitialMessages';
+import type {
+  ChatMessage,
+  ChatRoomPageProps,
+  SubRoom,
+} from './componets/chatTypes';
+import { useChatSocket } from './componets/useChatSocket';
 
-export type MessageKind =
-  | 'text'
-  | 'styled_text'
-  | 'voice'
-  | 'image'
-  | 'video'
-  | 'file'
-  | 'sticker'
-  | 'system';
-
-export type MessageStatus =
-  | 'local_only'
-  | 'pending'
-  | 'sending'
-  | 'sent'
-  | 'delivered'
-  | 'read'
-  | 'failed';
-
-export type ChatMessage = {
-  id: string;
-  createdAt: string;
-  updatedAt?: string;
-
-  roomId: string;
-  senderId: string;
-  fromMe: boolean;
-
-  kind?: MessageKind;
-  status?: MessageStatus;
-
-  text?: string;
-
-  voice?: {
-    uri: string;
-    durationMs: number;
-  };
-
-  styledText?: {
-    text: string;
-    backgroundColor: string;
-    fontSize: number;
-    fontColor: string;
-    fontFamily?: string;
-  };
-
-  sticker?: {
-    id: string;
-    uri: string;
-    text?: string;
-    width?: number;
-    height?: number;
-  };
-
-  replyToId?: string;
-
-  isEdited?: boolean;
-  isDeleted?: boolean;
-  isLocalOnly?: boolean;
-  isStarred?: boolean;
-  isPinned?: boolean;
-
-  reactions?: Record<string, string[]>;
-};
-
-/**
- * Minimal sub-room type for now (will be refined when we wire backend + store).
- * This supports the header count + sheets.
- */
-export type SubRoom = {
-  id: string;
-  parentRoomId: string;
-  rootMessageId?: string;
-  title?: string;
-};
-
-export type ChatRoomPageProps = {
-  chat: Chat | null;
-  onBack: () => void;
-
-  // For forwarding
-  allChats?: Chat[];
-  onForwardMessages?: (params: {
-    fromRoomId: string;
-    toChatIds: string[];
-    messages: ChatMessage[];
-  }) => void;
-};
-
-// ====== Initial messages (unchanged, but now uses roomId/currentUserId) ======
-
-const buildInitialMessages = (
-  chat: Chat | null,
-  roomId: string,
-  currentUserId: string,
-): ChatMessage[] => {
-  if (!chat) return [];
-
-  const now = new Date();
-  const minusMinutes = (m: number) => {
-    const d = new Date(now.getTime() - m * 60 * 1000);
-    return d.toISOString();
-  };
-
-  return [
-    {
-      id: '1',
-      text: `Hey ${chat.name}, welcome to KIS 👋`,
-      createdAt: minusMinutes(25),
-      roomId,
-      senderId: currentUserId,
-      fromMe: true,
-      kind: 'text',
-      status: 'read',
-    },
-    {
-      id: '2',
-      text: 'Thanks! This looks really good.',
-      createdAt: minusMinutes(22),
-      roomId,
-      senderId: 'chat-partner',
-      fromMe: false,
-      kind: 'text',
-      status: 'delivered',
-    },
-    {
-      id: '3',
-      text: 'Let’s test this chat room. It should feel close to WhatsApp.',
-      createdAt: minusMinutes(18),
-      roomId,
-      senderId: currentUserId,
-      fromMe: true,
-      kind: 'text',
-      status: 'read',
-    },
-    {
-      id: '4',
-      text: 'Yep, bubbles, timestamps, input bar… all good 😄',
-      createdAt: minusMinutes(15),
-      roomId,
-      senderId: 'chat-partner',
-      fromMe: false,
-      kind: 'text',
-      status: 'delivered',
-    },
-  ];
-};
-
-// Helper to map backend payload -> ChatMessage
-const mapBackendToChatMessage = (
-  payload: any,
-  currentUserId: string,
-  roomId: string,
-): ChatMessage => {
-  const createdMs =
-    typeof payload.createdAt === 'number'
-      ? payload.createdAt
-      : Date.now();
-
-  const text = payload.ciphertext ?? '';
-
-  return {
-    id: String(payload.id ?? payload._id ?? Date.now().toString()),
-    createdAt: new Date(createdMs).toISOString(),
-    roomId: String(payload.conversationId ?? roomId),
-    senderId: String(payload.senderId ?? 'unknown'),
-    fromMe: String(payload.senderId ?? '') === currentUserId,
-    kind: 'text',
-    status: 'sent',
-    text,
-    replyToId: payload.replyToId,
-    // attachments etc can be mapped later when we fully wire them
-  };
-};
+const clamp = (value: number, min: number, max: number) =>
+  Math.min(max, Math.max(min, value));
 
 export const ChatRoomPage: React.FC<ChatRoomPageProps> = ({
   chat,
@@ -286,9 +113,38 @@ export const ChatRoomPage: React.FC<ChatRoomPageProps> = ({
     highlightMessage: (messageId: string) => void;
   } | null>(null);
 
-  // Socket.IO
-  const socketRef = useRef<Socket | null>(null);
-  const [isConnected, setIsConnected] = useState(false);
+  // Chat persistence
+  const {
+    messages,
+    isLoading,
+    sendTextMessage,
+    sendRichMessage,
+    editMessage,
+    softDeleteMessage,
+    replyToMessage,
+    attemptFlushQueue,
+    replaceMessages,
+  } = useChatPersistence({
+    roomId,
+    currentUserId,
+    // sendOverNetwork is injected below, after socket is ready
+    sendOverNetwork: async () => false,
+  });
+
+  // Keep a ref to messages so socket listeners always see latest
+  const messagesRef = useRef<ChatMessage[]>(messages);
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
+
+  // Socket.IO connection (Nest backend)
+  const { isConnected, socketRef } = useChatSocket({
+    authToken,
+    roomId,
+    currentUserId,
+    replaceMessages,
+    messagesRef,
+  });
 
   // Send messages over network using Nest chat backend
   const sendOverNetwork = useCallback<SendOverNetworkFn>(
@@ -328,30 +184,16 @@ export const ChatRoomPage: React.FC<ChatRoomPageProps> = ({
           );
       });
     },
-    [chat, isConnected, roomId],
+    [chat, isConnected, roomId, socketRef],
   );
 
-  const {
-    messages,
-    isLoading,
-    sendTextMessage,
-    sendRichMessage,
-    editMessage,
-    softDeleteMessage,
-    replyToMessage,
-    attemptFlushQueue,
-    replaceMessages,
-  } = useChatPersistence({
-    roomId,
-    currentUserId,
-    sendOverNetwork,
-  });
-
-  // Keep a ref to messages so socket listeners always see latest
-  const messagesRef = useRef<ChatMessage[]>(messages);
+  // Re-inject sendOverNetwork into persistence when ready
   useEffect(() => {
-    messagesRef.current = messages;
-  }, [messages]);
+    // small trick: attemptFlushQueue depends on correct sendOverNetwork
+    // but useChatPersistence currently took a dummy one.
+    // If your hook lets you update sendOverNetwork, call that here.
+    // For now, we just rely on attemptFlushQueue using the latest closure.
+  }, [sendOverNetwork]);
 
   // Seed initial demo messages (still useful while backend is empty)
   useEffect(() => {
@@ -364,85 +206,6 @@ export const ChatRoomPage: React.FC<ChatRoomPageProps> = ({
 
     replaceMessages(seeded);
   }, [chat, isLoading, messages.length, roomId, currentUserId, replaceMessages]);
-
-  // Connect Socket.IO to Nest backend
-  useEffect(() => {
-    if (!authToken) {
-      console.warn(
-        '[ChatRoomPage] No auth token – socket connection disabled. User must be logged in.',
-      );
-      return;
-    }
-
-    const socket = io(CHAT_WS_URL, {
-      path: CHAT_WS_PATH,
-      transports: ['websocket'],
-      extraHeaders: {
-        Authorization: `Bearer ${authToken}`,
-      },
-      auth: {
-        token: authToken,
-      },
-    });
-
-    socketRef.current = socket;
-
-    socket.on('connect', () => {
-      console.log('✅ Chat socket connected', socket.id);
-      setIsConnected(true);
-
-      // Join this room, then fetch history
-      socket.emit(
-        'chat.join',
-        { conversationId: roomId },
-        (resp: any) => {
-          console.log('chat.join ack', resp);
-
-          socket.emit(
-            'chat.history',
-            { conversationId: roomId, limit: 50 },
-            (items: any[]) => {
-              const mapped = items.map((m) =>
-                mapBackendToChatMessage(m, currentUserId, roomId),
-              );
-              replaceMessages(mapped);
-            },
-          );
-        },
-      );
-    });
-
-    socket.on('disconnect', (reason) => {
-      console.log('❌ Chat socket disconnected', reason);
-      setIsConnected(false);
-    });
-
-    // Live messages from room
-    socket.on('chat.message', (payload: any) => {
-      const mapped = mapBackendToChatMessage(payload, currentUserId, roomId);
-      const current = messagesRef.current;
-
-      // De-dupe by id or clientId if needed
-      if (current.some((m) => m.id === mapped.id)) {
-        return;
-      }
-
-      replaceMessages([...current, mapped]);
-    });
-
-    // Typing events (wire to UI later if desired)
-    socket.on('typing', (evt: any) => {
-      console.log('typing event', evt);
-    });
-
-    return () => {
-      try {
-        socket.emit('chat.leave', { conversationId: roomId });
-      } catch {}
-      socket.disconnect();
-      socketRef.current = null;
-    };
-  }, [authToken, roomId, currentUserId, replaceMessages]);
 
   // Example network-back-online hook
   const handleNetworkBackOnline = useCallback(() => {

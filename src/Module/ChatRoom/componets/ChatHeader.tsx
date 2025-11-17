@@ -3,7 +3,7 @@
 import React, { useMemo } from 'react';
 import { View, Text, Pressable, Image } from 'react-native';
 
-import type { Chat } from '@/components/messaging/messagesUtils';
+import type { Chat } from './messagesUtils';
 import { chatRoomStyles as styles } from '../chatRoomStyles';
 import { KISIcon } from '@/constants/kisIcons';
 

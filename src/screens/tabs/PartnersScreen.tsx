@@ -1,35 +1,332 @@
-// src/screens/tabs/ProfileScreen.tsx
-import React from 'react';
-import { View, Text, StyleSheet, Alert } from 'react-native';
+// src/screens/tabs/PartnersScreen.tsx
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  Alert,
+  Animated,
+  GestureResponderEvent,
+  PanResponder,
+  PanResponderGestureState,
+  ScrollView,
+  View,
+  useWindowDimensions,
+} from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import KISButton from '../../constants/KISButton';
+import styles from '@/pages/partners/partnersStyles';
 import { useKISTheme } from '../../theme/useTheme';
-import { useAuth } from '../../../App'; // import from where you defined the context
+import { useAuth } from '../../../App';
+import {
+  Partner,
+  PartnerGroup,
+  PartnerCommunity,
+} from '@/pages/partners/partnersTypes';
+import {
+  MOCK_COMMUNITIES,
+  MOCK_GROUPS,
+  MOCK_PARTNERS,
+} from '@/pages/partners/partnersMockData';
+import PartnersLeftRail from '@/pages/partners/PartnersLeftRail';
+import PartnersCenterPane from '@/pages/partners/PartnersCenterPane';
+import PartnersMessagesPane from '@/pages/partners/PartnersMessagesPane';
+import PartnerSheet from '@/pages/partners/PartnerSheet';
+import { RIGHT_PEEK_WIDTH } from '@/pages/partners/partnersTypes';
 
-export default function ProfileScreen() {
+const clamp = (value: number, min: number, max: number) =>
+  Math.min(max, Math.max(min, value));
+
+export default function PartnersScreen() {
   const { palette } = useKISTheme();
   const { setAuth } = useAuth();
+  const { width, height } = useWindowDimensions();
+
+  const [selectedPartnerId, setSelectedPartnerId] = useState<string>(MOCK_PARTNERS[0]?.id);
+  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
+  const [isMessagesExpanded, setIsMessagesExpanded] = useState(false);
+
+  // Bottom sheet open/closed
+  const [isPartnerSheetOpen, setIsPartnerSheetOpen] = useState(false);
+
+  // Track which communities are expanded
+  const [expandedCommunities, setExpandedCommunities] = useState<Record<string, boolean>>({});
+
+  // RIGHT messages pane: minimized => peek only
+  const minimizedOffset = width - RIGHT_PEEK_WIDTH;
+
+  // Partner sheet height (approx 70% of screen, capped)
+  const sheetHeight = Math.min(height * 0.7, 520);
+
+  // RIGHT pane animation: 0=open, minimizedOffset=peek
+  const messagesOffsetAnim = useRef(new Animated.Value(minimizedOffset)).current;
+  const offsetRef = useRef(minimizedOffset);
+  const dragStartOffsetRef = useRef(minimizedOffset);
+
+  useEffect(() => {
+    const id = messagesOffsetAnim.addListener(({ value }) => {
+      offsetRef.current = value;
+    });
+    return () => {
+      messagesOffsetAnim.removeListener(id);
+    };
+  }, [messagesOffsetAnim]);
+
+  // Reposition messages pane on width change
+  useEffect(() => {
+    const target = isMessagesExpanded ? 0 : minimizedOffset;
+    messagesOffsetAnim.setValue(target);
+    offsetRef.current = target;
+  }, [width, minimizedOffset, isMessagesExpanded, messagesOffsetAnim]);
+
+  // BOTTOM SHEET animation: 0=open, sheetHeight=off-screen (closed)
+  const sheetOffsetAnim = useRef(new Animated.Value(sheetHeight)).current;
+  const sheetOffsetRef = useRef(sheetHeight);
+  const sheetDragStartRef = useRef(sheetHeight);
+
+  useEffect(() => {
+    const id = sheetOffsetAnim.addListener(({ value }) => {
+      sheetOffsetRef.current = value;
+    });
+    return () => {
+      sheetOffsetAnim.removeListener(id);
+    };
+  }, [sheetOffsetAnim]);
+
+  // Keep sheet sensible if height changes
+  useEffect(() => {
+    const target = isPartnerSheetOpen ? 0 : sheetHeight;
+    sheetOffsetAnim.setValue(target);
+    sheetOffsetRef.current = target;
+  }, [sheetHeight, isPartnerSheetOpen, sheetOffsetAnim]);
+
+  const overlayOpacity = sheetOffsetAnim.interpolate({
+    inputRange: [0, sheetHeight],
+    outputRange: [1, 0],
+    extrapolate: 'clamp',
+  });
+
+  const selectedPartner: Partner =
+    useMemo(
+      () => MOCK_PARTNERS.find((p) => p.id === selectedPartnerId) ?? MOCK_PARTNERS[0],
+      [selectedPartnerId]
+    );
+
+  const groupsForPartner: PartnerGroup[] = useMemo(
+    () => MOCK_GROUPS.filter((g) => g.partnerId === selectedPartner?.id),
+    [selectedPartner?.id]
+  );
+
+  const communitiesForPartner: PartnerCommunity[] = useMemo(
+    () => MOCK_COMMUNITIES.filter((c) => c.partnerId === selectedPartner?.id),
+    [selectedPartner?.id]
+  );
+
+  const rootGroups: PartnerGroup[] = useMemo(
+    () => groupsForPartner.filter((g) => !g.communityId),
+    [groupsForPartner]
+  );
+
+  // Reset expanded communities when partner changes
+  useEffect(() => {
+    const initial: Record<string, boolean> = {};
+    communitiesForPartner.forEach((c) => {
+      initial[c.id] = true; // default expanded
+    });
+    setExpandedCommunities(initial);
+  }, [selectedPartnerId, communitiesForPartner.length]);
 
   const onLogout = async () => {
     try {
       await AsyncStorage.multiRemove(['access_token', 'refresh_token']);
-      // TODO: if you have your own cache layer, clear it here too.
-      setAuth(false); // <- this flips the root navigator back to Auth stack
+      setAuth(false);
     } catch (e: any) {
       Alert.alert('Logout error', e?.message ?? 'Could not log out.');
     }
   };
 
+  const animateMessagesPane = (expand: boolean) => {
+    setIsMessagesExpanded(expand);
+    Animated.timing(messagesOffsetAnim, {
+      toValue: expand ? 0 : minimizedOffset,
+      duration: 260,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  const toggleMessagesPane = () => {
+    animateMessagesPane(!isMessagesExpanded);
+  };
+
+  const animatePartnerSheet = (open: boolean) => {
+    setIsPartnerSheetOpen(open);
+    Animated.timing(sheetOffsetAnim, {
+      toValue: open ? 0 : sheetHeight,
+      duration: 260,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  const onAddPartnerPress = () => {
+    Alert.alert(
+      'Add partner',
+      'Here you will open a slide-in page with the list of partners to join/apply.'
+    );
+  };
+
+  const onGroupPress = (groupId: string) => {
+    setSelectedGroupId(groupId);
+    if (!isMessagesExpanded) {
+      animateMessagesPane(true);
+    }
+  };
+
+  const toggleCommunity = (communityId: string) => {
+    setExpandedCommunities((prev) => ({
+      ...prev,
+      [communityId]: !(prev[communityId] ?? true),
+    }));
+  };
+
+  // Swipe gesture for RIGHT messages pane
+  const panResponder = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (
+        _evt: GestureResponderEvent,
+        gestureState: PanResponderGestureState
+      ) => {
+        const { dx, dy } = gestureState;
+        return Math.abs(dx) > 10 && Math.abs(dx) > Math.abs(dy);
+      },
+      onPanResponderGrant: () => {
+        dragStartOffsetRef.current = offsetRef.current;
+      },
+      onPanResponderMove: (
+        _evt: GestureResponderEvent,
+        gestureState: PanResponderGestureState
+      ) => {
+        const { dx } = gestureState;
+        const rawOffset = dragStartOffsetRef.current + dx;
+        const clampedOffset = clamp(rawOffset, 0, minimizedOffset);
+        messagesOffsetAnim.setValue(clampedOffset);
+      },
+      onPanResponderRelease: (
+        _evt: GestureResponderEvent,
+        gestureState: PanResponderGestureState
+      ) => {
+        const { dx, vx } = gestureState;
+        const rawOffset = dragStartOffsetRef.current + dx;
+        const clampedOffset = clamp(rawOffset, 0, minimizedOffset);
+
+        let shouldOpen = isMessagesExpanded;
+
+        if (vx <= -0.4) {
+          shouldOpen = true;
+        } else if (vx >= 0.4) {
+          shouldOpen = false;
+        } else {
+          shouldOpen = clampedOffset < minimizedOffset / 2;
+        }
+
+        animateMessagesPane(shouldOpen);
+      },
+      onPanResponderTerminate: () => {
+        animateMessagesPane(isMessagesExpanded);
+      },
+    })
+  ).current;
+
+  // Drag gesture for bottom sheet
+  const sheetPanResponder = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (
+        _evt: GestureResponderEvent,
+        gestureState: PanResponderGestureState
+      ) => {
+        const { dx, dy } = gestureState;
+        return Math.abs(dy) > 10 && Math.abs(dy) > Math.abs(dx);
+      },
+      onPanResponderGrant: () => {
+        sheetDragStartRef.current = sheetOffsetRef.current;
+      },
+      onPanResponderMove: (
+        _evt: GestureResponderEvent,
+        gestureState: PanResponderGestureState
+      ) => {
+        const { dy } = gestureState;
+        const rawOffset = sheetDragStartRef.current + dy;
+        const clampedOffset = clamp(rawOffset, 0, sheetHeight);
+        sheetOffsetAnim.setValue(clampedOffset);
+      },
+      onPanResponderRelease: (
+        _evt: GestureResponderEvent,
+        gestureState: PanResponderGestureState
+      ) => {
+        const { dy, vy } = gestureState;
+        const rawOffset = sheetDragStartRef.current + dy;
+        const clampedOffset = clamp(rawOffset, 0, sheetHeight);
+
+        let shouldOpen = isPartnerSheetOpen;
+
+        if (vy <= -0.4) {
+          shouldOpen = true; // fling up
+        } else if (vy >= 0.4) {
+          shouldOpen = false; // fling down
+        } else {
+          shouldOpen = clampedOffset < sheetHeight / 2;
+        }
+
+        animatePartnerSheet(shouldOpen);
+      },
+      onPanResponderTerminate: () => {
+        animatePartnerSheet(isPartnerSheetOpen);
+      },
+    })
+  ).current;
+
+  const onPartnerHeaderPress = () => {
+    animatePartnerSheet(true);
+  };
+
   return (
-    <View style={[styles.wrap, { backgroundColor: palette.bg }]}>
-      <Text style={{ color: palette.text, fontSize: 28, fontWeight: '900', marginBottom: 20 }}>
-        Profile
-      </Text>
-      <KISButton title="Log Out" onPress={onLogout} />
+    <View
+      style={[styles.root, { backgroundColor: palette.bg }]}
+      {...panResponder.panHandlers}
+    >
+      <PartnersLeftRail
+        selectedPartnerId={selectedPartnerId}
+        onSelectPartner={setSelectedPartnerId}
+        onAddPartnerPress={onAddPartnerPress}
+        onLogout={onLogout}
+      />
+
+      <PartnersCenterPane
+        selectedPartner={selectedPartner}
+        selectedGroupId={selectedGroupId}
+        rootGroups={rootGroups}
+        groupsForPartner={groupsForPartner}
+        communitiesForPartner={communitiesForPartner}
+        expandedCommunities={expandedCommunities}
+        onToggleCommunity={toggleCommunity}
+        onGroupPress={onGroupPress}
+        onPartnerHeaderPress={onPartnerHeaderPress}
+      />
+
+      <PartnersMessagesPane
+        width={width}
+        messagesOffsetAnim={messagesOffsetAnim}
+        isMessagesExpanded={isMessagesExpanded}
+        toggleMessagesPane={toggleMessagesPane}
+        selectedGroupId={selectedGroupId}
+        groupsForPartner={groupsForPartner}
+        selectedPartner={selectedPartner}
+      />
+
+      <PartnerSheet
+        isOpen={isPartnerSheetOpen}
+        sheetHeight={sheetHeight}
+        sheetOffsetAnim={sheetOffsetAnim}
+        overlayOpacity={overlayOpacity}
+        sheetPanHandlers={sheetPanResponder.panHandlers}
+        selectedPartner={selectedPartner}
+        animatePartnerSheet={animatePartnerSheet}
+      />
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  wrap: { flex: 1, padding: 16 },
-});

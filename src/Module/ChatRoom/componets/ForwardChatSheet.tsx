@@ -8,8 +8,7 @@ import {
   Animated,
 } from 'react-native';
 
-import type { Chat } from '@/components/messaging/messagesUtils';
-import { chatRoomStyles as styles } from '../chatRoomStyles';
+import type { Chat } from './messagesUtils';
 import { KISIcon } from '@/constants/kisIcons';
 
 type ForwardChatSheetProps = {

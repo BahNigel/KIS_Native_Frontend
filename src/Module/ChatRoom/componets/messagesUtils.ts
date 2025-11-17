@@ -1,7 +1,7 @@
 // src/screens/tabs/messagesUtils.ts
+import { KIS_TOKENS } from '@/theme/constants';
 import React from 'react';
 import { StyleSheet, Text } from 'react-native';
-import { KIS_TOKENS } from '../../theme/constants';
 
 /* ----------------------------- Types & Storage ----------------------------- */
 

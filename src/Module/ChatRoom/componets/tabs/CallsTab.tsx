@@ -1,9 +1,9 @@
 // src/screens/tabs/BroadcastScreen.tsx
+import { useKISTheme } from '@/theme/useTheme';
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { useKISTheme } from '../../../theme/useTheme';
 
-export default function HubTab() {
+export default function CallsTab() {
   const { palette } = useKISTheme();
   return (
     <View style={[styles.wrap, { backgroundColor: palette.bg }]}>

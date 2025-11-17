@@ -9,8 +9,7 @@ import {
   NativeSyntheticEvent,
   NativeScrollEvent,
 } from 'react-native';
-import { useKISTheme } from '../../theme/useTheme';
-import { KIS_TOKENS } from '../../theme/constants';
+import { KIS_TOKENS } from '../../../theme/constants';
 import {
   styles,
   SAMPLE_CHATS,
@@ -21,6 +20,7 @@ import {
   type CustomFilter,
   type QuickChip,
 } from './messagesUtils';
+import { useKISTheme } from '@/theme/useTheme';
 
 type ChatsTabProps = {
   filters: CustomFilter[];

@@ -10,14 +10,14 @@ import {
   KeyboardAvoidingView,
   Alert,
 } from 'react-native';
-import { useKISTheme } from '../../theme/useTheme';
-import { KIS_TOKENS } from '../../theme/constants';
 import {
   styles,
   type CustomFilter,
   type CustomFilterRule,
 } from './messagesUtils';
 import { KISIcon } from '@/constants/kisIcons';
+import { useKISTheme } from '@/theme/useTheme';
+import { KIS_TOKENS } from '@/theme/constants';
 
 /* ----------------------------- Chips component ---------------------------- */
 export function ToggleChip({

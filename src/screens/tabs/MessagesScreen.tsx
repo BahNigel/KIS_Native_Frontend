@@ -22,22 +22,21 @@ import {
 } from '@react-navigation/material-top-tabs';
 import { useKISTheme } from '../../theme/useTheme';
 import { KIS_TOKENS } from '../../theme/constants';
-
-import {
+import { ChatsTab } from '@/Module/ChatRoom/componets/MessageTabs';
+import { KISIcon } from '@/constants/kisIcons';
+import AddContactsPage from '@/Module/AddContacts/AddContactsPage';
+import ChatRoomPage from '@/Module/ChatRoom/ChatRoomPage';
+import { FilterManager, ToggleChip } from '@/Module/ChatRoom/componets/Filters';
+import UpdatesTab from '@/Module/ChatRoom/componets/tabs/UpdatesTab';
+import CallsTab from '@/Module/ChatRoom/componets/tabs/CallsTab';
+import HubTab from '@/Module/ChatRoom/componets/tabs/HubTab';
+import { 
   styles,
-  CUSTOM_FILTERS_KEY,
   type CustomFilter,
   type QuickChip,
   type Chat,
-} from '@/components/messaging/messagesUtils';
-import { FilterManager, ToggleChip } from '@/components/messaging/Filters';
-import { ChatsTab } from '@/components/messaging/MessageTabs';
-import { KISIcon } from '@/constants/kisIcons';
-import UpdatesTab from '@/components/messaging/tabs/UpdatesTab';
-import HubTab from '@/components/messaging/tabs/HubTab';
-import CallsTab from '@/components/messaging/tabs/CallsTab';
-import AddContactsPage from '@/Module/AddContacts/AddContactsPage';
-import ChatRoomPage from '@/Module/ChatRoom/ChatRoomPage';
+  CUSTOM_FILTERS_KEY 
+} from '@/Module/ChatRoom/componets/messagesUtils';
 
 const Tab = createMaterialTopTabNavigator();
 type MessagesScreenProps = {
