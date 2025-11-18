@@ -1,9 +1,10 @@
 // src/screens/tabs/PartnersMessagesPane.tsx
-import React from 'react';
-import { Animated, Pressable, Text, View } from 'react-native';
+import React, { useMemo } from 'react';
+import { Animated, Text, View } from 'react-native';
 import styles from './partnersStyles';
 import { useKISTheme } from '../../../theme/useTheme';
 import { Partner, PartnerGroup } from './partnersTypes';
+import ChatRoomPage from '@/Module/ChatRoom/ChatRoomPage';
 
 type Props = {
   width: number;
@@ -18,7 +19,7 @@ type Props = {
 export default function PartnersMessagesPane({
   width,
   messagesOffsetAnim,
-  isMessagesExpanded,
+  isMessagesExpanded, // kept for future, even if not used directly now
   toggleMessagesPane,
   selectedGroupId,
   groupsForPartner,
@@ -26,10 +27,31 @@ export default function PartnersMessagesPane({
 }: Props) {
   const { palette } = useKISTheme();
 
+  const selectedGroup = useMemo(
+    () =>
+      selectedGroupId
+        ? groupsForPartner.find((g) => g.id === selectedGroupId) || null
+        : null,
+    [selectedGroupId, groupsForPartner],
+  );
+
   const selectedGroupName =
-    selectedGroupId
-      ? groupsForPartner.find((g) => g.id === selectedGroupId)?.name || 'Select a group'
-      : 'Select a group';
+    selectedGroup?.name ?? 'Select a group';
+
+  // ✅ Build a minimal "chat" object for ChatRoomPage
+  const chatForGroup = useMemo(
+    () =>
+      selectedGroup
+        ? ({
+            id: selectedGroup.id,
+            title: selectedGroup.name,
+            name: selectedGroup.name,
+            partnerId: selectedPartner?.id,
+            partnerName: selectedPartner?.name,
+          } as any)
+        : null,
+    [selectedGroup, selectedPartner],
+  );
 
   return (
     <Animated.View
@@ -43,101 +65,34 @@ export default function PartnersMessagesPane({
         },
       ]}
     >
-      <View
-        style={[
-          styles.messagesHeader,
-          {
-            backgroundColor: palette.chatHeaderBg,
-            borderBottomColor: palette.divider,
-          },
-        ]}
-      >
-        <Pressable
-          onPress={toggleMessagesPane}
-          style={[
-            styles.toggleButton,
-            { backgroundColor: palette.surfaceElevated },
-          ]}
-        >
-          <Text
-            style={{
-              color: palette.text,
-              fontSize: 18,
-              fontWeight: '700',
-            }}
-          >
-            {isMessagesExpanded ? '›' : '‹'}
-          </Text>
-        </Pressable>
-
-        <View style={styles.messagesTitleWrap}>
+      {selectedGroupId && chatForGroup ? (
+        // ✅ Use ChatRoomPage (with its own header) as the content of the sliding pane
+        <ChatRoomPage
+          chat={chatForGroup}
+          onBack={toggleMessagesPane} // back = close pane in Partners section
+          allChats={[]}               // you can pass real chats later
+        />
+      ) : (
+        // Placeholder when no group is selected
+        <View style={[styles.messagesBody, { paddingHorizontal: 10 }]}>
           <Text
             style={[
-              styles.messagesTitle,
+              styles.messagesPlaceholderTitle,
               { color: palette.text },
             ]}
-            numberOfLines={1}
           >
-            {selectedGroupName}
+            No group selected
           </Text>
-          {selectedPartner && (
-            <Text
-              style={[
-                styles.messagesSubtitle,
-                { color: palette.headerSubtext },
-              ]}
-              numberOfLines={1}
-            >
-              {selectedPartner.name}
-            </Text>
-          )}
+          <Text
+            style={[
+              styles.messagesPlaceholderText,
+              { color: palette.subtext },
+            ]}
+          >
+            Choose a group on the center panel to open its room here.
+          </Text>
         </View>
-      </View>
-
-      <View style={[styles.messagesBody, { paddingHorizontal: 10 }]}>
-        {selectedGroupId ? (
-          <>
-            <Text
-              style={[
-                styles.messagesPlaceholderTitle,
-                { color: palette.text },
-              ]}
-            >
-              Messages area
-            </Text>
-            <Text
-              style={[
-                styles.messagesPlaceholderText,
-                { color: palette.subtext },
-              ]}
-            >
-              This will be the chat room for the selected group. It should
-              show the full KIS chat UI once wired:
-              {'\n'}• Message list{'\n'}• Composer (text, voice, stickers…)
-              {'\n'}• Reactions, threads, etc.
-            </Text>
-          </>
-        ) : (
-          <>
-            <Text
-              style={[
-                styles.messagesPlaceholderTitle,
-                { color: palette.text },
-              ]}
-            >
-              No group selected
-            </Text>
-            <Text
-              style={[
-                styles.messagesPlaceholderText,
-                { color: palette.subtext },
-              ]}
-            >
-              Choose a group on the center panel to open its room here.
-            </Text>
-          </>
-        )}
-      </View>
+      )}
     </Animated.View>
   );
 }

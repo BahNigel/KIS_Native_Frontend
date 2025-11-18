@@ -1,16 +1,22 @@
 // src/screens/tabs/PartnersScreen.tsx
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useCallback,
+} from 'react';
 import {
   Alert,
   Animated,
   GestureResponderEvent,
   PanResponder,
   PanResponderGestureState,
-  ScrollView,
   View,
   useWindowDimensions,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import styles from '@/components/pages/partners/partnersStyles';
 import { useKISTheme } from '../../theme/useTheme';
 import { useAuth } from '../../../App';
@@ -33,12 +39,15 @@ import { RIGHT_PEEK_WIDTH } from '@/components/pages/partners/partnersTypes';
 const clamp = (value: number, min: number, max: number) =>
   Math.min(max, Math.max(min, value));
 
-export default function PartnersScreen() {
+export default function PartnersScreen({ setHidNav }: any) {
+  const navigation = useNavigation<any>();
   const { palette } = useKISTheme();
   const { setAuth } = useAuth();
   const { width, height } = useWindowDimensions();
 
-  const [selectedPartnerId, setSelectedPartnerId] = useState<string>(MOCK_PARTNERS[0]?.id);
+  const [selectedPartnerId, setSelectedPartnerId] = useState<string>(
+    MOCK_PARTNERS[0]?.id,
+  );
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
   const [isMessagesExpanded, setIsMessagesExpanded] = useState(false);
 
@@ -46,7 +55,9 @@ export default function PartnersScreen() {
   const [isPartnerSheetOpen, setIsPartnerSheetOpen] = useState(false);
 
   // Track which communities are expanded
-  const [expandedCommunities, setExpandedCommunities] = useState<Record<string, boolean>>({});
+  const [expandedCommunities, setExpandedCommunities] = useState<
+    Record<string, boolean>
+  >({});
 
   // RIGHT messages pane: minimized => peek only
   const minimizedOffset = width - RIGHT_PEEK_WIDTH;
@@ -59,6 +70,22 @@ export default function PartnersScreen() {
   const offsetRef = useRef(minimizedOffset);
   const dragStartOffsetRef = useRef(minimizedOffset);
 
+  // BOTTOM SHEET animation: 0=open, sheetHeight=off-screen (closed)
+  const sheetOffsetAnim = useRef(new Animated.Value(sheetHeight)).current;
+  const sheetOffsetRef = useRef(sheetHeight);
+  const sheetDragStartRef = useRef(sheetHeight);
+
+  // 🔽 When leaving PartnersScreen, always restore the tab bar
+  useFocusEffect(
+    useCallback(() => {
+      return () => {
+        const parent = navigation.getParent();
+        parent?.setOptions({ tabBarStyle: undefined });
+      };
+    }, [navigation]),
+  );
+
+  // keep offsetRef in sync with messagesOffsetAnim
   useEffect(() => {
     const id = messagesOffsetAnim.addListener(({ value }) => {
       offsetRef.current = value;
@@ -75,11 +102,7 @@ export default function PartnersScreen() {
     offsetRef.current = target;
   }, [width, minimizedOffset, isMessagesExpanded, messagesOffsetAnim]);
 
-  // BOTTOM SHEET animation: 0=open, sheetHeight=off-screen (closed)
-  const sheetOffsetAnim = useRef(new Animated.Value(sheetHeight)).current;
-  const sheetOffsetRef = useRef(sheetHeight);
-  const sheetDragStartRef = useRef(sheetHeight);
-
+  // keep sheetOffsetRef in sync
   useEffect(() => {
     const id = sheetOffsetAnim.addListener(({ value }) => {
       sheetOffsetRef.current = value;
@@ -102,25 +125,24 @@ export default function PartnersScreen() {
     extrapolate: 'clamp',
   });
 
-  const selectedPartner: Partner =
-    useMemo(
-      () => MOCK_PARTNERS.find((p) => p.id === selectedPartnerId) ?? MOCK_PARTNERS[0],
-      [selectedPartnerId]
-    );
+  const selectedPartner: Partner = useMemo(
+    () => MOCK_PARTNERS.find((p) => p.id === selectedPartnerId) ?? MOCK_PARTNERS[0],
+    [selectedPartnerId],
+  );
 
   const groupsForPartner: PartnerGroup[] = useMemo(
     () => MOCK_GROUPS.filter((g) => g.partnerId === selectedPartner?.id),
-    [selectedPartner?.id]
+    [selectedPartner?.id],
   );
 
   const communitiesForPartner: PartnerCommunity[] = useMemo(
     () => MOCK_COMMUNITIES.filter((c) => c.partnerId === selectedPartner?.id),
-    [selectedPartner?.id]
+    [selectedPartner?.id],
   );
 
   const rootGroups: PartnerGroup[] = useMemo(
     () => groupsForPartner.filter((g) => !g.communityId),
-    [groupsForPartner]
+    [groupsForPartner],
   );
 
   // Reset expanded communities when partner changes
@@ -143,11 +165,15 @@ export default function PartnersScreen() {
 
   const animateMessagesPane = (expand: boolean) => {
     setIsMessagesExpanded(expand);
+
     Animated.timing(messagesOffsetAnim, {
       toValue: expand ? 0 : minimizedOffset,
       duration: 260,
       useNativeDriver: true,
-    }).start();
+    }).start(() => {
+      // ✅ Only toggle nav AFTER pane has fully opened/closed
+      setHidNav?.(expand);
+    });
   };
 
   const toggleMessagesPane = () => {
@@ -166,12 +192,13 @@ export default function PartnersScreen() {
   const onAddPartnerPress = () => {
     Alert.alert(
       'Add partner',
-      'Here you will open a slide-in page with the list of partners to join/apply.'
+      'Here you will open a slide-in page with the list of partners to join/apply.',
     );
   };
 
   const onGroupPress = (groupId: string) => {
     setSelectedGroupId(groupId);
+    // ❌ no direct setHidNav here – handled by animation completion
     if (!isMessagesExpanded) {
       animateMessagesPane(true);
     }
@@ -184,12 +211,20 @@ export default function PartnersScreen() {
     }));
   };
 
+  // helper to snap messages pane to nearest state (open/closed)
+  const snapMessagesPaneToNearest = () => {
+    const currentOffset = offsetRef.current;
+    const halfway = minimizedOffset / 2;
+    const shouldOpen = currentOffset < halfway;
+    animateMessagesPane(shouldOpen);
+  };
+
   // Swipe gesture for RIGHT messages pane
   const panResponder = useRef(
     PanResponder.create({
       onMoveShouldSetPanResponder: (
         _evt: GestureResponderEvent,
-        gestureState: PanResponderGestureState
+        gestureState: PanResponderGestureState,
       ) => {
         const { dx, dy } = gestureState;
         return Math.abs(dx) > 10 && Math.abs(dx) > Math.abs(dy);
@@ -199,7 +234,7 @@ export default function PartnersScreen() {
       },
       onPanResponderMove: (
         _evt: GestureResponderEvent,
-        gestureState: PanResponderGestureState
+        gestureState: PanResponderGestureState,
       ) => {
         const { dx } = gestureState;
         const rawOffset = dragStartOffsetRef.current + dx;
@@ -208,28 +243,32 @@ export default function PartnersScreen() {
       },
       onPanResponderRelease: (
         _evt: GestureResponderEvent,
-        gestureState: PanResponderGestureState
+        gestureState: PanResponderGestureState,
       ) => {
         const { dx, vx } = gestureState;
         const rawOffset = dragStartOffsetRef.current + dx;
         const clampedOffset = clamp(rawOffset, 0, minimizedOffset);
 
-        let shouldOpen = isMessagesExpanded;
+        let shouldOpen: boolean;
 
         if (vx <= -0.4) {
+          // fast swipe left → open
           shouldOpen = true;
         } else if (vx >= 0.4) {
+          // fast swipe right → close
           shouldOpen = false;
         } else {
+          // slow drag → snap by position
           shouldOpen = clampedOffset < minimizedOffset / 2;
         }
 
         animateMessagesPane(shouldOpen);
       },
       onPanResponderTerminate: () => {
-        animateMessagesPane(isMessagesExpanded);
+        // gesture cancelled → still snap to nearest state
+        snapMessagesPaneToNearest();
       },
-    })
+    }),
   ).current;
 
   // Drag gesture for bottom sheet
@@ -237,7 +276,7 @@ export default function PartnersScreen() {
     PanResponder.create({
       onMoveShouldSetPanResponder: (
         _evt: GestureResponderEvent,
-        gestureState: PanResponderGestureState
+        gestureState: PanResponderGestureState,
       ) => {
         const { dx, dy } = gestureState;
         return Math.abs(dy) > 10 && Math.abs(dy) > Math.abs(dx);
@@ -247,7 +286,7 @@ export default function PartnersScreen() {
       },
       onPanResponderMove: (
         _evt: GestureResponderEvent,
-        gestureState: PanResponderGestureState
+        gestureState: PanResponderGestureState,
       ) => {
         const { dy } = gestureState;
         const rawOffset = sheetDragStartRef.current + dy;
@@ -256,7 +295,7 @@ export default function PartnersScreen() {
       },
       onPanResponderRelease: (
         _evt: GestureResponderEvent,
-        gestureState: PanResponderGestureState
+        gestureState: PanResponderGestureState,
       ) => {
         const { dy, vy } = gestureState;
         const rawOffset = sheetDragStartRef.current + dy;
@@ -277,7 +316,7 @@ export default function PartnersScreen() {
       onPanResponderTerminate: () => {
         animatePartnerSheet(isPartnerSheetOpen);
       },
-    })
+    }),
   ).current;
 
   const onPartnerHeaderPress = () => {

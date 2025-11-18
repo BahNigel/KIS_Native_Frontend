@@ -46,11 +46,17 @@ import { useChatSocket } from './componets/useChatSocket';
 const clamp = (value: number, min: number, max: number) =>
   Math.min(max, Math.max(min, value));
 
-export const ChatRoomPage: React.FC<ChatRoomPageProps> = ({
+// ✅ Extend props to add hideHeader (optional)
+type ExtendedChatRoomPageProps = ChatRoomPageProps & {
+  hideHeader?: boolean;
+};
+
+export const ChatRoomPage: React.FC<ExtendedChatRoomPageProps> = ({
   chat,
   onBack,
   allChats = [],
   onForwardMessages,
+  hideHeader, // <- new prop
 }) => {
   const { palette } = useKISTheme();
   const insets = useSafeAreaInsets();
@@ -59,12 +65,10 @@ export const ChatRoomPage: React.FC<ChatRoomPageProps> = ({
   const [authToken, setAuthToken] = useState<string | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string>('local-user');
 
-  // Load token (and optionally user id) from AsyncStorage
   useEffect(() => {
     const loadAuth = async () => {
       try {
         const token = await AsyncStorage.getItem('access_token');
-        // If you store user id somewhere, adjust this key accordingly:
         const storedUserId = await AsyncStorage.getItem('user_id');
 
         if (token) setAuthToken(token);
@@ -87,33 +91,21 @@ export const ChatRoomPage: React.FC<ChatRoomPageProps> = ({
   const [replyTo, setReplyTo] = useState<ChatMessage | null>(null);
   const [editing, setEditing] = useState<ChatMessage | null>(null);
 
-  // Selection
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
-  // Forward sheet
   const [forwardSheetVisible, setForwardSheetVisible] = useState(false);
 
-  // pinned & sub-room UI sheets
   const [pinnedSheetVisible, setPinnedSheetVisible] = useState(false);
   const [subRoomsSheetVisible, setSubRoomsSheetVisible] = useState(false);
 
-  // local sub-rooms list (to be replaced by backend/store later)
   const [subRooms] = useState<SubRoom[]>([]);
 
-  /**
-   * NEW: locator helpers from MessageList
-   * This lets us:
-   *  - Scroll to a specific message
-   *  - Highlight it
-   * When user taps a pinned message in PinnedMessagesSheet.
-   */
   const [messageLocator, setMessageLocator] = useState<{
     scrollToMessage: (messageId: string) => void;
     highlightMessage: (messageId: string) => void;
   } | null>(null);
 
-  // Chat persistence
   const {
     messages,
     isLoading,
@@ -127,17 +119,14 @@ export const ChatRoomPage: React.FC<ChatRoomPageProps> = ({
   } = useChatPersistence({
     roomId,
     currentUserId,
-    // sendOverNetwork is injected below, after socket is ready
     sendOverNetwork: async () => false,
   });
 
-  // Keep a ref to messages so socket listeners always see latest
   const messagesRef = useRef<ChatMessage[]>(messages);
   useEffect(() => {
     messagesRef.current = messages;
   }, [messages]);
 
-  // Socket.IO connection (Nest backend)
   const { isConnected, socketRef } = useChatSocket({
     authToken,
     roomId,
@@ -146,7 +135,6 @@ export const ChatRoomPage: React.FC<ChatRoomPageProps> = ({
     messagesRef,
   });
 
-  // Send messages over network using Nest chat backend
   const sendOverNetwork = useCallback<SendOverNetworkFn>(
     async (message) => {
       const socket = socketRef.current;
@@ -154,7 +142,6 @@ export const ChatRoomPage: React.FC<ChatRoomPageProps> = ({
         return false;
       }
 
-      // For now we send plaintext as ciphertext; later we can plug E2E
       const ciphertext =
         message.text ??
         message.styledText?.text ??
@@ -168,9 +155,9 @@ export const ChatRoomPage: React.FC<ChatRoomPageProps> = ({
             {
               conversationId: roomId,
               clientId: message.id,
-              senderName: undefined, // backend derives from principal
+              senderName: undefined,
               ciphertext,
-              attachments: [], // wire in when upload is ready
+              attachments: [],
               replyToId: message.replyToId,
             },
             (err: unknown, ack: any) => {
@@ -187,15 +174,10 @@ export const ChatRoomPage: React.FC<ChatRoomPageProps> = ({
     [chat, isConnected, roomId, socketRef],
   );
 
-  // Re-inject sendOverNetwork into persistence when ready
   useEffect(() => {
-    // small trick: attemptFlushQueue depends on correct sendOverNetwork
-    // but useChatPersistence currently took a dummy one.
-    // If your hook lets you update sendOverNetwork, call that here.
-    // For now, we just rely on attemptFlushQueue using the latest closure.
+    // If your hook later allows updating sendOverNetwork, do it here
   }, [sendOverNetwork]);
 
-  // Seed initial demo messages (still useful while backend is empty)
   useEffect(() => {
     if (!chat) return;
     if (isLoading) return;
@@ -207,12 +189,9 @@ export const ChatRoomPage: React.FC<ChatRoomPageProps> = ({
     replaceMessages(seeded);
   }, [chat, isLoading, messages.length, roomId, currentUserId, replaceMessages]);
 
-  // Example network-back-online hook
   const handleNetworkBackOnline = useCallback(() => {
     attemptFlushQueue();
   }, [attemptFlushQueue]);
-
-  // ====== Selection helpers ======
 
   const enterSelectionMode = useCallback((message: ChatMessage) => {
     setSelectionMode(true);
@@ -247,20 +226,15 @@ export const ChatRoomPage: React.FC<ChatRoomPageProps> = ({
     [messages, selectedIds],
   );
 
-  // Single-selection flag → used to gate "Continue in sub-room" UI
   const isSingleSelection = selectedIds.length === 1;
 
-  // Pinned messages derived from main list
   const pinnedMessages = useMemo(
     () => messages.filter((m) => m.isPinned && !m.isDeleted),
     [messages],
   );
   const pinnedCount = pinnedMessages.length;
 
-  // Sub-room count (future backend)
   const subRoomCount = subRooms.length;
-
-  // ====== Sending ======
 
   const handleSend = useCallback(async () => {
     const text = draft.trim();
@@ -366,8 +340,6 @@ export const ChatRoomPage: React.FC<ChatRoomPageProps> = ({
     [chat, roomId, currentUserId, sendRichMessage],
   );
 
-  // ====== Message interaction ======
-
   const handleReplyRequest = useCallback(
     (message: ChatMessage) => {
       if (selectionMode) {
@@ -399,7 +371,7 @@ export const ChatRoomPage: React.FC<ChatRoomPageProps> = ({
       if (selectionMode) {
         toggleSelectMessage(message);
       } else {
-        // single tap normal mode – no-op or open info
+        // tap in normal mode – no-op or open info
       }
     },
     [selectionMode, toggleSelectMessage],
@@ -413,8 +385,6 @@ export const ChatRoomPage: React.FC<ChatRoomPageProps> = ({
     },
     [selectionMode, enterSelectionMode],
   );
-
-  // ====== Header actions (selection) ======
 
   const handlePinSelected = useCallback(async () => {
     if (!selectedIds.length) return;
@@ -474,7 +444,6 @@ export const ChatRoomPage: React.FC<ChatRoomPageProps> = ({
     setForwardSheetVisible(true);
   }, [selectedMessages]);
 
-  // Single-selection-only action: continue in sub-room (placeholder)
   const handleContinueInSubRoom = useCallback(() => {
     if (!isSingleSelection) {
       return;
@@ -516,7 +485,6 @@ export const ChatRoomPage: React.FC<ChatRoomPageProps> = ({
     ]);
   }, [handleCopySelected, handlePinSelected, exitSelectionMode, selectedMessages]);
 
-  // Forward confirm from sheet
   const handleConfirmForward = useCallback(
     (chatIds: string[]) => {
       setForwardSheetVisible(false);
@@ -550,27 +518,28 @@ export const ChatRoomPage: React.FC<ChatRoomPageProps> = ({
         },
       ]}
     >
-      <ChatHeader
-        chat={chat}
-        onBack={selectionMode ? exitSelectionMode : onBack}
-        palette={palette}
-        selectionMode={selectionMode}
-        selectedCount={selectedIds.length}
-        onCancelSelection={exitSelectionMode}
-        onPinSelected={handlePinSelected}
-        onDeleteSelected={handleDeleteSelected}
-        onForwardSelected={handleForwardSelected}
-        onCopySelected={handleCopySelected}
-        onMoreSelected={handleMoreSelected}
-        // header indicators + expand handlers
-        pinnedCount={pinnedCount}
-        subRoomCount={subRoomCount}
-        onOpenPinned={() => setPinnedSheetVisible(true)}
-        onOpenSubRooms={() => setSubRoomsSheetVisible(true)}
-        // single-selection-only sub-room action
-        isSingleSelection={isSingleSelection}
-        onContinueInSubRoom={handleContinueInSubRoom}
-      />
+      {/* ✅ Make header optional */}
+      {!hideHeader && (
+        <ChatHeader
+          chat={chat}
+          onBack={selectionMode ? exitSelectionMode : onBack}
+          palette={palette}
+          selectionMode={selectionMode}
+          selectedCount={selectedIds.length}
+          onCancelSelection={exitSelectionMode}
+          onPinSelected={handlePinSelected}
+          onDeleteSelected={handleDeleteSelected}
+          onForwardSelected={handleForwardSelected}
+          onCopySelected={handleCopySelected}
+          onMoreSelected={handleMoreSelected}
+          pinnedCount={pinnedCount}
+          subRoomCount={subRoomCount}
+          onOpenPinned={() => setPinnedSheetVisible(true)}
+          onOpenSubRooms={() => setSubRoomsSheetVisible(true)}
+          isSingleSelection={isSingleSelection}
+          onContinueInSubRoom={handleContinueInSubRoom}
+        />
+      )}
 
       <KeyboardAvoidingView
         style={styles.keyboardWrapper}
@@ -589,10 +558,6 @@ export const ChatRoomPage: React.FC<ChatRoomPageProps> = ({
           selectedMessageIds={selectedIds}
           onStartSelection={enterSelectionMode}
           onToggleSelect={toggleSelectMessage}
-          /**
-           * NEW: hook to get scroll/highlight helpers from MessageList.
-           * We'll use this for "jump to pinned message" from the sheet.
-           */
           onMessageLocatorReady={setMessageLocator}
         />
 
@@ -635,7 +600,6 @@ export const ChatRoomPage: React.FC<ChatRoomPageProps> = ({
         />
       )}
 
-      {/* Forward sheet */}
       <ForwardChatSheet
         visible={forwardSheetVisible}
         palette={palette}
@@ -645,7 +609,6 @@ export const ChatRoomPage: React.FC<ChatRoomPageProps> = ({
         onConfirm={handleConfirmForward}
       />
 
-      {/* Pinned messages sheet */}
       <PinnedMessagesSheet
         visible={pinnedSheetVisible}
         onClose={() => setPinnedSheetVisible(false)}
@@ -660,7 +623,6 @@ export const ChatRoomPage: React.FC<ChatRoomPageProps> = ({
         }}
       />
 
-      {/* Sub-rooms sheet */}
       <SubRoomsSheet
         visible={subRoomsSheetVisible}
         onClose={() => setSubRoomsSheetVisible(false)}

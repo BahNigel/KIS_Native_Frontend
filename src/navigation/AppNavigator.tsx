@@ -48,24 +48,34 @@ const routeIconMap: Record<RouteKey, KISIconName> = {
   Profile: 'person',
 };
 
-function AnimatedKISTabBar(props: BottomTabBarProps) {
-  const { state, descriptors, navigation } = props;
+// 👇 extend props to accept hidNav
+type AnimatedKISTabBarProps = BottomTabBarProps & {
+  hidNav: boolean;
+};
+
+function AnimatedKISTabBar({
+  state,
+  descriptors,
+  navigation,
+  hidNav,
+}: AnimatedKISTabBarProps) {
+  // 🔒 If hidNav is true, don’t render the bar at all
+  if (hidNav) {
+    return null;
+  }
 
   // 🌓 Follow device theme
   const systemScheme = useColorScheme(); // 'light' | 'dark' | null
   const theme = useKISTheme();
   const { palette } = theme;
 
-  // If your theme exposes a setter, sync it to device.
   React.useEffect(() => {
-    // Prefer a dedicated method if you have one (e.g., theme.setScheme / setMode / useSystem)
-    // We try common names safely; ignore if not present.
     // @ts-ignore
     if (typeof theme.setScheme === 'function') theme.setScheme(systemScheme ?? 'light');
     // @ts-ignore
     else if (typeof theme.setMode === 'function') theme.setMode(systemScheme ?? 'light');
     // @ts-ignore
-    else if (typeof theme.useSystem === 'function') theme.useSystem(); // some APIs auto-read device
+    else if (typeof theme.useSystem === 'function') theme.useSystem();
   }, [systemScheme]);
 
   const insets = useSafeAreaInsets();
@@ -74,16 +84,13 @@ function AnimatedKISTabBar(props: BottomTabBarProps) {
   const count = state.routes.length;
   const tabWidth = width / count;
 
-  const focusedTextColor = palette.text;      // contrast color on the active bubble
-  const unfocusedTextColor = palette.subtext; // subdued for idle tabs
+  const { palette: p } = theme;
+  const focusedTextColor = p.text;
+  const unfocusedTextColor = p.subtext;
 
-  // Surfaces (light/dark friendly)
-  const chromeBg = palette.chrome ?? palette.background;      // outer wrap
-  const barBg    = palette.bar ?? palette.surface;            // bar strip
-  const knobBg   = palette.card ?? palette.surfaceElevated;   // moving bubble & caps
-  const cutoutBg = palette.surface;                           // little “bridge” pieces
+  const barBg    = p.bar ?? p.surface;
+  const cutoutBg = p.surface;
 
-  // Animated X offset for the moving bubble
   const knobX = useSharedValue(state.index * tabWidth);
   React.useEffect(() => {
     knobX.value = withSpring(state.index * tabWidth, {
@@ -104,7 +111,6 @@ function AnimatedKISTabBar(props: BottomTabBarProps) {
         { padding: 6, backgroundColor: barBg, paddingBottom: Math.max(insets.bottom - 6, 0) },
       ]}
     >
-      {/* Bottom Bar */}
       <View
         style={[
           styles.bar,
@@ -115,9 +121,11 @@ function AnimatedKISTabBar(props: BottomTabBarProps) {
         ]}
       >
         {/* Moving circular active bubble */}
-        <Animated.View pointerEvents="none" style={[styles.knobWrap, { width: tabWidth }, knobStyle]}>
+        <Animated.View
+          pointerEvents="none"
+          style={[styles.knobWrap, { width: tabWidth }, knobStyle]}
+        >
           <View style={[styles.knob, { backgroundColor: barBg }]}>
-            {/* Left section (uses theme colors) */}
             <View
               style={{
                 width: width,
@@ -141,7 +149,6 @@ function AnimatedKISTabBar(props: BottomTabBarProps) {
                 right: 24,
               }}
             />
-            {/* Right section */}
             <View
               style={{
                 width: width,
@@ -239,9 +246,13 @@ export function MainTabs() {
   const [chatVisible, setChatVisible] = useState(false);
   const chatSlide = useRef(new RNAnimated.Value(0)).current; // 0 = off-screen, 1 = on-screen
 
+  // 👇 control for hiding the nav bar (managed ONLY here)
+  const [hidNav, setHidNav] = useState(false);
+
   const openChat = (chat: Chat) => {
     setActiveChat(chat);
     setChatVisible(true);
+
     RNAnimated.timing(chatSlide, {
       toValue: 1,
       duration: 260,
@@ -269,13 +280,33 @@ export function MainTabs() {
     <View style={{ flex: 1 }}>
       <Tabs.Navigator
         initialRouteName="Messages"
-        screenOptions={{ headerShown: false, tabBarShowLabel: false }}
-        tabBar={(p) => <AnimatedKISTabBar {...p} />}
+        screenOptions={{
+          headerShown: false,
+          tabBarShowLabel: false,
+        }}
+        // 👇 inject hidNav into custom tab bar
+        tabBar={(p) => <AnimatedKISTabBar {...p} hidNav={hidNav} />}
       >
-        <Tabs.Screen name="Partners" component={PartnersScreen} options={{ title: 'Partners' }} />
-        <Tabs.Screen name="Bible" component={BibleScreen} options={{ title: 'Bible' }} />
+        {/* <Tabs.Screen
+          name="Partners"
+          component={PartnersScreen}
+          options={{ title: 'Partners' }}
+        /> */}
 
-        {/* 👇 Pass openChat into Messages so it can trigger the overlay */}
+        <Tabs.Screen
+          name="Partners"
+          options={{ title: 'Partners' }}
+        >
+          {() => <PartnersScreen setHidNav={setHidNav} />}
+        </Tabs.Screen>
+
+
+        <Tabs.Screen
+          name="Bible"
+          component={BibleScreen}
+          options={{ title: 'Bible' }}
+        />
+
         <Tabs.Screen name="Messages" options={{ title: 'Messages' }}>
           {() => <MessagesScreen onOpenChat={openChat} />}
         </Tabs.Screen>
@@ -285,7 +316,11 @@ export function MainTabs() {
           component={BroadcastScreen}
           options={{ title: 'Broadcast' }}
         />
-        <Tabs.Screen name="Profile" component={ProfileScreen} options={{ title: 'Profile' }} />
+        <Tabs.Screen
+          name="Profile"
+          component={ProfileScreen}
+          options={{ title: 'Profile' }}
+        />
       </Tabs.Navigator>
 
       {/* 💥 Full-screen Chat Room overlay ABOVE tabs + bar */}
@@ -327,7 +362,7 @@ const styles = StyleSheet.create({
     height: 86,
     borderTopLeftRadius: 999,
     borderTopRightRadius: 999,
-    shadowOpacity: 0, // we keep the shadow on the side “bridges” instead
+    shadowOpacity: 0,
     elevation: 0,
   },
   tab: {
