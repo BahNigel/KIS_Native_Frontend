@@ -1,9 +1,14 @@
 // src/screens/chat/contactsService.ts
 
+import Contacts, { Contact as RNContact } from 'react-native-contacts';
+import { Platform, PermissionsAndroid } from 'react-native';
+import ROUTES from '@/network';
+import { getRequest } from '@/network/get';
+
 export type KISDeviceContact = {
   id: string;
   name: string;
-  phone: string;
+  phone: string; // normalized phone, e.g. +237676139884
 };
 
 export type KISContact = KISDeviceContact & {
@@ -11,46 +16,185 @@ export type KISContact = KISDeviceContact & {
 };
 
 /**
- * Load device contacts, then mark which are registered on KIS.
+ * Normalize phone number for backend lookup.
+ */
+const normalizePhoneForBackend = (phone: string): string => {
+  if (!phone) return '';
+  let cleaned = phone.replace(/[\s\-().]/g, '');
+  if (cleaned.startsWith('00')) cleaned = '+' + cleaned.slice(2);
+  if (cleaned.startsWith('+')) return cleaned;
+  return cleaned.replace(/\D/g, '');
+};
+
+/**
+ * Ensure we have contact permissions on both platforms.
+ */
+async function ensureContactsPermission() {
+  // iOS
+  if (Platform.OS === 'ios') {
+    const perm = await Contacts.checkPermission();
+    if (perm === 'authorized') return;
+
+    const req = await Contacts.requestPermission();
+    if (req !== 'authorized') {
+      throw new Error('Contacts permission denied');
+    }
+    return;
+  }
+
+  // ANDROID
+  const hasRead = await PermissionsAndroid.check(
+    PermissionsAndroid.PERMISSIONS.READ_CONTACTS,
+  );
+  const hasWrite = await PermissionsAndroid.check(
+    PermissionsAndroid.PERMISSIONS.WRITE_CONTACTS,
+  );
+
+  if (hasRead && hasWrite) return;
+
+  const result = await PermissionsAndroid.requestMultiple([
+    PermissionsAndroid.PERMISSIONS.READ_CONTACTS,
+    PermissionsAndroid.PERMISSIONS.WRITE_CONTACTS,
+  ]);
+
+  const readGranted =
+    result[PermissionsAndroid.PERMISSIONS.READ_CONTACTS] ===
+    PermissionsAndroid.RESULTS.GRANTED;
+  const writeGranted =
+    result[PermissionsAndroid.PERMISSIONS.WRITE_CONTACTS] ===
+    PermissionsAndroid.RESULTS.GRANTED;
+
+  if (!readGranted || !writeGranted) {
+    throw new Error('Contacts permission denied');
+  }
+}
+
+/**
+ * FULL REAL IMPLEMENTATION — loads contacts from the user's device.
+ */
+export async function getDeviceContactsFromDevice(): Promise<KISDeviceContact[]> {
+  try {
+    await ensureContactsPermission();
+  } catch (err) {
+    console.warn(`Contacts permission denied: ${String(err)}`);
+    return [];
+  }
+
+  try {
+    const rawContacts = await Contacts.getAll();
+    const deviceContacts: KISDeviceContact[] = [];
+
+    for (const c of rawContacts) {
+      if (!c.phoneNumbers || c.phoneNumbers.length === 0) continue;
+
+      // pick first phone number
+      const rawPhone = c.phoneNumbers[0]?.number || '';
+      const cleanedPhone = normalizePhoneForBackend(rawPhone);
+
+      if (!cleanedPhone) continue;
+
+      deviceContacts.push({
+        id: c.recordID,
+        name: c.displayName || c.givenName || 'Unnamed',
+        phone: cleanedPhone,
+      });
+    }
+
+    return deviceContacts;
+  } catch (err) {
+    console.warn(`Error loading device contacts: ${String(err)}`);
+    return [];
+  }
+}
+
+/**
+ * CHECKS PHONE NUMBERS AGAINST BACKEND
+ */
+export async function markRegisteredOnBackend(
+  deviceContacts: KISDeviceContact[],
+): Promise<KISContact[]> {
+  const results: KISContact[] = [];
+  const BATCH = 50; // tune if needed
+
+  for (let i = 0; i < deviceContacts.length; i += BATCH) {
+    const batch = deviceContacts.slice(i, i + BATCH);
+
+    const promises = batch.map(async (contact) => {
+      try {
+        const url = `${ROUTES.auth.checkContact}?phone=${encodeURIComponent(
+          contact.phone,
+        )}`;
+        const res = await getRequest(url);
+
+        if (!res.success) {
+          console.warn(
+            `Backend check failed for ${contact.phone} (status: ${res.status} message: ${res.message})`,
+          );
+          return { ...contact, isRegistered: false };
+        }
+
+        const registered = !!res.data?.registered;
+
+        return {
+          ...contact,
+          isRegistered: registered,
+        };
+      } catch (e) {
+        console.warn(
+          `Backend check error for contact ${contact.phone}: ${String(e)}`,
+        );
+        return { ...contact, isRegistered: false };
+      }
+    });
+
+    const resolved = await Promise.all(promises);
+    results.push(...resolved);
+  }
+
+  return results;
+}
+
+/**
+ * GET DEVICE CONTACTS + MARK REGISTERED USERS
  */
 export async function refreshFromDeviceAndBackend(): Promise<KISContact[]> {
-  // 1) Get device contacts (TODO: use react-native-contacts)
   const deviceContacts = await getDeviceContactsFromDevice();
-
-  // 2) Ask backend which numbers are on KIS
   const marked = await markRegisteredOnBackend(deviceContacts);
   return marked;
 }
 
-// Fake device contacts for now (so UI works without extra setup)
-export async function getDeviceContactsFromDevice(): Promise<KISDeviceContact[]> {
-  // TODO: replace with react-native-contacts implementation
-  return [
-    { id: '1', name: 'Alice Johnson', phone: '+237 600000001' },
-    { id: '2', name: 'Bob Smith', phone: '+237 600000002' },
-    { id: '3', name: 'Charlie Doe', phone: '+237 600000003' },
-    { id: '4', name: 'Diana Prince', phone: '+237 600000004' },
-  ];
-}
-
-// Stub backend call – mark some as registered / not
-export async function markRegisteredOnBackend(
-  deviceContacts: KISDeviceContact[],
-): Promise<KISContact[]> {
-  // TODO: real API call: POST /kis/contacts/lookup { phones: [...] }
-  // Here we pretend: even IDs => registered, odd => not (by index)
-  return deviceContacts.map((c, idx) => ({
-    ...c,
-    isRegistered: idx % 2 === 0,
-  }));
-}
-
-// Stub for saving contact to device
+/**
+ * Save manually created contacts back to the device.
+ * Called from AddContactForm / AddContactsPage.
+ */
 export async function saveContactToDevice(payload: {
   name: string;
-  phone: string;
-  countryCode: string;
+  phone: string;      // normalized phone, e.g. +237612345678
+  countryCode: string; // dial code, e.g. +237 (not strictly needed here)
 }): Promise<void> {
-  // TODO: implement with react-native-contacts addContact
-  console.log('Saving contact to device (stub):', payload);
+  await ensureContactsPermission();
+
+  const newContact: RNContact = {
+    recordID: '',
+    givenName: payload.name,
+    familyName: '',
+    phoneNumbers: [
+      {
+        label: 'mobile',
+        number: payload.phone, // what will actually appear in device contacts
+      },
+    ],
+    emailAddresses: [],
+  };
+
+  try {
+    // Use the Promise-based API (no callback)
+    await Contacts.addContact(newContact);
+    console.log(
+      `Contact saved to device: ${payload.name} (${payload.phone})`,
+    );
+  } catch (err) {
+    console.warn(`Error adding contact to device: ${String(err)}`);
+    throw err;
+  }
 }

@@ -16,8 +16,8 @@ import { useKISTheme } from '../theme/useTheme';
 import KISButton from '../constants/KISButton';
 import KISTextInput from '../constants/KISTextInput';
 
-import { postRequest } from '@/network/routes/post/index';
-import ROUTES from '@/network/routes';
+import { postRequest } from '@/network/post/index';
+import ROUTES from '@/network';
 import { useAuth } from '../../App';
 
 const CM_REGION = 'CM';

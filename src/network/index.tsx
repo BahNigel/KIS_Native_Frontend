@@ -44,6 +44,7 @@ const ROUTES = {
     otp: `${API_BASE_URL}/api/v1/auth/otp/initiate/`,
     sendDeviceCode: `${API_BASE_URL}/api/v1/auth/otp/verify/`,
     status: `${API_BASE_URL}/api/v1/auth/otp/status`,
+    checkContact: `${API_BASE_URL}/api/v1/contacts/check`
   },
   user: {
     profile: `${API_BASE_URL}/user-info/`,
@@ -74,6 +75,7 @@ const ROUTES = {
       `${API_BASE_URL}/subchannels/${id}/members/`,
   },
   groups: {
+    createGroup: `${API_BASE_URL}/api/v1/groups/`,
     getAllGroups: `${API_BASE_URL}/groups/`,
     getGroupById: (id: string) => `${API_BASE_URL}/groups/${id}/`,
     addMembersToGroup: `${API_BASE_URL}/groups/members/`,
@@ -89,9 +91,17 @@ const ROUTES = {
     getSecurityActions: (id: string) =>
       `${API_BASE_URL}/security-actions/${id}/`,
   },
+  chat: {
+    // Django DRF ConversationViewSet @action(detail=False, url_path='direct')
+    directConversation: `${API_BASE_URL}/api/v1/conversations/`,
+  },
   community: {
     followCommunity: `${API_BASE_URL}/community_action/`,
+    createCommunity: `${API_BASE_URL}/api/v1/communities/`,
   },
+  partners: {
+    create: `${API_BASE_URL}/api/v1/partners/`
+  }
   // Optional: chat backend REST endpoints could be added here later if needed
 };
 

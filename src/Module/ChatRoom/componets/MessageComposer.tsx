@@ -10,7 +10,6 @@ import {
 } from 'react-native';
 
 import { chatRoomStyles as styles } from '../chatRoomStyles';
-import type { ChatMessage } from '../ChatRoomPage';
 
 import AudioRecorderPlayer, {
   PlayBackType,
@@ -23,6 +22,7 @@ import { EmojiPicker } from './EmojiPicker';
 import { AvatarPicker, AVATAR_OPTIONS } from './AvatarPicker';
 import { Sticker, STICKER_STORAGE_KEY } from './StickerEditor';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { ChatMessage } from './chatTypes';
 
 /* -------------------------------------------------------------------------- */
 /*                          STICKER PICKER (BOTTOM PANEL)                     */

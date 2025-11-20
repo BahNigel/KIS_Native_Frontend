@@ -3,14 +3,14 @@
 
 import React, { useRef, useState } from 'react';
 import {
-  Dimensions,
   Platform,
   Pressable,
   StyleSheet,
   View,
   Text,
   useColorScheme,
-  Animated as RNAnimated, // 👈 native Animated for overlay
+  useWindowDimensions,      // ✅ useWindowDimensions instead of Dimensions
+  Animated as RNAnimated,   // 👈 native Animated for overlay
 } from 'react-native';
 import {
   createBottomTabNavigator,
@@ -80,7 +80,8 @@ function AnimatedKISTabBar({
 
   const insets = useSafeAreaInsets();
 
-  const width = Dimensions.get('window').width;
+  // ✅ Responsive width that updates on orientation / size change
+  const { width } = useWindowDimensions();
   const count = state.routes.length;
   const tabWidth = width / count;
 
@@ -208,7 +209,11 @@ function AnimatedKISTabBar({
           };
 
           return (
-            <Pressable key={route.key} onPress={onPress} style={[styles.tab, { width: tabWidth }]}>
+            <Pressable
+              key={route.key}
+              onPress={onPress}
+              style={[styles.tab, { width: tabWidth }]}
+            >
               <Animated.View style={styles.tabInner}>
                 <Animated.View style={iconA}>
                   <KISIcon
@@ -239,7 +244,8 @@ function AnimatedKISTabBar({
 
 export function MainTabs() {
   const { palette } = useKISTheme();
-  const width = Dimensions.get('window').width;
+  // ✅ Responsive width for overlay slide
+  const { width } = useWindowDimensions();
 
   // 🔥 Chat room overlay state lives here so it can cover the bottom tabs
   const [activeChat, setActiveChat] = useState<Chat | null>(null);
@@ -273,7 +279,7 @@ export function MainTabs() {
 
   const chatTranslateX = chatSlide.interpolate({
     inputRange: [0, 1],
-    outputRange: [width, 0], // slide in from right
+    outputRange: [width, 0], // slide in from right, using current width
   });
 
   return (
@@ -287,19 +293,12 @@ export function MainTabs() {
         // 👇 inject hidNav into custom tab bar
         tabBar={(p) => <AnimatedKISTabBar {...p} hidNav={hidNav} />}
       >
-        {/* <Tabs.Screen
-          name="Partners"
-          component={PartnersScreen}
-          options={{ title: 'Partners' }}
-        /> */}
-
         <Tabs.Screen
           name="Partners"
           options={{ title: 'Partners' }}
         >
           {() => <PartnersScreen setHidNav={setHidNav} />}
         </Tabs.Screen>
-
 
         <Tabs.Screen
           name="Bible"

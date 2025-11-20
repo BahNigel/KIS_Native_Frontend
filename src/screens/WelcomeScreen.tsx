@@ -23,8 +23,8 @@ import avatarsLight from '../assets/welcom_light.png';
 import avatarsDark from '../assets/welcom_dark.png';
 
 // NEW: reuse your server-side auth check
-import { getRequest } from '@/network/routes/get';
-import ROUTES from '@/network/routes';
+import { getRequest } from '@/network/get';
+import ROUTES from '@/network';
 // NEW: consume app-wide auth context (optional but nice to keep in sync)
 import { useAuth } from '../../App';
 

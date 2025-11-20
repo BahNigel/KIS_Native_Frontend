@@ -27,9 +27,9 @@ import {
 import * as RNLocalize from 'react-native-localize';
 
 // ✅ Use your provided post helper (no routes wrapper needed here)
-import { postRequest } from '@/network/routes/post/index';
+import { postRequest } from '@/network/post/index';
 import KISButton from '@/constants/KISButton';
-import ROUTES from '@/network/routes';
+import ROUTES from '@/network';
 
 type HeadersInit = Record<string, string>;
 

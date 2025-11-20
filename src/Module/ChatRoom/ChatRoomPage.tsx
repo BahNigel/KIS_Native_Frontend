@@ -33,7 +33,7 @@ import { SubRoomsSheet } from './componets/SubRoomsSheet';
 import {
   useChatPersistence,
   type SendOverNetworkFn,
-} from '../hooks/useChatPersistence';
+} from './hooks/useChatPersistence';
 
 import { buildInitialMessages } from './componets/chatInitialMessages';
 import type {
@@ -42,6 +42,10 @@ import type {
   SubRoom,
 } from './componets/chatTypes';
 import { useChatSocket } from './componets/useChatSocket';
+
+// 🔗 our network helpers
+import ROUTES from '@/network';
+import { postRequest } from '@/network/post';
 
 const clamp = (value: number, min: number, max: number) =>
   Math.min(max, Math.max(min, value));
@@ -81,7 +85,29 @@ export const ChatRoomPage: React.FC<ExtendedChatRoomPageProps> = ({
     loadAuth();
   }, []);
 
-  const roomId = chat?.id ?? 'local-room';
+  // 👀 Is this a direct 1:1 chat?
+  const isDirectChat = !!chat && (
+    chat.kind === 'direct' ||
+    (chat as any).isContactChat ||
+    (!chat.isGroup && !(chat as any).isGroupChat && !(chat as any).isCommunityChat)
+  );
+
+  // 🧠 Conversation ID (real backend conversation UUID)
+  const [conversationId, setConversationId] = useState<string | null>(() => {
+    if (!chat) return null;
+
+    // If backend already provided conversationId, trust it
+    if ((chat as any).conversationId) return (chat as any).conversationId as string;
+
+    // For groups/communities/channels we assume chat.id is already a backend conversation id
+    if (!isDirectChat) return chat.id;
+
+    // For direct/contact chats we want to defer creation to first send
+    return null;
+  });
+
+  // Room id used by persistence + socket; falls back to local id until real id exists
+  const roomId = conversationId ?? chat?.id ?? 'local-room';
 
   const [draft, setDraft] = useState('');
   const [openStickerEditor, setOpenStickerEditor] = useState(false);
@@ -119,7 +145,8 @@ export const ChatRoomPage: React.FC<ExtendedChatRoomPageProps> = ({
   } = useChatPersistence({
     roomId,
     currentUserId,
-    sendOverNetwork: async () => false,
+    // NOTE: still a no-op; your hook can later use the real sendOverNetwork below
+    // sendOverNetwork: async () => false,
   });
 
   const messagesRef = useRef<ChatMessage[]>(messages);
@@ -135,6 +162,7 @@ export const ChatRoomPage: React.FC<ExtendedChatRoomPageProps> = ({
     messagesRef,
   });
 
+  // 🔌 Socket-level sender (used later by useChatPersistence if you wire it)
   const sendOverNetwork = useCallback<SendOverNetworkFn>(
     async (message) => {
       const socket = socketRef.current;
@@ -193,6 +221,79 @@ export const ChatRoomPage: React.FC<ExtendedChatRoomPageProps> = ({
     attemptFlushQueue();
   }, [attemptFlushQueue]);
 
+  /* ------------------------------------------------------------------------ */
+  /*  ENSURE CONVERSATION EXISTS (CALL DJANGO ON FIRST SEND FOR DIRECT DM)    */
+  /* ------------------------------------------------------------------------ */
+
+  const ensureConversationId = useCallback(
+    async (): Promise<string | null> => {
+      // Already have a conversation → done
+      if (conversationId) return conversationId;
+      if (!chat) return null;
+
+      // For non-direct chats, just assume chat.id is a backend conversation
+      if (!isDirectChat) {
+        const id = chat.id;
+        setConversationId(id);
+        return id;
+      }
+
+      if (!authToken) {
+        Alert.alert(
+          'Not signed in',
+          'Please sign in again before sending messages.',
+        );
+        return null;
+      }
+
+      console.log("checking for user id now: ", chat)
+
+      const peerUserId = (chat as any).id;
+      if (!peerUserId) {
+        Alert.alert(
+          'Cannot start chat',
+          'Missing peer user id for this direct chat. Make sure you pass peerUserId into ChatRoomPage.',
+        );
+        return null;
+      }
+
+      try {
+        const res = await postRequest(
+          ROUTES.chat.directConversation,
+          { peer_user_id: peerUserId },
+          {
+            errorMessage: 'Could not start this conversation.',
+          },
+        );
+
+        if (!res.success || !res.data || !res.data.id) {
+          console.warn(
+            '[ChatRoomPage] direct conversation create/fetch failed',
+            res,
+          );
+          Alert.alert('Error', res.message || 'Could not start this conversation.');
+          return null;
+        }
+
+        const newId = String(res.data.id);
+        setConversationId(newId);
+        return newId;
+      } catch (e) {
+        console.warn('[ChatRoomPage] ensureConversationId error', e);
+        Alert.alert(
+          'Network error',
+          'Could not start this conversation. Please check your connection.',
+        );
+        return null;
+      }
+    },
+    [conversationId, chat, isDirectChat, authToken],
+  );
+
+  /* ------------------------------------------------------------------------ */
+  /*  SELECTION / MESSAGE ACTIONS                                             */
+  /* ------------------------------------------------------------------------ */
+
   const enterSelectionMode = useCallback((message: ChatMessage) => {
     setSelectionMode(true);
     setSelectedIds([message.id]);
@@ -236,9 +337,21 @@ export const ChatRoomPage: React.FC<ExtendedChatRoomPageProps> = ({
 
   const subRoomCount = subRooms.length;
 
+  /* ------------------------------------------------------------------------ */
+  /*  SEND HANDLERS (ENSURE CONV FIRST FOR DIRECT)                            */
+  /* ------------------------------------------------------------------------ */
+
   const handleSend = useCallback(async () => {
     const text = draft.trim();
     if (!text || !chat) return;
+
+    // Ensure we have a real conversation ID (for DMs this creates/fetches on Django)
+    let convId = conversationId;
+    if (!convId) {
+      const ensured = await ensureConversationId();
+      if (!ensured) return;
+      convId = ensured;
+    }
 
     if (editing) {
       await editMessage(editing.id, {
@@ -255,7 +368,7 @@ export const ChatRoomPage: React.FC<ExtendedChatRoomPageProps> = ({
       await replyToMessage(replyTo, text, {
         kind: 'text',
         fromMe: true,
-        roomId,
+        roomId: convId,
         senderId: currentUserId,
       });
       setReplyTo(null);
@@ -266,7 +379,7 @@ export const ChatRoomPage: React.FC<ExtendedChatRoomPageProps> = ({
     await sendTextMessage(text, {
       kind: 'text',
       fromMe: true,
-      roomId,
+      roomId: convId,
       senderId: currentUserId,
     });
     setDraft('');
@@ -278,32 +391,53 @@ export const ChatRoomPage: React.FC<ExtendedChatRoomPageProps> = ({
     editMessage,
     replyToMessage,
     sendTextMessage,
-    roomId,
     currentUserId,
+    conversationId,
+    ensureConversationId,
   ]);
 
   const handleSendVoice = useCallback(
     async ({ uri, durationMs }: { uri: string; durationMs: number }) => {
       if (!chat) return;
 
+      let convId = conversationId;
+      if (!convId) {
+        const ensured = await ensureConversationId();
+        if (!ensured) return;
+        convId = ensured;
+      }
+
       await sendRichMessage({
         kind: 'voice',
-        roomId,
+        roomId: convId,
         senderId: currentUserId,
         fromMe: true,
         voice: { uri, durationMs },
       });
     },
-    [chat, roomId, currentUserId, sendRichMessage],
+    [
+      chat,
+      conversationId,
+      ensureConversationId,
+      currentUserId,
+      sendRichMessage,
+    ],
   );
 
   const handleSendStyledText = useCallback(
     async (payload: TextCardPayload) => {
       if (!chat) return;
 
+      let convId = conversationId;
+      if (!convId) {
+        const ensured = await ensureConversationId();
+        if (!ensured) return;
+        convId = ensured;
+      }
+
       await sendRichMessage({
         kind: 'styled_text',
-        roomId,
+        roomId: convId,
         senderId: currentUserId,
         fromMe: true,
         text: payload.text,
@@ -318,16 +452,29 @@ export const ChatRoomPage: React.FC<ExtendedChatRoomPageProps> = ({
 
       setTextCardBg(null);
     },
-    [chat, roomId, currentUserId, sendRichMessage],
+    [
+      chat,
+      conversationId,
+      ensureConversationId,
+      currentUserId,
+      sendRichMessage,
+    ],
   );
 
   const handleSendSticker = useCallback(
     async (sticker: Sticker) => {
       if (!chat) return;
 
+      let convId = conversationId;
+      if (!convId) {
+        const ensured = await ensureConversationId();
+        if (!ensured) return;
+        convId = ensured;
+      }
+
       await sendRichMessage({
         kind: 'sticker',
-        roomId,
+        roomId: convId,
         senderId: currentUserId,
         fromMe: true,
         sticker: {
@@ -337,8 +484,18 @@ export const ChatRoomPage: React.FC<ExtendedChatRoomPageProps> = ({
         },
       });
     },
-    [chat, roomId, currentUserId, sendRichMessage],
+    [
+      chat,
+      conversationId,
+      ensureConversationId,
+      currentUserId,
+      sendRichMessage,
+    ],
   );
+
+  /* ------------------------------------------------------------------------ */
+  /*  REPLY / EDIT / PRESS HANDLERS                                           */
+  /* ------------------------------------------------------------------------ */
 
   const handleReplyRequest = useCallback(
     (message: ChatMessage) => {
@@ -385,6 +542,10 @@ export const ChatRoomPage: React.FC<ExtendedChatRoomPageProps> = ({
     },
     [selectionMode, enterSelectionMode],
   );
+
+  /* ------------------------------------------------------------------------ */
+  /*  BULK ACTIONS (PIN / DELETE / COPY / FORWARD / MORE)                     */
+  /* ------------------------------------------------------------------------ */
 
   const handlePinSelected = useCallback(async () => {
     if (!selectedIds.length) return;
@@ -507,6 +668,10 @@ export const ChatRoomPage: React.FC<ExtendedChatRoomPageProps> = ({
 
   const canSend = useMemo(() => draft.trim().length > 0, [draft]);
   const isEmpty = !chat;
+
+  /* ------------------------------------------------------------------------ */
+  /*  RENDER                                                                  */
+  /* ------------------------------------------------------------------------ */
 
   return (
     <View

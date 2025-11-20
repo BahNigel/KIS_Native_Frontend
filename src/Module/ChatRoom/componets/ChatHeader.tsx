@@ -31,6 +31,10 @@ type ChatHeaderProps = {
   // NEW: single-selection-only sub-room action
   isSingleSelection?: boolean;
   onContinueInSubRoom?: () => void;
+
+  // NEW: DM request / lock status (for direct chats)
+  dmStatusLabel?: string | null;
+  dmStatusVariant?: 'pending' | 'locked' | 'rejected' | 'normal';
 };
 
 export const ChatHeader: React.FC<ChatHeaderProps> = ({
@@ -54,6 +58,9 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
 
   isSingleSelection = false,
   onContinueInSubRoom,
+
+  dmStatusLabel,
+  dmStatusVariant = 'normal',
 }) => {
   const title = chat?.name ?? 'Chat';
 
@@ -198,7 +205,10 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
   /* ─────────────────────────────────────────
    * 2) Normal chat header + info strip
    * ──────────────────────────────────────── */
-  const showInfoStrip = pinnedCount > 0 || subRoomCount > 0;
+
+  // Show info strip if we have pinned, sub-rooms, or a DM status
+  const showInfoStrip =
+    pinnedCount > 0 || subRoomCount > 0 || !!dmStatusLabel;
 
   const pillBaseStyle = {
     paddingHorizontal: 10,
@@ -208,14 +218,31 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
     alignItems: 'center' as const,
   };
 
+  // Choose background color for DM status pill
+  const dmBgColor =
+    dmStatusVariant === 'pending'
+      ? palette.pillPendingBg ??
+        palette.warningSoft ??
+        palette.surface
+      : dmStatusVariant === 'locked' || dmStatusVariant === 'rejected'
+      ? palette.pillLockedBg ??
+        palette.errorSoft ??
+        palette.surface
+      : palette.pillInfoBg ?? palette.surface;
+
+  const dmTextColor =
+    dmStatusVariant === 'locked' || dmStatusVariant === 'rejected'
+      ? palette.errorText ?? palette.onHeader ?? palette.text
+      : palette.onHeader ?? palette.text;
+
   return (
     <View
       style={[
         styles.header,
         {
           borderBottomColor: palette.divider,
-          backgroundColor: "transparent",
-          // Override any row flexDirection so we can stack main row + info row
+          backgroundColor: 'transparent',
+          // stack main row + info row vertically
           flexDirection: 'column',
         },
       ]}
@@ -320,7 +347,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
         </View>
       </View>
 
-      {/* NEW: info strip – pinned + sub-rooms pills under the header */}
+      {/* NEW: info strip – DM status + pinned + sub-rooms pills under the header */}
       {showInfoStrip && (
         <View
           style={{
@@ -330,8 +357,39 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
             paddingTop: 4,
             flexDirection: 'row',
             alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: 8,
           }}
         >
+          {/* DM REQUEST / LOCK PILL */}
+          {dmStatusLabel && (
+            <View
+              style={[
+                pillBaseStyle,
+                {
+                  backgroundColor: dmBgColor,
+                },
+              ]}
+            >
+              <KISIcon
+                name="info"
+                size={14}
+                color={dmTextColor}
+              />
+              <Text
+                style={{
+                  marginLeft: 6,
+                  fontSize: 12,
+                  color: dmTextColor,
+                }}
+                numberOfLines={1}
+              >
+                {dmStatusLabel}
+              </Text>
+            </View>
+          )}
+
+          {/* PINNED PILL */}
           {pinnedCount > 0 && (
             <Pressable
               onPress={() => onOpenPinned?.()}
@@ -363,13 +421,13 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
             </Pressable>
           )}
 
+          {/* SUB-ROOMS PILL */}
           {subRoomCount > 0 && (
             <Pressable
               onPress={() => onOpenSubRooms?.()}
               style={({ pressed }) => [
                 pillBaseStyle,
                 {
-                  marginLeft: pinnedCount > 0 ? 8 : 0,
                   backgroundColor:
                     palette.pillSubRoomBg ??
                     palette.surfaceSoft ??

@@ -14,8 +14,8 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import KISButton from '@/constants/KISButton';
-import { postRequest } from '@/network/routes/post';
-import ROUTES from '@/network/routes';
+import { postRequest } from '@/network/post';
+import ROUTES from '@/network';
 
 type RouteParams = {
   phone?: string | null;   // <-- we expect phone passed from Register

@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { io, Socket } from 'socket.io-client';
-import { CHAT_WS_URL, CHAT_WS_PATH } from '@/network/routes';
+import { CHAT_WS_URL, CHAT_WS_PATH } from '@/network';
 import type { ChatMessage } from './chatTypes';
 import { mapBackendToChatMessage } from './chatMapping';
 

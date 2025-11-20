@@ -27,9 +27,9 @@ import { KISIcon } from '@/constants/kisIcons';
 import AddContactsPage from '@/Module/AddContacts/AddContactsPage';
 import ChatRoomPage from '@/Module/ChatRoom/ChatRoomPage';
 import { FilterManager, ToggleChip } from '@/Module/ChatRoom/componets/Filters';
-import UpdatesTab from '@/Module/ChatRoom/componets/tabs/UpdatesTab';
-import CallsTab from '@/Module/ChatRoom/componets/tabs/CallsTab';
-import HubTab from '@/Module/ChatRoom/componets/tabs/HubTab';
+import UpdatesTab from '@/screens/tabs/MesssagingSubTabs/UpdatesTab';
+import CallsTab from '@/screens/tabs/MesssagingSubTabs/CallsTab';
+import HubTab from '@/screens/tabs/MesssagingSubTabs/HubTab';
 import { 
   styles,
   type CustomFilter,
@@ -40,7 +40,7 @@ import {
 
 const Tab = createMaterialTopTabNavigator();
 type MessagesScreenProps = {
-  onOpenChat?: (chat: Chat) => void;
+  onOpenChat: (chat: Chat) => void;
 };
 
 /** Extend quick chips locally with Archived/Blocked without changing base type elsewhere */
@@ -782,9 +782,11 @@ const handleMuteSelected = () => {
             backgroundColor: palette.bg,
           }}
         >
-          <AddContactsPage onClose={closeAddContacts} />
+          <AddContactsPage onOpenChat={onOpenChat} onClose={closeAddContacts} />
         </Animated.View>
       )}
     </View>
-  );
+  )
+  
+  
 }

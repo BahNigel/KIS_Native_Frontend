@@ -21,8 +21,8 @@ import LoginScreen from './src/screens/LoginScreen';
 import RegisterScreen from './src/screens/RegisterScreen';
 import DeviceVerificationScreen from './src/screens/DeviceVerificationScreen';
 import { MainTabs } from '@/navigation/AppNavigator';
-import { getRequest } from '@/network/routes/get';
-import ROUTES from '@/network/routes';
+import { getRequest } from '@/network/get';
+import ROUTES from '@/network';
 
 type AuthCtx = {
   isAuth: boolean;

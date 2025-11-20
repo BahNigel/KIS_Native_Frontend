@@ -46,8 +46,10 @@ export type KISIconName =
   | 'layers'
   | 'thread'
   | 'sub-channel'
-  // NEW optional message info
-  | 'info';
+  // Message info
+  | 'info'
+  // NEW — for country picker
+  | 'chevron-down';
 
 type IconPair = { filled: string; outline: string };
 
@@ -121,13 +123,14 @@ const ion: IonMap = {
 
   // NEW — Sub-rooms (layers)
   layers: { filled: 'layers', outline: 'layers-outline' },
-
-  // Aliases for layers
   thread: { filled: 'layers', outline: 'layers-outline' },
   'sub-channel': { filled: 'layers', outline: 'layers-outline' },
 
-  // NEW — Message info (optional)
+  // NEW — Message info
   info: { filled: 'information-circle', outline: 'information-circle-outline' },
+
+  // NEW — Chevron down (used for country picker)
+  'chevron-down': { filled: 'chevron-down', outline: 'chevron-down' },
 };
 
 export interface KISIconProps {
