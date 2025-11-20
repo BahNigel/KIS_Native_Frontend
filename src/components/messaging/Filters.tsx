@@ -14,7 +14,7 @@ import {
   styles,
   type CustomFilter,
   type CustomFilterRule,
-} from './messagesUtils';
+} from '../../Module/ChatRoom/messagesUtils';
 import { KISIcon } from '@/constants/kisIcons';
 import { useKISTheme } from '@/theme/useTheme';
 import { KIS_TOKENS } from '@/theme/constants';

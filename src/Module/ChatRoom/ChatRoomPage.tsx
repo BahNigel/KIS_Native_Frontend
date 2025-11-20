@@ -18,18 +18,12 @@ import Clipboard from '@react-native-clipboard/clipboard';
 
 import { useKISTheme } from '../../theme/useTheme';
 import { chatRoomStyles as styles } from './chatRoomStyles';
-import { ChatHeader } from './componets/ChatHeader';
-import { MessageList } from './componets/MessageList';
-import { MessageComposer } from './componets/MessageComposer';
+import { ChatHeader } from './componets/main/ChatHeader';
 import {
   TextCardComposer,
   TextCardPayload,
-} from './componets/TextCardComposer';
-import { StickerEditor, Sticker } from './componets/StickerEditor';
-import { ForwardChatSheet } from './componets/ForwardChatSheet';
-import { PinnedMessagesSheet } from './componets/PinnedMessagesSheet';
-import { SubRoomsSheet } from './componets/SubRoomsSheet';
-
+} from './componets/main/TextCardComposer';
+import { StickerEditor, Sticker } from './componets/main/StickerEditor';
 import {
   useChatPersistence,
   type SendOverNetworkFn,
@@ -40,12 +34,17 @@ import type {
   ChatMessage,
   ChatRoomPageProps,
   SubRoom,
-} from './componets/chatTypes';
+} from './chatTypes';
 import { useChatSocket } from './componets/useChatSocket';
 
 // 🔗 our network helpers
 import ROUTES from '@/network';
 import { postRequest } from '@/network/post';
+import { MessageList } from './componets/main/MessageList';
+import { MessageComposer } from './componets/main/MessageComposer';
+import { ForwardChatSheet } from './componets/main/ForwardChatSheet';
+import { PinnedMessagesSheet } from './componets/main/PinnedMessagesSheet';
+import { SubRoomsSheet } from './componets/main/SubRoomsSheet';
 
 const clamp = (value: number, min: number, max: number) =>
   Math.min(max, Math.max(min, value));

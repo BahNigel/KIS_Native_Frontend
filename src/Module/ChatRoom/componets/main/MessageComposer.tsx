@@ -9,21 +9,18 @@ import {
   Image,
 } from 'react-native';
 
-import { chatRoomStyles as styles } from '../chatRoomStyles';
-
 import AudioRecorderPlayer, {
   PlayBackType,
 } from 'react-native-audio-recorder-player';
 
-import { VoicePreviewRow } from './VoicePreviewRow';
-import { KISIcon } from '@/constants/kisIcons';
-import { HoldToLockComposer } from './HoldToLockComposer';
-import { EmojiPicker } from './EmojiPicker';
-import { AvatarPicker, AVATAR_OPTIONS } from './AvatarPicker';
-import { Sticker, STICKER_STORAGE_KEY } from './StickerEditor';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { ChatMessage } from './chatTypes';
-
+import { Sticker, STICKER_STORAGE_KEY } from './StickerEditor';
+import { ChatMessage } from '../../chatTypes';
+import { AVATAR_OPTIONS, AvatarPicker } from '../AvatarPicker';
+import { EmojiPicker } from '../EmojiPicker';
+import { KISIcon } from '@/constants/kisIcons';
+import { HoldToLockComposer } from '../HoldToLockComposer';
+import { chatRoomStyles as styles } from '@/src/Module/ChatRoom/chatRoomStyles'
 /* -------------------------------------------------------------------------- */
 /*                          STICKER PICKER (BOTTOM PANEL)                     */
 /* -------------------------------------------------------------------------- */

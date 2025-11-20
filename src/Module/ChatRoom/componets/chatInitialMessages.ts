@@ -1,7 +1,7 @@
 // src/screens/chat/chatInitialMessages.ts
 
-import type { Chat } from './messagesUtils';
-import type { ChatMessage } from './chatTypes';
+import type { Chat } from '../messagesUtils';
+import type { ChatMessage } from '../chatTypes';
 
 // Initial demo messages (unchanged, but uses roomId/currentUserId)
 export const buildInitialMessages = (

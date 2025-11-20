@@ -26,7 +26,7 @@ import { ChatsTab } from '@/Module/ChatRoom/componets/MessageTabs';
 import { KISIcon } from '@/constants/kisIcons';
 import AddContactsPage from '@/Module/AddContacts/AddContactsPage';
 import ChatRoomPage from '@/Module/ChatRoom/ChatRoomPage';
-import { FilterManager, ToggleChip } from '@/Module/ChatRoom/componets/Filters';
+import { FilterManager, ToggleChip } from '@/components/messaging/Filters';
 import UpdatesTab from '@/screens/tabs/MesssagingSubTabs/UpdatesTab';
 import CallsTab from '@/screens/tabs/MesssagingSubTabs/CallsTab';
 import HubTab from '@/screens/tabs/MesssagingSubTabs/HubTab';
@@ -36,7 +36,7 @@ import {
   type QuickChip,
   type Chat,
   CUSTOM_FILTERS_KEY 
-} from '@/Module/ChatRoom/componets/messagesUtils';
+} from '@/Module/ChatRoom/messagesUtils';
 
 const Tab = createMaterialTopTabNavigator();
 type MessagesScreenProps = {

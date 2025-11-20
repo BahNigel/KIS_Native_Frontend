@@ -1,6 +1,6 @@
 // src/screens/chat/chatMapping.ts
 
-import type { ChatMessage } from './chatTypes';
+import type { ChatMessage } from '../chatTypes';
 
 // Helper to map backend payload -> ChatMessage
 export const mapBackendToChatMessage = (

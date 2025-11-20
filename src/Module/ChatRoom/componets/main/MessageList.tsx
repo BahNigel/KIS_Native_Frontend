@@ -6,9 +6,9 @@ import React, {
 } from 'react';
 import { View, Text, FlatList } from 'react-native';
 
-import { chatRoomStyles as styles } from '../chatRoomStyles';
-import type { ChatMessage } from '../ChatRoomPage';
-import { InteractiveMessageRow } from './InteractiveMessageRow';
+import { chatRoomStyles as styles } from '@/Module/ChatRoom/chatRoomStyles';
+import { ChatMessage } from '../../chatTypes';
+import { InteractiveMessageRow } from '../InteractiveMessageRow';
 
 type MessageListProps = {
   messages: ChatMessage[];

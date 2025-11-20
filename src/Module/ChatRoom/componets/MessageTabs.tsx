@@ -19,7 +19,7 @@ import {
   type Chat,
   type CustomFilter,
   type QuickChip,
-} from './messagesUtils';
+} from '../messagesUtils';
 import { useKISTheme } from '@/theme/useTheme';
 
 type ChatsTabProps = {

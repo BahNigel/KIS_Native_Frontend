@@ -34,7 +34,7 @@ import BibleScreen from '../screens/tabs/BibleScreen';
 import BroadcastScreen from '../screens/tabs/BroadcastScreen';
 import ProfileScreen from '../screens/tabs/ProfileScreen';
 import ChatRoomPage from '@/Module/ChatRoom/ChatRoomPage';
-import { Chat } from '@/Module/ChatRoom/componets/messagesUtils';
+import { Chat } from '@/Module/ChatRoom/messagesUtils';
 
 type RouteKey = 'Partners' | 'Bible' | 'Messages' | 'Broadcast' | 'Profile';
 

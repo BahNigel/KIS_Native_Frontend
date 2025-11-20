@@ -1,7 +1,7 @@
 // src/screens/chat/storage/chatStorage.ts
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { ChatMessage } from '../componets/chatTypes';
+import { ChatMessage } from '../chatTypes';
 
 const STORAGE_KEY_PREFIX = 'KIS_CHAT_MESSAGES_BY_ROOM_V1:';
 

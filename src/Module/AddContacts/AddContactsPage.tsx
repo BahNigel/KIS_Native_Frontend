@@ -40,7 +40,7 @@ import { AddContactForm } from './components/AddContactForm';
 import { NewGroupForm } from './components/NewGroupForm';
 import { NewCommunityForm } from './components/NewCommunityForm';
 import { addContactsStyles as styles } from './addContactsStyles';
-import type { Chat } from '@/Module/ChatRoom/componets/messagesUtils';
+import type { Chat } from '@/Module/ChatRoom/messagesUtils';
 
 export type AddContactsPageProps = {
   onClose: () => void;
