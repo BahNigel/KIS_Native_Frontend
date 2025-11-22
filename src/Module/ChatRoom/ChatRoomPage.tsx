@@ -73,8 +73,8 @@ export const ChatRoomPage: React.FC<ExtendedChatRoomPageProps> = ({
     const loadAuth = async () => {
       try {
         const logedInUser = await getCache('AUTH_CACHE', 'USER_KEY')
-        const token = await AsyncStorage.getItem('access_token');
-        const storedUserId = await AsyncStorage.getItem('user_id');
+        const token = logedInUser.access
+        const storedUserId = logedInUser.user.id
 
         if (token) setAuthToken(token);
         if (storedUserId) setCurrentUserId(storedUserId);
