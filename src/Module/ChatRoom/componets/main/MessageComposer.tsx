@@ -20,7 +20,7 @@ import { AVATAR_OPTIONS, AvatarPicker } from '../AvatarPicker';
 import { EmojiPicker } from '../EmojiPicker';
 import { KISIcon } from '@/constants/kisIcons';
 import { HoldToLockComposer } from '../HoldToLockComposer';
-import { chatRoomStyles as styles } from '@/src/Module/ChatRoom/chatRoomStyles'
+import { chatRoomStyles as styles } from '@/Module/ChatRoom/chatRoomStyles'
 /* -------------------------------------------------------------------------- */
 /*                          STICKER PICKER (BOTTOM PANEL)                     */
 /* -------------------------------------------------------------------------- */

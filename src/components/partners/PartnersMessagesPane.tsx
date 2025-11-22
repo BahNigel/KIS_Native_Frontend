@@ -2,7 +2,7 @@
 import React, { useMemo } from 'react';
 import { Animated, Text, View } from 'react-native';
 import styles from './partnersStyles';
-import { useKISTheme } from '../../../theme/useTheme';
+import { useKISTheme } from '../../theme/useTheme';
 import { Partner, PartnerGroup } from './partnersTypes';
 import ChatRoomPage from '@/Module/ChatRoom/ChatRoomPage';
 

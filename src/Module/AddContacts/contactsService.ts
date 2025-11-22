@@ -32,15 +32,20 @@ const normalizePhoneForBackend = (phone: string): string => {
 async function ensureContactsPermission() {
   // iOS
   if (Platform.OS === 'ios') {
-    const perm = await Contacts.checkPermission();
-    if (perm === 'authorized') return;
-
-    const req = await Contacts.requestPermission();
+  const req = await Contacts.requestPermission();
     if (req !== 'authorized') {
       throw new Error('Contacts permission denied');
     }
+
+    const perm = await Contacts.checkPermission();
+    if (perm === 'authorized') return;
     return;
   }
+
+   const result = await PermissionsAndroid.requestMultiple([
+    PermissionsAndroid.PERMISSIONS.READ_CONTACTS,
+    PermissionsAndroid.PERMISSIONS.WRITE_CONTACTS,
+  ]);
 
   // ANDROID
   const hasRead = await PermissionsAndroid.check(
@@ -52,10 +57,6 @@ async function ensureContactsPermission() {
 
   if (hasRead && hasWrite) return;
 
-  const result = await PermissionsAndroid.requestMultiple([
-    PermissionsAndroid.PERMISSIONS.READ_CONTACTS,
-    PermissionsAndroid.PERMISSIONS.WRITE_CONTACTS,
-  ]);
 
   const readGranted =
     result[PermissionsAndroid.PERMISSIONS.READ_CONTACTS] ===

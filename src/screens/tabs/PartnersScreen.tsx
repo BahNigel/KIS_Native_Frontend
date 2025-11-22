@@ -17,25 +17,15 @@ import {
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
-import styles from '@/components/pages/partners/partnersStyles';
 import { useKISTheme } from '../../theme/useTheme';
 import { useAuth } from '../../../App';
-import {
-  Partner,
-  PartnerGroup,
-  PartnerCommunity,
-} from '@/components/pages/partners/partnersTypes';
-import {
-  MOCK_COMMUNITIES,
-  MOCK_GROUPS,
-  MOCK_PARTNERS,
-} from '@/components/pages/partners/partnersMockData';
-import PartnersLeftRail from '@/components/pages/partners/PartnersLeftRail';
-import PartnersCenterPane from '@/components/pages/partners/PartnersCenterPane';
-import PartnersMessagesPane from '@/components/pages/partners/PartnersMessagesPane';
-import PartnerSheet from '@/components/pages/partners/PartnerSheet';
-import { RIGHT_PEEK_WIDTH } from '@/components/pages/partners/partnersTypes';
-
+import { MOCK_COMMUNITIES, MOCK_GROUPS, MOCK_PARTNERS } from '@/components/partners/partnersMockData';
+import { Partner, PartnerCommunity, PartnerGroup, RIGHT_PEEK_WIDTH } from '@/components/partners/partnersTypes';
+import styles from '@/components/partners/partnersStyles';
+import PartnersLeftRail from '@/components/partners/PartnersLeftRail';
+import PartnersCenterPane from '@/components/partners/PartnersCenterPane';
+import PartnersMessagesPane from '@/components/partners/PartnersMessagesPane';
+import PartnerSheet from '@/components/partners/PartnerSheet';
 const clamp = (value: number, min: number, max: number) =>
   Math.min(max, Math.max(min, value));
 

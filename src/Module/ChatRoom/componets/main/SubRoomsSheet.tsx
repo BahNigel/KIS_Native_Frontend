@@ -9,9 +9,9 @@ import {
   FlatList,
 } from 'react-native';
 
-import { chatRoomStyles as styles } from '../chatRoomStyles';
-import type { SubRoom } from '../ChatRoomPage';
+import { chatRoomStyles as styles } from '../../chatRoomStyles';
 import { KISIcon } from '@/constants/kisIcons';
+import { SubRoom } from '../../chatTypes';
 
 type SubRoomsSheetProps = {
   visible: boolean;

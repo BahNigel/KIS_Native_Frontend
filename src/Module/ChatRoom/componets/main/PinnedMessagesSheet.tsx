@@ -9,9 +9,9 @@ import {
   FlatList,
 } from 'react-native';
 
-import type { ChatMessage } from '../ChatRoomPage';
-import { chatRoomStyles as styles } from '../chatRoomStyles';
+import { chatRoomStyles as styles } from '../../chatRoomStyles';
 import { KISIcon } from '@/constants/kisIcons';
+import { ChatMessage } from '../../chatTypes';
 
 type PinnedMessagesSheetProps = {
   visible: boolean;

@@ -2,7 +2,7 @@
 import React from 'react';
 import { Animated, Pressable, Text, View } from 'react-native';
 import styles from './partnersStyles';
-import { useKISTheme } from '../../../theme/useTheme';
+import { useKISTheme } from '../../theme/useTheme';
 import { Partner } from './partnersTypes';
 
 type Props = {
