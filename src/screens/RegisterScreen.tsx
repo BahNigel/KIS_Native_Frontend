@@ -348,7 +348,7 @@ export default function RegisterScreen({ navigation }: any) {
       if (displayName.trim()) payload.display_name = displayName.trim();
 
       const res = await postRequest(ROUTES.auth.register, payload, {
-        cacheKey: 'LAST_REGISTER',
+        cacheKey: 'USER_KEY',
         cacheType: 'AUTH_CACHE',
         errorMessage: 'Unable to register.',
       });

@@ -45,6 +45,7 @@ import { MessageComposer } from './componets/main/MessageComposer';
 import { ForwardChatSheet } from './componets/main/ForwardChatSheet';
 import { PinnedMessagesSheet } from './componets/main/PinnedMessagesSheet';
 import { SubRoomsSheet } from './componets/main/SubRoomsSheet';
+import { getCache } from '@/network/cache';
 
 const clamp = (value: number, min: number, max: number) =>
   Math.min(max, Math.max(min, value));
@@ -71,6 +72,7 @@ export const ChatRoomPage: React.FC<ExtendedChatRoomPageProps> = ({
   useEffect(() => {
     const loadAuth = async () => {
       try {
+        const logedInUser = await getCache('AUTH_CACHE', 'USER_KEY')
         const token = await AsyncStorage.getItem('access_token');
         const storedUserId = await AsyncStorage.getItem('user_id');
 

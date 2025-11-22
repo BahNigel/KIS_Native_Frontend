@@ -30,7 +30,7 @@ export const postRequest = async (
   } = {}
 ) => {
   try {
-    if (!(await isOnline())) throw new Error('No internet connection.');
+    // if (!(await isOnline())) throw new Error('No internet connection.');
 
     const token = await AsyncStorage.getItem('access_token');
     const baseHeaders: HeadersInit = { 'Content-Type': 'application/json' };

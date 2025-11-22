@@ -91,7 +91,7 @@ export default function LoginScreen({ navigation }: any) {
       const res = await postRequest(ROUTES.auth.login, payload, {
         errorMessage: 'Unable to log in.',
         cacheType: 'AUTH_CACHE',
-        cacheKey: 'LAST_LOGIN',
+        cacheKey: 'USER_KEY',
       });
 
       if (!res?.success) {

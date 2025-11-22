@@ -18,7 +18,7 @@ export const getRequest = async (
   } = {}
 ) => {
   try {
-    if (!(await isOnline())) throw new Error('No internet connection.');
+    // if (!(await isOnline())) throw new Error('No internet connection.');
 
     // const token = await resolveBearerToken();
     const token = await AsyncStorage.getItem('access_token');
