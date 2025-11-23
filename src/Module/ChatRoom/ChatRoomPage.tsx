@@ -73,8 +73,9 @@ export const ChatRoomPage: React.FC<ExtendedChatRoomPageProps> = ({
     const loadAuth = async () => {
       try {
         const logedInUser = await getCache('AUTH_CACHE', 'USER_KEY')
-        const token = logedInUser.access
-        const storedUserId = logedInUser.user.id
+        console.log("see user Data: ", logedInUser)
+        const token = logedInUser[0].access
+        const storedUserId = logedInUser[0].user.id
 
         if (token) setAuthToken(token);
         if (storedUserId) setCurrentUserId(storedUserId);
@@ -229,7 +230,7 @@ export const ChatRoomPage: React.FC<ExtendedChatRoomPageProps> = ({
   const ensureConversationId = useCallback(
     async (): Promise<string | null> => {
       // Already have a conversation → done
-      if (conversationId) return conversationId;
+      // if (conversationId) return conversationId;
       if (!chat) return null;
 
       // For non-direct chats, just assume chat.id is a backend conversation
@@ -249,7 +250,7 @@ export const ChatRoomPage: React.FC<ExtendedChatRoomPageProps> = ({
 
       console.log("checking for user id now: ", chat)
 
-      const peerUserId = (chat as any).id;
+      const peerUserId = (chat as any).participants;
       if (!peerUserId) {
         Alert.alert(
           'Cannot start chat',
@@ -261,7 +262,7 @@ export const ChatRoomPage: React.FC<ExtendedChatRoomPageProps> = ({
       try {
         const res = await postRequest(
           ROUTES.chat.directConversation,
-          { peer_user_id: peerUserId },
+          { participants: peerUserId },
           {
             errorMessage: 'Could not start this conversation.',
           },

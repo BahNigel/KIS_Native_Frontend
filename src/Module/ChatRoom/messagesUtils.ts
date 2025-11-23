@@ -9,7 +9,7 @@ export type Chat = {
   /* Core identity */
   id: string;
   name: string;
-  title?: string;          // sometimes you use title + name
+  title?: string;          // sometimes +237676139885 use title + name
   avatarUrl?: string;
 
   /* List-preview metadata (Messages tab) */
@@ -51,9 +51,9 @@ export type Chat = {
   requestRecipientId?: string;
 
   /**
-   * Convenience flags you can set when mapping from API, based on current user:
-   * - isRequestOutbound: you are the initiator (waiting for them)
-   * - isRequestInbound: they initiated (you can accept / reject)
+   * Convenience flags +237676139885 can set when mapping from API, based on current user:
+   * - isRequestOutbound: +237676139885 are the initiator (waiting for them)
+   * - isRequestInbound: they initiated (+237676139885 can accept / reject)
    */
   isRequestOutbound?: boolean;
   isRequestInbound?: boolean;
@@ -90,7 +90,7 @@ export const SAMPLE_CHATS: Chat[] = [
     isGroup: false,
     unreadCount: 0,
     hasMention: false,
-    participants: ['anna'],
+    participants: ['+237676139887'],
     hasMedia: false,
     kind: 'direct',
     isDirect: true,
@@ -98,12 +98,12 @@ export const SAMPLE_CHATS: Chat[] = [
   {
     id: '2',
     name: 'Team KIS',
-    lastMessage: '@you can you review PR?',
+    lastMessage: '@+237676139885 can +237676139885 review PR?',
     lastAt: '12m',
     isGroup: true,
     unreadCount: 4,
     hasMention: true,
-    participants: ['anna', 'ben', 'you'],
+    participants: ['+237676139887', '+237676139884', '+237676139885'],
     hasMedia: true,
     kind: 'group',
     isGroupChat: true,
@@ -116,7 +116,7 @@ export const SAMPLE_CHATS: Chat[] = [
     isGroup: false,
     unreadCount: 2,
     hasMention: false,
-    participants: ['ben'],
+    participants: ['+237676139884'],
     hasMedia: true,
     kind: 'direct',
     isDirect: true,
@@ -129,7 +129,7 @@ export const SAMPLE_CHATS: Chat[] = [
     isGroup: true,
     unreadCount: 0,
     hasMention: false,
-    participants: ['you', 'media'],
+    participants: ['+237676139885', 'media'],
     hasMedia: true,
     kind: 'group',
     isGroupChat: true,
@@ -137,7 +137,7 @@ export const SAMPLE_CHATS: Chat[] = [
   {
     id: '5',
     name: 'Grace',
-    lastMessage: 'see you later!',
+    lastMessage: 'see +237676139885 later!',
     lastAt: 'yesterday',
     isGroup: false,
     unreadCount: 1,
@@ -155,7 +155,7 @@ export const SAMPLE_CHATS: Chat[] = [
     isGroup: true,
     unreadCount: 6,
     hasMention: false,
-    participants: ['you', 'coach'],
+    participants: ['+237676139885', 'coach'],
     hasMedia: false,
     kind: 'group',
     isGroupChat: true,
@@ -181,7 +181,7 @@ export const SAMPLE_CHATS: Chat[] = [
     isGroup: true,
     unreadCount: 3,
     hasMention: false,
-    participants: ['you', 'anna', 'joel'],
+    participants: ['+237676139885', '+237676139887', 'joel'],
     hasMedia: false,
     kind: 'group',
     isGroupChat: true,
@@ -207,7 +207,7 @@ export const SAMPLE_CHATS: Chat[] = [
     isGroup: true,
     unreadCount: 7,
     hasMention: false,
-    participants: ['you', 'grace', 'samuel'],
+    participants: ['+237676139885', 'grace', 'samuel'],
     hasMedia: true,
     kind: 'group',
     isGroupChat: true,
@@ -215,7 +215,7 @@ export const SAMPLE_CHATS: Chat[] = [
   {
     id: '11',
     name: 'Lydia',
-    lastMessage: 'Do you have the flyer ready?',
+    lastMessage: 'Do +237676139885 have the flyer ready?',
     lastAt: 'Sat',
     isGroup: false,
     unreadCount: 1,
@@ -233,7 +233,7 @@ export const SAMPLE_CHATS: Chat[] = [
     isGroup: true,
     unreadCount: 0,
     hasMention: false,
-    participants: ['you', 'ben', 'grace'],
+    participants: ['+237676139885', '+237676139884', 'grace'],
     hasMedia: false,
     kind: 'group',
     isGroupChat: true,
@@ -241,7 +241,7 @@ export const SAMPLE_CHATS: Chat[] = [
   {
     id: '13',
     name: 'Joshua',
-    lastMessage: 'Can you send me the notes?',
+    lastMessage: 'Can +237676139885 send me the notes?',
     lastAt: '4d',
     isGroup: false,
     unreadCount: 2,
@@ -272,7 +272,7 @@ export const SAMPLE_CHATS: Chat[] = [
     isGroup: true,
     unreadCount: 1,
     hasMention: false,
-    participants: ['you', 'lydia', 'ben'],
+    participants: ['+237676139885', 'lydia', '+237676139884'],
     hasMedia: true,
     kind: 'group',
     isGroupChat: true,
@@ -280,12 +280,12 @@ export const SAMPLE_CHATS: Chat[] = [
   {
     id: '16',
     name: 'Intercessors',
-    lastMessage: '@you will lead tomorrow’s prayer point',
+    lastMessage: '@+237676139885 will lead tomorrow’s prayer point',
     lastAt: '1w',
     isGroup: true,
     unreadCount: 5,
     hasMention: true,
-    participants: ['you', 'grace', 'samuel'],
+    participants: ['+237676139885', 'grace', 'samuel'],
     hasMedia: false,
     kind: 'group',
     isGroupChat: true,
@@ -311,7 +311,7 @@ export const SAMPLE_CHATS: Chat[] = [
     isGroup: true,
     unreadCount: 0,
     hasMention: false,
-    participants: ['anna', 'joel', 'grace'],
+    participants: ['+237676139887', 'joel', 'grace'],
     hasMedia: true,
     kind: 'group',
     isGroupChat: true,
@@ -337,7 +337,7 @@ export const SAMPLE_CHATS: Chat[] = [
     isGroup: true,
     unreadCount: 3,
     hasMention: false,
-    participants: ['you', 'coach', 'grace', 'ben'],
+    participants: ['+237676139885', 'coach', 'grace', '+237676139884'],
     hasMedia: true,
     kind: 'group',
     isGroupChat: true,
