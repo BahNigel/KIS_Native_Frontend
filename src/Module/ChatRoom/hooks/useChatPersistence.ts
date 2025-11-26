@@ -4,12 +4,18 @@ import { useCallback, useEffect, useState } from 'react';
 import { ChatMessage } from '../chatTypes';
 import { loadMessages, saveMessages } from '../Storage/chatStorage';
 
+// NOTE: message is a full ChatMessage that SHOULD contain:
+// - conversationId (string)
+// - senderId (string)
+// - replyToId? (string | null)
+// - attachments? (any[])
+// plus any content fields (text, styledText, voice, sticker, etc.)
 export type SendOverNetworkFn = (message: ChatMessage) => Promise<boolean>;
 
 type UseChatPersistenceOptions = {
-  roomId: string;
+  roomId: string;            // storage key (per chat / conversation)
   currentUserId: string;
-  sendOverNetwork?: SendOverNetworkFn; // optional, safe stub
+  sendOverNetwork?: SendOverNetworkFn; // wired from ChatRoomPage
 };
 
 export type UseChatPersistenceResult = {
@@ -41,22 +47,42 @@ export function useChatPersistence(
   options: UseChatPersistenceOptions,
 ): UseChatPersistenceResult {
   const { roomId, currentUserId, sendOverNetwork } = options;
+
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  // 1) Initial load from device
+  /* ------------------------------------------------------------------------ */
+  /*  INITIAL LOAD PER ROOM                                                   */
+  /* ------------------------------------------------------------------------ */
+
   useEffect(() => {
     let mounted = true;
 
-    (async () => {
-      setIsLoading(true);
-      const loaded = await loadMessages(roomId);
+    console.log('[useChatPersistence] mount / roomId changed:', roomId);
 
-      if (!mounted) return;
-      // Sort by createdAt if needed
-      loaded.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
-      setMessages(loaded);
-      setIsLoading(false);
+    // 🔁 IMPORTANT: clear messages immediately when roomId changes
+    setIsLoading(true);
+    setMessages([]);
+
+    (async () => {
+      try {
+        const loaded = await loadMessages(roomId);
+        if (!mounted) return;
+
+        loaded.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+        setMessages(loaded);
+      } catch (e) {
+        console.warn(
+          '[useChatPersistence] loadMessages error for roomId:',
+          roomId,
+          e,
+        );
+        setMessages([]);
+      } finally {
+        if (mounted) {
+          setIsLoading(false);
+        }
+      }
     })();
 
     return () => {
@@ -72,11 +98,12 @@ export function useChatPersistence(
     [roomId],
   );
 
-  // 2) Sending helpers
+  /* ------------------------------------------------------------------------ */
+  /*  SENDING HELPER (TEXT + RICH)                                            */
+  /* ------------------------------------------------------------------------ */
 
   const sendRichMessage = useCallback(
     async (payload: Partial<ChatMessage>) => {
-      // Guard: make sure we actually have something to send
       const hasText =
         typeof payload.text === 'string' &&
         payload.text.trim().length > 0;
@@ -90,24 +117,22 @@ export function useChatPersistence(
       }
 
       const now = new Date().toISOString();
+
       const draft: ChatMessage = {
-        // Required core fields
         id: createLocalId(),
         roomId,
         senderId: currentUserId,
         createdAt: now,
         fromMe: true,
         status: 'pending', // offline-first
-
-        // Optional business fields coming from composer
-        ...payload,
+        ...payload,        // includes conversationId, replyToId, attachments, etc.
       };
 
       const local = [...messages, draft];
       await persist(local);
 
       if (!sendOverNetwork) {
-        // No backend yet – stay pending but safely stored.
+        // Backend not wired: keep as pending for now.
         return;
       }
 
@@ -117,11 +142,10 @@ export function useChatPersistence(
       });
 
       if (!sentOk) {
-        // Stay pending for later retry
+        // Stay pending; will retry in attemptFlushQueue.
         return;
       }
 
-      // Mark as sent
       const updated = local.map((m) =>
         m.id === draft.id
           ? { ...m, status: 'sent' as ChatMessage['status'], isLocalOnly: false }
@@ -141,11 +165,19 @@ export function useChatPersistence(
         kind: (extra?.kind as ChatMessage['kind']) ?? 'text',
         ...extra,
       });
+
+      console.log(
+        '[useChatPersistence] sendTextMessage payload:',
+        text.trim(),
+        extra,
+      );
     },
     [sendRichMessage],
   );
 
-  // 3) Edit / delete / reply
+  /* ------------------------------------------------------------------------ */
+  /*  EDIT / DELETE / REPLY                                                   */
+  /* ------------------------------------------------------------------------ */
 
   const editMessage = useCallback(
     async (messageId: string, patch: Partial<ChatMessage>) => {
@@ -156,7 +188,6 @@ export function useChatPersistence(
               ...patch,
               isEdited: true,
               updatedAt: new Date().toISOString(),
-              // Editing marks it pending again to sync with backend when ready
               status: 'pending' as ChatMessage['status'],
             }
           : m,
@@ -174,7 +205,6 @@ export function useChatPersistence(
               ...m,
               isDeleted: true,
               text: '',
-              // Clear rich content (sticker / styled / voice) so UI shows placeholder
               styledText: undefined,
               voice: undefined,
               sticker: undefined,
@@ -201,12 +231,12 @@ export function useChatPersistence(
     [sendTextMessage],
   );
 
-  // 4) Flush queue when WS is connected (now or in the future)
+  /* ------------------------------------------------------------------------ */
+  /*  RETRY PENDING MESSAGES                                                  */
+  /* ------------------------------------------------------------------------ */
+
   const attemptFlushQueue = useCallback(async () => {
-    if (!sendOverNetwork) {
-      // Backend not wired yet → do nothing but don't crash
-      return;
-    }
+    if (!sendOverNetwork) return;
 
     const current = [...messages];
     const pending = current.filter(
@@ -242,6 +272,10 @@ export function useChatPersistence(
 
     await persist(next);
   }, [messages, persist, sendOverNetwork]);
+
+  /* ------------------------------------------------------------------------ */
+  /*  REPLACE MESSAGES (REMOTE SYNC, ETC.)                                    */
+  /* ------------------------------------------------------------------------ */
 
   const replaceMessages = useCallback(
     async (next: ChatMessage[]) => {

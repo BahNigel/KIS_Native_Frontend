@@ -24,10 +24,8 @@ export const getRequest = async (
     const token = await AsyncStorage.getItem('access_token');
     const baseHeaders: HeadersInit = {};
     if (token) baseHeaders.Authorization = `Bearer ${token}`;
-    console.log("tokening ", token)
 
     const headers = { ...baseHeaders, ...(options.headers ?? {}) };
-    console.log("header  header",headers)
 
     const response = await apiService.get(url, headers);
     const responseData = await response.json().catch(() => ({}));

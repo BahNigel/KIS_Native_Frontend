@@ -275,8 +275,22 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
     }
   };
 
+  /* ----------------------------- SEND GUARD (DEDUP) ----------------------- */
+
+  // Prevent double-send (e.g. double tap or event firing twice very fast)
+  const lastSendRef = useRef<number | null>(null);
+
   const handleTextSend = () => {
     if (!canSend || disabled) return;
+
+    const now = Date.now();
+    if (lastSendRef.current && now - lastSendRef.current < 400) {
+      // Duplicate send within 400 ms → ignore
+      console.log('[MessageComposer] Ignored duplicate send (too fast)');
+      return;
+    }
+    lastSendRef.current = now;
+
     onSend();
   };
 
@@ -606,20 +620,24 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
         {showTextSend ? (
           <Pressable
             onPress={handleTextSend}
+            disabled={!canSend || !!disabled}
             style={[
               styles.composerActionButton,
               {
-                backgroundColor: palette.primary,
+                backgroundColor: (!canSend || disabled)
+                  ? palette.subtext
+                  : palette.primary,
                 marginRight: 12,
                 height: 50,
                 width: 50,
+                opacity: (!canSend || disabled) ? 0.6 : 1,
               },
             ]}
           >
             <KISIcon name="send" size={18} color={palette.onPrimary} />
           </Pressable>
         ) : (
-         <HoldToLockComposer
+          <HoldToLockComposer
             palette={palette}
             onSendVoice={onSendVoice}
             setIsRecording={setIsRecording}

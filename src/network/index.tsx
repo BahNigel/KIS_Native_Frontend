@@ -94,6 +94,7 @@ const ROUTES = {
   chat: {
     // Django DRF ConversationViewSet @action(detail=False, url_path='direct')
     directConversation: `${API_BASE_URL}/api/v1/conversations/`,
+    listConversations: `${API_BASE_URL}/api/v1/conversations/`,
   },
   community: {
     followCommunity: `${API_BASE_URL}/community_action/`,

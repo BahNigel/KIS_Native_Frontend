@@ -1,11 +1,5 @@
 // src/screens/chat/ChatRoomPage.tsx
-import React, {
-  useMemo,
-  useState,
-  useCallback,
-  useEffect,
-  useRef,
-} from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
   View,
   KeyboardAvoidingView,
@@ -13,46 +7,42 @@ import {
   Alert,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import Clipboard from '@react-native-clipboard/clipboard';
 
 import { useKISTheme } from '../../theme/useTheme';
 import { chatRoomStyles as styles } from './chatRoomStyles';
+
 import { ChatHeader } from './componets/main/ChatHeader';
+import { MessageList } from './componets/main/MessageList';
+import { MessageComposer } from './componets/main/MessageComposer';
 import {
   TextCardComposer,
   TextCardPayload,
 } from './componets/main/TextCardComposer';
 import { StickerEditor, Sticker } from './componets/main/StickerEditor';
-import {
-  useChatPersistence,
-  type SendOverNetworkFn,
-} from './hooks/useChatPersistence';
+import { ForwardChatSheet } from './componets/main/ForwardChatSheet';
+import { PinnedMessagesSheet } from './componets/main/PinnedMessagesSheet';
+import { SubRoomsSheet } from './componets/main/SubRoomsSheet';
 
-import { buildInitialMessages } from './componets/chatInitialMessages';
+import { useChatAuth } from './hooks/useChatAuth';
+import { useConversationBootstrap } from './hooks/useConversationBootstrap';
+import { useDraftState } from './hooks/useDraftState';
+import { useChatMessaging } from './hooks/useChatMessaging';
+import { useSelectionState } from './hooks/useSelectionState';
+import { useBulkMessageActions } from './hooks/useBulkMessageActions';
+
 import type {
   ChatMessage,
   ChatRoomPageProps,
   SubRoom,
 } from './chatTypes';
-import { useChatSocket } from './componets/useChatSocket';
 
-// 🔗 our network helpers
-import ROUTES from '@/network';
-import { postRequest } from '@/network/post';
-import { MessageList } from './componets/main/MessageList';
-import { MessageComposer } from './componets/main/MessageComposer';
-import { ForwardChatSheet } from './componets/main/ForwardChatSheet';
-import { PinnedMessagesSheet } from './componets/main/PinnedMessagesSheet';
-import { SubRoomsSheet } from './componets/main/SubRoomsSheet';
-import { getCache } from '@/network/cache';
-
-const clamp = (value: number, min: number, max: number) =>
-  Math.min(max, Math.max(min, value));
-
-// ✅ Extend props to add hideHeader (optional)
 type ExtendedChatRoomPageProps = ChatRoomPageProps & {
   hideHeader?: boolean;
+};
+
+type MessageLocator = {
+  scrollToMessage: (messageId: string) => void;
+  highlightMessage: (messageId: string) => void;
 };
 
 export const ChatRoomPage: React.FC<ExtendedChatRoomPageProps> = ({
@@ -60,58 +50,33 @@ export const ChatRoomPage: React.FC<ExtendedChatRoomPageProps> = ({
   onBack,
   allChats = [],
   onForwardMessages,
-  hideHeader, // <- new prop
+  hideHeader,
 }) => {
   const { palette } = useKISTheme();
   const insets = useSafeAreaInsets();
 
-  // 🔐 Auth state from local storage
-  const [authToken, setAuthToken] = useState<string | null>(null);
-  const [currentUserId, setCurrentUserId] = useState<string>('local-user');
+  React.useEffect(() => {
+    console.log('[ChatRoomPage] chat prop:', chat);
+  }, [chat]);
 
-  useEffect(() => {
-    const loadAuth = async () => {
-      try {
-        const logedInUser = await getCache('AUTH_CACHE', 'USER_KEY')
-        console.log("see user Data: ", logedInUser)
-        const token = logedInUser[0].access
-        const storedUserId = logedInUser[0].user.id
+  const { authToken, currentUserId, currentUserName } = useChatAuth(chat);
 
-        if (token) setAuthToken(token);
-        if (storedUserId) setCurrentUserId(storedUserId);
-      } catch (e) {
-        console.warn('[ChatRoomPage] Failed to load auth from storage', e);
-      }
-    };
+  const {
+    isDirectChat,
+    conversationId,
+    storageRoomId,
+    ensureConversationId,
+  } = useConversationBootstrap(chat, authToken);
 
-    loadAuth();
-  }, []);
+  const {
+    draft,
+    setDraft,
+    draftKey,
+    draftsByKey,
+    setDraftsByKey,
+    handleChangeDraft,
+  } = useDraftState(conversationId, chat?.id);
 
-  // 👀 Is this a direct 1:1 chat?
-  const isDirectChat = !!chat && (
-    chat.kind === 'direct' ||
-    (chat as any).isContactChat ||
-    (!chat.isGroup && !(chat as any).isGroupChat && !(chat as any).isCommunityChat)
-  );
-
-  // 🧠 Conversation ID (real backend conversation UUID)
-  const [conversationId, setConversationId] = useState<string | null>(() => {
-    if (!chat) return null;
-
-    // If backend already provided conversationId, trust it
-    if ((chat as any).conversationId) return (chat as any).conversationId as string;
-
-    // For groups/communities/channels we assume chat.id is already a backend conversation id
-    if (!isDirectChat) return chat.id;
-
-    // For direct/contact chats we want to defer creation to first send
-    return null;
-  });
-
-  // Room id used by persistence + socket; falls back to local id until real id exists
-  const roomId = conversationId ?? chat?.id ?? 'local-room';
-
-  const [draft, setDraft] = useState('');
   const [openStickerEditor, setOpenStickerEditor] = useState(false);
   const [textCardBg, setTextCardBg] = useState<string | null>(null);
   const [stickerLibraryVersion, setStickerLibraryVersion] = useState(0);
@@ -119,20 +84,14 @@ export const ChatRoomPage: React.FC<ExtendedChatRoomPageProps> = ({
   const [replyTo, setReplyTo] = useState<ChatMessage | null>(null);
   const [editing, setEditing] = useState<ChatMessage | null>(null);
 
-  const [selectionMode, setSelectionMode] = useState(false);
-  const [selectedIds, setSelectedIds] = useState<string[]>([]);
-
   const [forwardSheetVisible, setForwardSheetVisible] = useState(false);
-
   const [pinnedSheetVisible, setPinnedSheetVisible] = useState(false);
   const [subRoomsSheetVisible, setSubRoomsSheetVisible] = useState(false);
 
   const [subRooms] = useState<SubRoom[]>([]);
-
-  const [messageLocator, setMessageLocator] = useState<{
-    scrollToMessage: (messageId: string) => void;
-    highlightMessage: (messageId: string) => void;
-  } | null>(null);
+  const [messageLocator, setMessageLocator] = useState<MessageLocator | null>(
+    null,
+  );
 
   const {
     messages,
@@ -142,306 +101,131 @@ export const ChatRoomPage: React.FC<ExtendedChatRoomPageProps> = ({
     editMessage,
     softDeleteMessage,
     replyToMessage,
-    attemptFlushQueue,
-    replaceMessages,
-  } = useChatPersistence({
-    roomId,
-    currentUserId,
-    // NOTE: still a no-op; your hook can later use the real sendOverNetwork below
-    // sendOverNetwork: async () => false,
-  });
-
-  const messagesRef = useRef<ChatMessage[]>(messages);
-  useEffect(() => {
-    messagesRef.current = messages;
-  }, [messages]);
-
-  const { isConnected, socketRef } = useChatSocket({
+  } = useChatMessaging({
+    chat,
     authToken,
-    roomId,
+    storageRoomId,
     currentUserId,
-    replaceMessages,
-    messagesRef,
+    currentUserName,
+    conversationId,
   });
 
-  // 🔌 Socket-level sender (used later by useChatPersistence if you wire it)
-  const sendOverNetwork = useCallback<SendOverNetworkFn>(
-    async (message) => {
-      const socket = socketRef.current;
-      if (!socket || !isConnected || !chat) {
-        return false;
-      }
+  const {
+    selectionMode,
+    selectedIds,
+    enterSelectionMode,
+    toggleSelectMessage,
+    exitSelectionMode,
+    selectedMessages,
+    isSingleSelection,
+    pinnedMessages,
+    pinnedCount,
+    subRoomCount,
+  } = useSelectionState(messages, subRooms);
 
-      const ciphertext =
-        message.text ??
-        message.styledText?.text ??
-        '';
+  const {
+    handlePinSelected,
+    handleDeleteSelected,
+    handleCopySelected,
+    handleMoreSelected,
+    handleContinueInSubRoom,
+  } = useBulkMessageActions({
+    selectedIds,
+    selectedMessages,
+    messages,
+    editMessage,
+    softDeleteMessage,
+    exitSelectionMode,
+    isSingleSelection,
+  });
 
-      return new Promise<boolean>((resolve) => {
-        socket
-          .timeout(5000)
-          .emit(
-            'chat.send',
-            {
-              conversationId: roomId,
-              clientId: message.id,
-              senderName: undefined,
-              ciphertext,
-              attachments: [],
-              replyToId: message.replyToId,
-            },
-            (err: unknown, ack: any) => {
-              if (err) {
-                console.warn('chat.send timeout/error', err);
-                resolve(false);
-                return;
-              }
-              resolve(!!ack?.ok);
-            },
-          );
-      });
-    },
-    [chat, isConnected, roomId, socketRef],
-  );
-
-  useEffect(() => {
-    // If your hook later allows updating sendOverNetwork, do it here
-  }, [sendOverNetwork]);
-
-  useEffect(() => {
-    if (!chat) return;
-    if (isLoading) return;
-    if (messages.length > 0) return;
-
-    const seeded = buildInitialMessages(chat, roomId, currentUserId);
-    if (!seeded.length) return;
-
-    replaceMessages(seeded);
-  }, [chat, isLoading, messages.length, roomId, currentUserId, replaceMessages]);
-
-  const handleNetworkBackOnline = useCallback(() => {
-    attemptFlushQueue();
-  }, [attemptFlushQueue]);
-
-  /* ------------------------------------------------------------------------ */
-  /*  ENSURE CONVERSATION EXISTS (CALL DJANGO ON FIRST SEND FOR DIRECT DM)    */
-  /* ------------------------------------------------------------------------ */
-
-  const ensureConversationId = useCallback(
-    async (): Promise<string | null> => {
-      // Already have a conversation → done
-      // if (conversationId) return conversationId;
-      if (!chat) return null;
-
-      // For non-direct chats, just assume chat.id is a backend conversation
-      if (!isDirectChat) {
-        const id = chat.id;
-        setConversationId(id);
-        return id;
-      }
-
-      if (!authToken) {
-        Alert.alert(
-          'Not signed in',
-          'Please sign in again before sending messages.',
-        );
-        return null;
-      }
-
-      console.log("checking for user id now: ", chat)
-
-      const peerUserId = (chat as any).participants;
-      if (!peerUserId) {
-        Alert.alert(
-          'Cannot start chat',
-          'Missing peer user id for this direct chat. Make sure you pass peerUserId into ChatRoomPage.',
-        );
-        return null;
-      }
-
-      try {
-        const res = await postRequest(
-          ROUTES.chat.directConversation,
-          { participants: peerUserId },
-          {
-            errorMessage: 'Could not start this conversation.',
-          },
-        );
-
-        if (!res.success || !res.data || !res.data.id) {
-          console.warn(
-            '[ChatRoomPage] direct conversation create/fetch failed',
-            res,
-          );
-          Alert.alert('Error', res.message || 'Could not start this conversation.');
-          return null;
-        }
-
-        const newId = String(res.data.id);
-        setConversationId(newId);
-        return newId;
-      } catch (e) {
-        console.warn('[ChatRoomPage] ensureConversationId error', e);
-        Alert.alert(
-          'Network error',
-          'Could not start this conversation. Please check your connection.',
-        );
-        return null;
-      }
-    },
-    [conversationId, chat, isDirectChat, authToken],
-  );
-
-  /* ------------------------------------------------------------------------ */
-  /*  SELECTION / MESSAGE ACTIONS                                             */
-  /* ------------------------------------------------------------------------ */
-
-  const enterSelectionMode = useCallback((message: ChatMessage) => {
-    setSelectionMode(true);
-    setSelectedIds([message.id]);
-  }, []);
-
-  const toggleSelectMessage = useCallback(
-    (message: ChatMessage) => {
-      setSelectedIds((prev) => {
-        const exists = prev.includes(message.id);
-        const next = exists
-          ? prev.filter((id) => id !== message.id)
-          : [...prev, message.id];
-
-        if (next.length === 0) {
-          setSelectionMode(false);
-        }
-
-        return next;
-      });
-    },
-    [],
-  );
-
-  const exitSelectionMode = useCallback(() => {
-    setSelectionMode(false);
-    setSelectedIds([]);
-  }, []);
-
-  const selectedMessages = useMemo(
-    () => messages.filter((m) => selectedIds.includes(m.id)),
-    [messages, selectedIds],
-  );
-
-  const isSingleSelection = selectedIds.length === 1;
-
-  const pinnedMessages = useMemo(
-    () => messages.filter((m) => m.isPinned && !m.isDeleted),
-    [messages],
-  );
-  const pinnedCount = pinnedMessages.length;
-
-  const subRoomCount = subRooms.length;
-
-  /* ------------------------------------------------------------------------ */
-  /*  SEND HANDLERS (ENSURE CONV FIRST FOR DIRECT)                            */
-  /* ------------------------------------------------------------------------ */
+  const isEmpty = !chat;
+  const canSend = useMemo(() => draft.trim().length > 0, [draft]);
+  const bgColor = palette.chatBg ?? palette.bg;
 
   const handleSend = useCallback(async () => {
     const text = draft.trim();
     if (!text || !chat) return;
 
-    // Ensure we have a real conversation ID (for DMs this creates/fetches on Django)
-    let convId = conversationId;
-    if (!convId) {
-      const ensured = await ensureConversationId();
-      if (!ensured) return;
-      convId = ensured;
-    }
+    const convId = await ensureConversationId(text);
+    if (!convId) return;
 
     if (editing) {
       await editMessage(editing.id, {
         text,
         isEdited: true,
         status: 'pending',
-      });
+        conversationId: convId,
+      } as any);
       setEditing(null);
-      setDraft('');
-      return;
-    }
-
-    if (replyTo) {
+    } else if (replyTo) {
       await replyToMessage(replyTo, text, {
         kind: 'text',
         fromMe: true,
-        roomId: convId,
         senderId: currentUserId,
-      });
+        conversationId: convId,
+      } as any);
       setReplyTo(null);
-      setDraft('');
-      return;
+    } else {
+      await sendTextMessage(text, {
+        kind: 'text',
+        fromMe: true,
+        senderId: currentUserId,
+        conversationId: convId,
+      } as any);
     }
 
-    await sendTextMessage(text, {
-      kind: 'text',
-      fromMe: true,
-      roomId: convId,
-      senderId: currentUserId,
-    });
     setDraft('');
+    setDraftsByKey((prev) => ({
+      ...prev,
+      [draftKey]: '',
+    }));
   }, [
-    draft,
     chat,
-    editing,
-    replyTo,
+    draft,
+    draftKey,
     editMessage,
+    editing,
+    ensureConversationId,
+    replyTo,
     replyToMessage,
     sendTextMessage,
     currentUserId,
-    conversationId,
-    ensureConversationId,
+    setDraft,
+    setDraftsByKey,
+    setEditing,
+    setReplyTo,
   ]);
 
   const handleSendVoice = useCallback(
     async ({ uri, durationMs }: { uri: string; durationMs: number }) => {
       if (!chat) return;
-
-      let convId = conversationId;
-      if (!convId) {
-        const ensured = await ensureConversationId();
-        if (!ensured) return;
-        convId = ensured;
-      }
+      const convId = await ensureConversationId('Voice message');
+      if (!convId) return;
 
       await sendRichMessage({
         kind: 'voice',
-        roomId: convId,
-        senderId: currentUserId,
         fromMe: true,
+        senderId: currentUserId,
         voice: { uri, durationMs },
-      });
+        conversationId: convId,
+      } as any);
     },
-    [
-      chat,
-      conversationId,
-      ensureConversationId,
-      currentUserId,
-      sendRichMessage,
-    ],
+    [chat, ensureConversationId, currentUserId, sendRichMessage],
   );
 
   const handleSendStyledText = useCallback(
     async (payload: TextCardPayload) => {
       if (!chat) return;
 
-      let convId = conversationId;
-      if (!convId) {
-        const ensured = await ensureConversationId();
-        if (!ensured) return;
-        convId = ensured;
-      }
+      const preview = payload.text ?? 'Styled message';
+      const convId = await ensureConversationId(preview);
+      if (!convId) return;
 
       await sendRichMessage({
         kind: 'styled_text',
-        roomId: convId,
-        senderId: currentUserId,
         fromMe: true,
+        senderId: currentUserId,
         text: payload.text,
         styledText: {
           text: payload.text,
@@ -450,54 +234,35 @@ export const ChatRoomPage: React.FC<ExtendedChatRoomPageProps> = ({
           fontColor: payload.fontColor,
           fontFamily: payload.fontFamily,
         },
-      });
+        conversationId: convId,
+      } as any);
 
       setTextCardBg(null);
     },
-    [
-      chat,
-      conversationId,
-      ensureConversationId,
-      currentUserId,
-      sendRichMessage,
-    ],
+    [chat, currentUserId, ensureConversationId, sendRichMessage],
   );
 
   const handleSendSticker = useCallback(
     async (sticker: Sticker) => {
       if (!chat) return;
 
-      let convId = conversationId;
-      if (!convId) {
-        const ensured = await ensureConversationId();
-        if (!ensured) return;
-        convId = ensured;
-      }
+      const convId = await ensureConversationId('Sticker');
+      if (!convId) return;
 
       await sendRichMessage({
         kind: 'sticker',
-        roomId: convId,
-        senderId: currentUserId,
         fromMe: true,
+        senderId: currentUserId,
         sticker: {
           id: sticker.id,
           uri: sticker.uri,
           text: sticker.text,
         },
-      });
+        conversationId: convId,
+      } as any);
     },
-    [
-      chat,
-      conversationId,
-      ensureConversationId,
-      currentUserId,
-      sendRichMessage,
-    ],
+    [chat, currentUserId, ensureConversationId, sendRichMessage],
   );
-
-  /* ------------------------------------------------------------------------ */
-  /*  REPLY / EDIT / PRESS HANDLERS                                           */
-  /* ------------------------------------------------------------------------ */
 
   const handleReplyRequest = useCallback(
     (message: ChatMessage) => {
@@ -513,24 +278,23 @@ export const ChatRoomPage: React.FC<ExtendedChatRoomPageProps> = ({
   const handleEditRequest = useCallback(
     (message: ChatMessage) => {
       if (!message.fromMe) {
-        Alert.alert(
-          'Cannot edit',
-          'You can only edit your own messages.',
-        );
+        Alert.alert('Cannot edit', 'You can only edit your own messages.');
         return;
       }
       setEditing(message);
       setDraft(message.text ?? '');
+      setDraftsByKey((prev) => ({
+        ...prev,
+        [draftKey]: message.text ?? '',
+      }));
     },
-    [],
+    [draftKey, setDraft, setDraftsByKey],
   );
 
   const handlePressMessage = useCallback(
     (message: ChatMessage) => {
       if (selectionMode) {
         toggleSelectMessage(message);
-      } else {
-        // tap in normal mode – no-op or open info
       }
     },
     [selectionMode, toggleSelectMessage],
@@ -545,108 +309,10 @@ export const ChatRoomPage: React.FC<ExtendedChatRoomPageProps> = ({
     [selectionMode, enterSelectionMode],
   );
 
-  /* ------------------------------------------------------------------------ */
-  /*  BULK ACTIONS (PIN / DELETE / COPY / FORWARD / MORE)                     */
-  /* ------------------------------------------------------------------------ */
-
-  const handlePinSelected = useCallback(async () => {
-    if (!selectedIds.length) return;
-
-    for (const id of selectedIds) {
-      await editMessage(id, { isPinned: true });
-    }
-    exitSelectionMode();
-  }, [selectedIds, editMessage, exitSelectionMode]);
-
-  const handleDeleteSelected = useCallback(async () => {
-    if (!selectedIds.length) return;
-
-    const confirm = await new Promise<boolean>((resolve) => {
-      Alert.alert(
-        'Delete messages',
-        `Delete ${selectedIds.length} message(s)?`,
-        [
-          { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
-          {
-            text: 'Delete',
-            style: 'destructive',
-            onPress: () => resolve(true),
-          },
-        ],
-      );
-    });
-
-    if (!confirm) return;
-
-    for (const id of selectedIds) {
-      await softDeleteMessage(id);
-    }
-    exitSelectionMode();
-  }, [selectedIds, softDeleteMessage, exitSelectionMode]);
-
-  const handleCopySelected = useCallback(() => {
-    if (!selectedMessages.length) return;
-
-    const sorted = [...selectedMessages].sort((a, b) =>
-      a.createdAt.localeCompare(b.createdAt),
-    );
-
-    const text = sorted
-      .map((m) => m.text || m.styledText?.text || '')
-      .filter((s) => s.trim().length > 0)
-      .join('\n');
-
-    if (!text.trim()) return;
-
-    Clipboard.setString(text);
-    exitSelectionMode();
-  }, [selectedMessages, exitSelectionMode]);
-
   const handleForwardSelected = useCallback(() => {
     if (!selectedMessages.length) return;
     setForwardSheetVisible(true);
   }, [selectedMessages]);
-
-  const handleContinueInSubRoom = useCallback(() => {
-    if (!isSingleSelection) {
-      return;
-    }
-
-    const msgId = selectedIds[0];
-    const message = messages.find((m) => m.id === msgId);
-    if (!message) return;
-
-    Alert.alert(
-      'Sub-room',
-      'This will create or open a dedicated sub-room for this message once backend + navigation are wired.',
-    );
-  }, [isSingleSelection, selectedIds, messages]);
-
-  const handleMoreSelected = useCallback(() => {
-    if (!selectedMessages.length) return;
-
-    Alert.alert('More', 'Choose an action for selected messages', [
-      {
-        text: 'Copy',
-        onPress: () => handleCopySelected(),
-      },
-      {
-        text: 'Pin',
-        onPress: () => handlePinSelected(),
-      },
-      {
-        text: 'Report',
-        onPress: () => {
-          Alert.alert(
-            'Reported',
-            'Thanks, this message has been reported (local only for now).',
-          );
-          exitSelectionMode();
-        },
-      },
-      { text: 'Cancel', style: 'cancel' },
-    ]);
-  }, [handleCopySelected, handlePinSelected, exitSelectionMode, selectedMessages]);
 
   const handleConfirmForward = useCallback(
     (chatIds: string[]) => {
@@ -655,7 +321,7 @@ export const ChatRoomPage: React.FC<ExtendedChatRoomPageProps> = ({
 
       if (onForwardMessages) {
         onForwardMessages({
-          fromRoomId: roomId,
+          fromRoomId: storageRoomId,
           toChatIds: chatIds,
           messages: selectedMessages,
         });
@@ -665,27 +331,25 @@ export const ChatRoomPage: React.FC<ExtendedChatRoomPageProps> = ({
 
       exitSelectionMode();
     },
-    [onForwardMessages, selectedMessages, roomId, exitSelectionMode],
+    [
+      exitSelectionMode,
+      onForwardMessages,
+      selectedMessages,
+      storageRoomId,
+      setForwardSheetVisible,
+    ],
   );
-
-  const canSend = useMemo(() => draft.trim().length > 0, [draft]);
-  const isEmpty = !chat;
-
-  /* ------------------------------------------------------------------------ */
-  /*  RENDER                                                                  */
-  /* ------------------------------------------------------------------------ */
 
   return (
     <View
       style={[
         styles.root,
         {
-          backgroundColor: palette.chatBg ?? palette.bg,
+          backgroundColor: bgColor,
           paddingTop: insets.top,
         },
       ]}
     >
-      {/* ✅ Make header optional */}
       {!hideHeader && (
         <ChatHeader
           chat={chat}
@@ -711,7 +375,7 @@ export const ChatRoomPage: React.FC<ExtendedChatRoomPageProps> = ({
       <KeyboardAvoidingView
         style={styles.keyboardWrapper}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+        keyboardVerticalOffset={0}
       >
         <MessageList
           messages={messages}
@@ -730,7 +394,7 @@ export const ChatRoomPage: React.FC<ExtendedChatRoomPageProps> = ({
 
         <MessageComposer
           value={draft}
-          onChangeText={setDraft}
+          onChangeText={handleChangeDraft}
           onSend={handleSend}
           canSend={canSend}
           palette={palette}
@@ -779,7 +443,7 @@ export const ChatRoomPage: React.FC<ExtendedChatRoomPageProps> = ({
       <PinnedMessagesSheet
         visible={pinnedSheetVisible}
         onClose={() => setPinnedSheetVisible(false)}
-        roomId={roomId}
+        roomId={storageRoomId}
         pinnedMessages={pinnedMessages}
         palette={palette}
         onJumpToMessage={(messageId: string) => {
@@ -793,7 +457,7 @@ export const ChatRoomPage: React.FC<ExtendedChatRoomPageProps> = ({
       <SubRoomsSheet
         visible={subRoomsSheetVisible}
         onClose={() => setSubRoomsSheetVisible(false)}
-        parentRoomId={roomId}
+        parentRoomId={storageRoomId}
         subRooms={subRooms}
         palette={palette}
       />

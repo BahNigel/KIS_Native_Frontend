@@ -1,4 +1,5 @@
 // src/screens/tabs/messagesUtils.ts
+
 import { KIS_TOKENS } from '@/theme/constants';
 import React from 'react';
 import { StyleSheet, Text } from 'react-native';
@@ -9,20 +10,20 @@ export type Chat = {
   /* Core identity */
   id: string;
   name: string;
-  title?: string;          // sometimes +237676139885 use title + name
+  title?: string;
   avatarUrl?: string;
 
   /* List-preview metadata (Messages tab) */
   lastMessage?: string;
-  lastAt?: string;         // ISO or humanized ("5m", "yesterday", etc.)
+  lastAt?: string;
   unreadCount?: number;
-  hasMention?: boolean;    // e.g. “@you”
+  hasMention?: boolean;
   hasMedia?: boolean;
-  participants?: string[]; // usernames / display names
+  participants?: string[];
 
-  /* Type flags used in different parts of the app */
+  /* Type flags */
   kind?: 'direct' | 'group' | 'community' | 'channel';
-  isGroup?: boolean;       // used by filters (Groups chip)
+  isGroup?: boolean;
   isGroupChat?: boolean;
   isCommunityChat?: boolean;
   isContactChat?: boolean;
@@ -30,334 +31,38 @@ export type Chat = {
 
   groupId?: string | number;
   communityId?: string | number;
-  contactPhone?: string;   // for contact-based chats
+  contactPhone?: string;
 
   /* Backend / conversation metadata */
-  conversationId?: string; // if omitted, id is the conversation id
+  conversationId?: string;
 
-  /* 1:1 request / lock metadata for advanced DM flow */
+  /* DM request / lock metadata */
   requestState?: 'none' | 'pending' | 'accepted' | 'rejected';
-
-  /**
-   * User id (string) of the one who initiated the DM request.
-   * From Django: Conversation.request_initiator (as string).
-   */
   requestInitiatorId?: string;
-
-  /**
-   * User id (string) of the one who receives the DM request.
-   * From Django: Conversation.request_recipient (as string).
-   */
   requestRecipientId?: string;
-
-  /**
-   * Convenience flags +237676139885 can set when mapping from API, based on current user:
-   * - isRequestOutbound: +237676139885 are the initiator (waiting for them)
-   * - isRequestInbound: they initiated (+237676139885 can accept / reject)
-   */
   isRequestOutbound?: boolean;
   isRequestInbound?: boolean;
 };
 
 export type CustomFilterRule = {
-  name: string;              // display name (e.g., “Media only”)
-  includeGroups?: boolean;   // undefined means ignore this rule
+  name: string;
+  includeGroups?: boolean;
   includeDMs?: boolean;
   onlyUnread?: boolean;
   onlyMentions?: boolean;
   withMedia?: boolean;
-  minUnread?: number;        // 0+ (if set)
-  participantIncludes?: string; // substring match on participant
-  nameIncludes?: string;        // substring match on chat name
+  minUnread?: number;
+  participantIncludes?: string;
+  nameIncludes?: string;
 };
 
 export type CustomFilter = {
-  id: string;     // uuid-ish
-  label: string;  // user visible name
+  id: string;
+  label: string;
   rules: CustomFilterRule;
 };
 
 export const CUSTOM_FILTERS_KEY = 'kis_custom_filters:v1';
-
-/* -------------------------- Sample Chat Data (demo) ----------------------- */
-
-export const SAMPLE_CHATS: Chat[] = [
-  {
-    id: '1',
-    name: 'Anna',
-    lastMessage: 'Blessed Sunday to everyone!',
-    lastAt: '5m',
-    isGroup: false,
-    unreadCount: 0,
-    hasMention: false,
-    participants: ['+237676139887'],
-    hasMedia: false,
-    kind: 'direct',
-    isDirect: true,
-  },
-  {
-    id: '2',
-    name: 'Team KIS',
-    lastMessage: '@+237676139885 can +237676139885 review PR?',
-    lastAt: '12m',
-    isGroup: true,
-    unreadCount: 4,
-    hasMention: true,
-    participants: ['+237676139887', '+237676139884', '+237676139885'],
-    hasMedia: true,
-    kind: 'group',
-    isGroupChat: true,
-  },
-  {
-    id: '3',
-    name: 'Ben',
-    lastMessage: 'dropping the slides here',
-    lastAt: '1h',
-    isGroup: false,
-    unreadCount: 2,
-    hasMention: false,
-    participants: ['+237676139884'],
-    hasMedia: true,
-    kind: 'direct',
-    isDirect: true,
-  },
-  {
-    id: '4',
-    name: 'Church Media',
-    lastMessage: 'New clip uploaded',
-    lastAt: '2h',
-    isGroup: true,
-    unreadCount: 0,
-    hasMention: false,
-    participants: ['+237676139885', 'media'],
-    hasMedia: true,
-    kind: 'group',
-    isGroupChat: true,
-  },
-  {
-    id: '5',
-    name: 'Grace',
-    lastMessage: 'see +237676139885 later!',
-    lastAt: 'yesterday',
-    isGroup: false,
-    unreadCount: 1,
-    hasMention: false,
-    participants: ['grace'],
-    hasMedia: false,
-    kind: 'direct',
-    isDirect: true,
-  },
-  {
-    id: '6',
-    name: 'Mentors',
-    lastMessage: 'weekly standup notes',
-    lastAt: 'Mon',
-    isGroup: true,
-    unreadCount: 6,
-    hasMention: false,
-    participants: ['+237676139885', 'coach'],
-    hasMedia: false,
-    kind: 'group',
-    isGroupChat: true,
-  },
-  {
-    id: '7',
-    name: 'Samuel',
-    lastMessage: 'Praying for your meeting 🙏',
-    lastAt: 'Tue',
-    isGroup: false,
-    unreadCount: 0,
-    hasMention: false,
-    participants: ['samuel'],
-    hasMedia: false,
-    kind: 'direct',
-    isDirect: true,
-  },
-  {
-    id: '8',
-    name: 'Worship Team',
-    lastMessage: 'Setlist for next Sunday posted',
-    lastAt: 'Wed',
-    isGroup: true,
-    unreadCount: 3,
-    hasMention: false,
-    participants: ['+237676139885', '+237676139887', 'joel'],
-    hasMedia: false,
-    kind: 'group',
-    isGroupChat: true,
-  },
-  {
-    id: '9',
-    name: 'Joel',
-    lastMessage: 'Great rehearsal tonight!',
-    lastAt: 'Thu',
-    isGroup: false,
-    unreadCount: 0,
-    hasMention: false,
-    participants: ['joel'],
-    hasMedia: false,
-    kind: 'direct',
-    isDirect: true,
-  },
-  {
-    id: '10',
-    name: 'Youth Leaders',
-    lastMessage: 'Planning the next retreat',
-    lastAt: 'Fri',
-    isGroup: true,
-    unreadCount: 7,
-    hasMention: false,
-    participants: ['+237676139885', 'grace', 'samuel'],
-    hasMedia: true,
-    kind: 'group',
-    isGroupChat: true,
-  },
-  {
-    id: '11',
-    name: 'Lydia',
-    lastMessage: 'Do +237676139885 have the flyer ready?',
-    lastAt: 'Sat',
-    isGroup: false,
-    unreadCount: 1,
-    hasMention: false,
-    participants: ['lydia'],
-    hasMedia: false,
-    kind: 'direct',
-    isDirect: true,
-  },
-  {
-    id: '12',
-    name: 'Outreach Team',
-    lastMessage: 'Bus will leave at 8am sharp',
-    lastAt: '3d',
-    isGroup: true,
-    unreadCount: 0,
-    hasMention: false,
-    participants: ['+237676139885', '+237676139884', 'grace'],
-    hasMedia: false,
-    kind: 'group',
-    isGroupChat: true,
-  },
-  {
-    id: '13',
-    name: 'Joshua',
-    lastMessage: 'Can +237676139885 send me the notes?',
-    lastAt: '4d',
-    isGroup: false,
-    unreadCount: 2,
-    hasMention: true,
-    participants: ['joshua'],
-    hasMedia: false,
-    kind: 'direct',
-    isDirect: true,
-  },
-  {
-    id: '14',
-    name: 'Faith',
-    lastMessage: 'Good news! My visa got approved 🎉',
-    lastAt: '5d',
-    isGroup: false,
-    unreadCount: 0,
-    hasMention: false,
-    participants: ['faith'],
-    hasMedia: true,
-    kind: 'direct',
-    isDirect: true,
-  },
-  {
-    id: '15',
-    name: 'Design Team',
-    lastMessage: 'Final mockups are in the folder',
-    lastAt: '6d',
-    isGroup: true,
-    unreadCount: 1,
-    hasMention: false,
-    participants: ['+237676139885', 'lydia', '+237676139884'],
-    hasMedia: true,
-    kind: 'group',
-    isGroupChat: true,
-  },
-  {
-    id: '16',
-    name: 'Intercessors',
-    lastMessage: '@+237676139885 will lead tomorrow’s prayer point',
-    lastAt: '1w',
-    isGroup: true,
-    unreadCount: 5,
-    hasMention: true,
-    participants: ['+237676139885', 'grace', 'samuel'],
-    hasMedia: false,
-    kind: 'group',
-    isGroupChat: true,
-  },
-  {
-    id: '17',
-    name: 'Daniel',
-    lastMessage: 'Got your message. Will call later.',
-    lastAt: '1w',
-    isGroup: false,
-    unreadCount: 0,
-    hasMention: false,
-    participants: ['daniel'],
-    hasMedia: false,
-    kind: 'direct',
-    isDirect: true,
-  },
-  {
-    id: '18',
-    name: 'Choir Alumni',
-    lastMessage: 'Reunion meeting next month 🎶',
-    lastAt: '2w',
-    isGroup: true,
-    unreadCount: 0,
-    hasMention: false,
-    participants: ['+237676139887', 'joel', 'grace'],
-    hasMedia: true,
-    kind: 'group',
-    isGroupChat: true,
-  },
-  {
-    id: '19',
-    name: 'Naomi',
-    lastMessage: 'Check the attachment please',
-    lastAt: '2w',
-    isGroup: false,
-    unreadCount: 1,
-    hasMention: false,
-    participants: ['naomi'],
-    hasMedia: true,
-    kind: 'direct',
-    isDirect: true,
-  },
-  {
-    id: '20',
-    name: 'Leadership Board',
-    lastMessage: 'Agenda for next session shared',
-    lastAt: '3w',
-    isGroup: true,
-    unreadCount: 3,
-    hasMention: false,
-    participants: ['+237676139885', 'coach', 'grace', '+237676139884'],
-    hasMedia: true,
-    kind: 'group',
-    isGroupChat: true,
-  },
-  // Optional example: pending DM request (for demo / UI)
-  {
-    id: '21',
-    name: 'New Contact (request)',
-    lastMessage: 'Chat request sent',
-    lastAt: '1m',
-    isGroup: false,
-    unreadCount: 0,
-    hasMention: false,
-    participants: ['new-contact'],
-    hasMedia: false,
-    kind: 'direct',
-    isDirect: true,
-    requestState: 'pending',
-  },
-];
 
 /* ------------------------------ Filter utils ------------------------------ */
 

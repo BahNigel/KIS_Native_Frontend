@@ -5,38 +5,42 @@ import {
   Text,
   FlatList,
   Pressable,
-  Image,
   NativeSyntheticEvent,
   NativeScrollEvent,
 } from 'react-native';
-import { KIS_TOKENS } from '../../../theme/constants';
+
+import { useKISTheme } from '@/theme/useTheme';
+import { KIS_TOKENS } from '@/theme/constants';
+
 import {
   styles,
-  SAMPLE_CHATS,
-  applyQuickChips,
-  applyCustomRules,
-  bySearch,
   type Chat,
   type CustomFilter,
   type QuickChip,
+  applyQuickChips,
+  applyCustomRules,
+  bySearch,
 } from '../messagesUtils';
-import { useKISTheme } from '@/theme/useTheme';
+import { normalizeConversation } from '../normalizeConversation';
+
 
 type ChatsTabProps = {
+  conversations: any[]; // raw backend conversations
   filters: CustomFilter[];
   activeQuick: Set<QuickChip>;
   activeCustomId?: string | null;
   search: string;
+
   onScroll?: (e: NativeSyntheticEvent<NativeScrollEvent>) => void;
   onEndReached?: () => void;
   onOpenChat?: (chat: Chat) => void;
 
-  // multi-select
   selectedChat?: Chat[];
   setSelectedChat?: (chats: Chat[]) => void;
 };
 
 export function ChatsTab({
+  conversations = [],
   filters,
   activeQuick,
   activeCustomId,
@@ -49,6 +53,16 @@ export function ChatsTab({
 }: ChatsTabProps) {
   const { palette } = useKISTheme();
 
+  /* ------------------------------------------------------------
+   * NORMALIZE RAW BACKEND CONVERSATIONS → SAFE Chat objects
+   * ------------------------------------------------------------ */
+  const normalizedChats: Chat[] = useMemo(() => {
+    return conversations.map((c) => normalizeConversation(c));
+  }, [conversations]);
+
+  /* ------------------------------------------------------------
+   * ACTIVE CUSTOM FILTER RULES
+   * ------------------------------------------------------------ */
   const customRules = useMemo(
     () => filters.find((f) => f.id === activeCustomId)?.rules,
     [filters, activeCustomId]
@@ -56,15 +70,21 @@ export function ChatsTab({
 
   const selectionMode = selectedChat.length > 0;
 
+  /* ------------------------------------------------------------
+   * FINAL FILTERED DATA
+   * ------------------------------------------------------------ */
   const data = useMemo(() => {
-    return SAMPLE_CHATS.filter(
+    return normalizedChats.filter(
       (c: Chat) =>
         applyQuickChips(c, activeQuick) &&
         applyCustomRules(c, customRules) &&
         bySearch(c, search)
     );
-  }, [activeQuick, customRules, search]);
+  }, [normalizedChats, activeQuick, customRules, search]);
 
+  /* ------------------------------------------------------------
+   * CHAT SELECTION HANDLING
+   * ------------------------------------------------------------ */
   const toggleSelectChat = (chat: Chat) => {
     if (!setSelectedChat) return;
 
@@ -76,18 +96,23 @@ export function ChatsTab({
     }
   };
 
+  /* ------------------------------------------------------------
+   * RENDER
+   * ------------------------------------------------------------ */
   return (
     <FlatList
       contentContainerStyle={{ padding: 16 }}
       data={data}
-      keyExtractor={(i) => String(i.id)}
+      keyExtractor={(i) => i.id}
       onScroll={onScroll}
       scrollEventThrottle={16}
       onEndReached={onEndReached}
       onEndReachedThreshold={0.2}
       ListEmptyComponent={
         <View style={[styles.center, { paddingVertical: 60 }]}>
-          <Text style={{ color: palette.subtext }}>No chats match your filters.</Text>
+          <Text style={{ color: palette.subtext }}>
+            No chats match your filters.
+          </Text>
         </View>
       }
       renderItem={({ item }) => {
@@ -122,7 +147,7 @@ export function ChatsTab({
               KIS_TOKENS.elevation.card,
             ]}
           >
-            {/* AVATAR WITH TICK */}
+            {/* AVATAR (placeholder until real avatar support) */}
             <View style={{ position: 'relative' }}>
               <View
                 style={[
@@ -158,23 +183,24 @@ export function ChatsTab({
               )}
             </View>
 
-            {/* NAME + MESSAGE */}
+            {/* NAME + LAST MESSAGE */}
             <View style={{ flex: 1 }}>
               <Text style={[styles.name, { color: palette.text }]}>
                 {item.name}
               </Text>
+
               <Text
                 style={{ color: palette.subtext }}
                 numberOfLines={1}
               >
-                {item.lastMessage}
+                {item.lastMessage || ''}
               </Text>
             </View>
 
-            {/* RIGHT SIDE */}
+            {/* RIGHT SIDE INFO */}
             <View style={{ alignItems: 'flex-end', gap: 4 }}>
               <Text style={{ color: palette.subtext }}>
-                {item.lastAt}
+                {item.lastAt || ''}
               </Text>
 
               {item.unreadCount > 0 && !isSelected && (

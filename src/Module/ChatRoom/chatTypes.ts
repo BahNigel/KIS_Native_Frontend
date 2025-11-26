@@ -23,16 +23,35 @@ export type MessageStatus =
 
 export type ChatMessage = {
   id: string;
+
+  /**
+   * Backend conversation identifier (Django / Nest / Mongo).
+   * This is what the server expects as conversationId.
+   */
+  conversationId?: string;
+
+  /**
+   * Local storage key / UI room id.
+   * This can be different from conversationId (e.g. temp rows, local-only rooms).
+   */
+  roomId: string;
+
   createdAt: string;
   updatedAt?: string;
 
-  roomId: string;
   senderId: string;
+  /**
+   * Optional display name for UI (server fills it when broadcasting).
+   */
+  senderName?: string;
   fromMe: boolean;
 
   kind?: MessageKind;
   status?: MessageStatus;
 
+  /**
+   * Plain text content (used to derive ciphertext on the wire).
+   */
   text?: string;
 
   voice?: {
@@ -55,6 +74,12 @@ export type ChatMessage = {
     width?: number;
     height?: number;
   };
+
+  /**
+   * Attachments payload coming from the backend (files, images, etc.).
+   * For now it's generic; you can strongly type it later.
+   */
+  attachments?: any[];
 
   replyToId?: string;
 

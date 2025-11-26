@@ -41,6 +41,12 @@ import { NewGroupForm } from './components/NewGroupForm';
 import { NewCommunityForm } from './components/NewCommunityForm';
 import { addContactsStyles as styles } from './addContactsStyles';
 import type { Chat } from '@/Module/ChatRoom/messagesUtils';
+import {
+  normalizeConversation,
+  CONVERSATION_CACHE_KEY,
+  CONVERSATION_CACHE_TYPE,
+} from '../ChatRoom/normalizeConversation';
+import { getCache, setCache } from '@/network/cache';
 
 export type AddContactsPageProps = {
   onClose: () => void;
@@ -49,11 +55,22 @@ export type AddContactsPageProps = {
 
 const CONTACTS_CACHE_KEY = 'kis.contacts.cache.v1';
 
-// 🔐 Local cache for *all user chats* (direct, groups, communities, channels)
-const USER_CHATS_CACHE_KEY = 'kis.user_chats.cache.v1';
-
 // 🔗 TODO: replace with real public download / invite link
 const KIS_INVITE_LINK = 'https://your-kis-download-link';
+
+// Small helper to normalize phone numbers for matching
+const normalizePhone = (phone: string) => phone.replace(/[^0-9+]/g, '');
+
+// ✅ ensure all contacts stored in cache have id = `newContact-<phone>`
+const withCacheContactIds = (list: KISContact[]): KISContact[] =>
+  list.map((c) => {
+    const normalized = normalizePhone(c.phone || '');
+    const basePhone = normalized || c.phone || '';
+    return {
+      ...c,
+      id: `newContact-${basePhone}`,
+    };
+  });
 
 // 🔁 Helper: merge by phone, never downgrading isRegistered from true → false
 const mergeContactsByPhone = (
@@ -134,32 +151,142 @@ const sendWhatsAppInvite = async (contact: KISContact) => {
 type Mode = 'list' | 'addContact' | 'addGroup' | 'addCommunity';
 
 /**
- * Append a chat to the local "user chats" cache.
- *
- * This cache is meant to hold ALL chats the user is part of:
- * - direct chats
- * - groups
- * - communities
- * - channels
+ * Resolve participant backend user id from conversation participant object.
+ * (Kept for future use if you want to match by user id instead of phone.)
  */
-const appendChatToUserChats = async (chat: Chat) => {
+const resolveParticipantUserId = (participant: any): string | null => {
+  if (!participant) return null;
+
+  if (participant.user_id != null) return String(participant.user_id);
+  if (participant.userId != null) return String(participant.userId);
+
+  if (participant.id != null) return String(participant.id);
+
+  return null;
+};
+
+/* -------------------------------------------------------------------------- */
+/*  CACHE: FIND EXISTING DIRECT CONVERSATION FOR THIS CONTACT                 */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Look in the conversations cache for an existing *direct* conversation
+ * where one of the participants has the same phone as this contact.
+ *
+ * Cache shape (Chat object) looks like:
+ *
+ * {
+ *   id: "uuid",
+ *   kind: "direct",
+ *   participants: [
+ *     { id: 59, user: { phone: "676139885", ... }, ... },
+ *     { id: 60, user: { phone: "+237676139884", ... }, ... },
+ *   ],
+ *   ...
+ * }
+ */
+const findExistingDirectConversationForContact = async (
+  contact: KISContact,
+): Promise<any | null> => {
   try {
-    const existingRaw = await AsyncStorage.getItem(USER_CHATS_CACHE_KEY);
-    let existing: Chat[] = [];
-    if (existingRaw) {
-      existing = JSON.parse(existingRaw);
+    const existingRaw = await getCache(
+      CONVERSATION_CACHE_TYPE,
+      CONVERSATION_CACHE_KEY,
+    );
+
+    if (!Array.isArray(existingRaw)) {
+      console.log(
+        '[findExistingDirectConversationForContact] Conversation cache is not an array:',
+        existingRaw,
+      );
+      return null;
     }
 
-    // De-dupe by id, but keep newest version at the front
-    const filtered = existing.filter((c) => c.id !== chat.id);
-    const next = [chat, ...filtered];
+    const contactPhoneNorm = normalizePhone(contact.phone || '');
+    console.log(
+      '[findExistingDirectConversationForContact] contact.phone (normalized):',
+      contact.phone,
+      '=>',
+      contactPhoneNorm,
+    );
 
-    await AsyncStorage.setItem(USER_CHATS_CACHE_KEY, JSON.stringify(next));
+    if (!contactPhoneNorm) {
+      console.log(
+        '[findExistingDirectConversationForContact] Contact has no valid phone number, cannot match:',
+        contact,
+      );
+      return null;
+    }
+
+    const matchingConversation = existingRaw.find((conv: any) => {
+      // Handle both raw Django convs and normalized Chat objects
+      const isDirect =
+        conv?.kind === 'direct' ||
+        conv?.type === 'direct' ||
+        conv?.type === 'dm';
+
+      if (!isDirect || !Array.isArray(conv.participants)) {
+        return false;
+      }
+
+      return conv.participants.some((p: any) => {
+        // Support both shapes:
+        // - { user: { phone: ... } }
+        // - { phone: ... }
+        // - "676139885" (plain string in some placeholder entries)
+        const participantPhoneRaw =
+          p?.user?.phone ??
+          p?.user_phone ??
+          p?.phone ??
+          (typeof p === 'string' ? p : undefined);
+
+        if (!participantPhoneRaw) return false;
+
+        const participantPhoneNorm = normalizePhone(String(participantPhoneRaw));
+
+        // Debug logging to verify the comparison
+        console.log(
+          '[findExistingDirectConversationForContact] compare contactPhoneNorm vs participantPhoneNorm:',
+          contactPhoneNorm,
+          participantPhoneNorm,
+        );
+
+        return participantPhoneNorm === contactPhoneNorm;
+      });
+    });
+
+    console.log(
+      '[findExistingDirectConversationForContact] matchingConversation:',
+      matchingConversation,
+    );
+
+    if (matchingConversation) {
+      console.log(
+        '[findExistingDirectConversationForContact] Found existing direct conversation for contact phone:',
+        contact.phone,
+        '=>',
+        matchingConversation.id,
+      );
+      return matchingConversation;
+    }
+
+    console.log(
+      '[findExistingDirectConversationForContact] No existing direct conversation found for contact phone:',
+      contact.phone,
+    );
+    return null;
   } catch (e) {
-    console.warn('[appendChatToUserChats] Failed to update cache:', e);
-    // Non-fatal: we don’t block UX if cache fails
+    console.warn(
+      '[findExistingDirectConversationForContact] Failed to read conversation cache:',
+      e,
+    );
+    return null;
   }
 };
+
+/* -------------------------------------------------------------------------- */
+/*  COMPONENT                                                                 */
+/* -------------------------------------------------------------------------- */
 
 export const AddContactsPage: React.FC<AddContactsPageProps> = ({
   onClose,
@@ -200,16 +327,30 @@ export const AddContactsPage: React.FC<AddContactsPageProps> = ({
       // 1) Cache for instant UI
       const cached = await AsyncStorage.getItem(CONTACTS_CACHE_KEY);
       if (cached) {
-        cachedContacts = JSON.parse(cached);
-        setContacts(cachedContacts);
+        try {
+          const parsed: KISContact[] = JSON.parse(cached);
+          // ✅ enforce id = newContact-<phone> even for old cache
+          cachedContacts = withCacheContactIds(parsed);
+          setContacts(cachedContacts);
+        } catch (e) {
+          console.warn(
+            '[AddContactsPage] Failed to parse contacts cache, ignoring:',
+            e,
+          );
+        }
       }
 
       // 2) Always refresh from device + backend
       const fresh = await refreshFromDeviceAndBackend();
       const merged = mergeContactsByPhone(cachedContacts, fresh);
+      // ✅ normalize ids before storing to cache & state
+      const normalizedForCache = withCacheContactIds(merged);
 
-      setContacts(merged);
-      await AsyncStorage.setItem(CONTACTS_CACHE_KEY, JSON.stringify(merged));
+      setContacts(normalizedForCache);
+      await AsyncStorage.setItem(
+        CONTACTS_CACHE_KEY,
+        JSON.stringify(normalizedForCache),
+      );
     } catch (e) {
       console.warn(`Error loading contacts: ${String(e)}`);
       setError('Could not load contacts. Pull down to retry.');
@@ -224,9 +365,14 @@ export const AddContactsPage: React.FC<AddContactsPageProps> = ({
     try {
       const fresh = await refreshFromDeviceAndBackend();
       const merged = mergeContactsByPhone(contacts, fresh);
+      // ✅ enforce cached id format on refresh
+      const normalizedForCache = withCacheContactIds(merged);
 
-      setContacts(merged);
-      await AsyncStorage.setItem(CONTACTS_CACHE_KEY, JSON.stringify(merged));
+      setContacts(normalizedForCache);
+      await AsyncStorage.setItem(
+        CONTACTS_CACHE_KEY,
+        JSON.stringify(normalizedForCache),
+      );
     } catch (e) {
       console.warn(`Refresh error: ${String(e)}`);
       setError('Could not refresh contacts.');
@@ -284,8 +430,14 @@ export const AddContactsPage: React.FC<AddContactsPageProps> = ({
         deduped.push(merged);
       }
 
-      setContacts(deduped);
-      await AsyncStorage.setItem(CONTACTS_CACHE_KEY, JSON.stringify(deduped));
+      // ✅ enforce id = newContact-<phone> for new cache contents
+      const normalizedForCache = withCacheContactIds(deduped);
+
+      setContacts(normalizedForCache);
+      await AsyncStorage.setItem(
+        CONTACTS_CACHE_KEY,
+        JSON.stringify(normalizedForCache),
+      );
 
       setMode('list');
     } catch (e) {
@@ -297,54 +449,66 @@ export const AddContactsPage: React.FC<AddContactsPageProps> = ({
     }
   };
 
-  // When a group is created successfully
+  /**
+   * When a group is created successfully.
+   */
   const handleGroupCreated = async (group: any) => {
-    const groupName = group?.name ?? 'New group';
-    const conversationId =
-      group?.conversation_id ?? group?.conversation ?? group?.id;
+    try {
+      const rawConversation = group?.conversation ?? group;
+      const baseChat = normalizeConversation(rawConversation);
 
-    const chat: Chat = {
-      id: conversationId,
-      title: groupName,
-      name: groupName,
-      isGroupChat: true,
-      groupId: group?.id,
-      kind: 'group',
-    } as any;
+      const chat: Chat = {
+        ...baseChat,
+        // Ensure group flags are set for UI
+        isGroup: true,
+        isGroupChat: true,
+        kind: baseChat.kind ?? 'group',
+        groupId: group?.id ?? baseChat.groupId,
+      } as Chat;
 
-    await appendChatToUserChats(chat);
+      onClose();
 
-    onClose();
-
-    setTimeout(() => {
-      onOpenChat(chat);
-    }, 150);
+      setTimeout(() => {
+        onOpenChat(chat);
+      }, 150);
+    } catch (e) {
+      console.warn('[AddContactsPage] handleGroupCreated error:', e);
+      Alert.alert(
+        'Error',
+        'Group was created, but we could not open the conversation. Please try again from the chat list.',
+      );
+    }
   };
 
-  // When a community is created successfully
+  /**
+   * When a community is created successfully.
+   */
   const handleCommunityCreated = async (community: any) => {
-    const communityName = community?.name ?? 'New community';
-    const conversationId =
-      community?.conversation_id ??
-      community?.conversation ??
-      community?.id;
+    try {
+      const rawConversation = community?.conversation ?? community;
+      const baseChat = normalizeConversation(rawConversation);
 
-    const chat: Chat = {
-      id: conversationId,
-      title: communityName,
-      name: communityName,
-      isCommunityChat: true,
-      communityId: community?.id,
-      kind: 'community',
-    } as any;
+      const chat: Chat = {
+        ...baseChat,
+        isGroup: false,
+        isGroupChat: false,
+        isCommunityChat: true,
+        kind: baseChat.kind ?? 'community',
+        communityId: community?.id ?? baseChat.communityId,
+      } as Chat;
 
-    await appendChatToUserChats(chat);
+      onClose();
 
-    onClose();
-
-    setTimeout(() => {
-      onOpenChat(chat);
-    }, 150);
+      setTimeout(() => {
+        onOpenChat(chat);
+      }, 150);
+    } catch (e) {
+      console.warn('[AddContactsPage] handleCommunityCreated error:', e);
+      Alert.alert(
+        'Error',
+        'Community was created, but we could not open the conversation. Please try again from the chat list.',
+      );
+    }
   };
 
   // 🔍 Filter contacts by search term
@@ -366,27 +530,86 @@ export const AddContactsPage: React.FC<AddContactsPageProps> = ({
   const noSearchResults =
     hasSearch && kisContacts.length === 0 && inviteContacts.length === 0;
 
-  // 🚪 When tap on a KIS contact → close page + open chat
-  const handleKISContactPress = (c: KISContact) => {
-    const chat: Chat = {
-      id: `contact-${c.phone}`,
-      title: c.name,
-      name: c.name,
-      contactPhone: c.phone,
-      isContactChat: true,
-      kind: 'direct',
-    } as any;
+  /**
+   * 🚪 When tap on a KIS contact → close page + open chat.
+   */
+  const handleKISContactPress = useCallback(
+    async (c: KISContact) => {
+      try {
+        // 1) Look for an existing backend conversation in cache
+        const existingConv = await findExistingDirectConversationForContact(c);
+        console.log(
+          '[AddContactsPage] existingConv for contact',
+          c.phone,
+          ':',
+          existingConv,
+        );
+        let finalChat: Chat;
 
-    appendChatToUserChats(chat).catch((e) =>
-      console.warn('[handleKISContactPress] cache error:', e),
-    );
+        if (existingConv) {
+          const baseChat = normalizeConversation(existingConv);
 
-    onClose();
+          finalChat = {
+            ...baseChat,
+            name: c.name || baseChat.name,
+            title:
+              c.name ||
+              (baseChat as any).title ||
+              baseChat.name ||
+              'Direct chat',
+            contactPhone: c.phone,
+            isDirect: true,
+            isContactChat: true,
+            isGroup: false,
+            isGroupChat: false,
+            isCommunityChat: false,
+          } as Chat;
 
-    setTimeout(() => {
-      onOpenChat(chat);
-    }, 150);
-  };
+          console.log(
+            '[AddContactsPage] Using existing direct conversation from cache. conv.id =',
+            finalChat.id,
+          );
+        } else {
+          console.log(
+            '[AddContactsPage] No existing conversation found for this contact. Using placeholder chat.',
+          );
+          const normalizedPhone = normalizePhone(c.phone);
+
+          finalChat = {
+            id: `newContact-${normalizedPhone}`, // local placeholder id; real conversation created on first message
+            title: c.name,
+            name: c.name,
+            contactPhone: c.phone,
+
+            // Participants: phone-number based, so backend can resolve user on first message
+            participants: [c.phone],
+
+            kind: 'direct',
+            isDirect: true,
+            isContactChat: true,
+            isGroup: false,
+            isGroupChat: false,
+            isCommunityChat: false,
+
+            requestState: 'none',
+          } as Chat;
+        }
+
+        // Close picker and open chat room
+        onClose();
+        setTimeout(() => {
+          onOpenChat(finalChat);
+        }, 150);
+      } catch (e) {
+        console.warn('[AddContactsPage] handleKISContactPress error:', e);
+        Alert.alert(
+          'Error',
+          'Could not open chat with this contact. Please try again.',
+        );
+      }
+    },
+    [onClose, onOpenChat],
+  );
 
   // 🚪 When tap on non-KIS contact → offer invite via SMS / WhatsApp
   const handleInviteContactPress = (c: KISContact) => {

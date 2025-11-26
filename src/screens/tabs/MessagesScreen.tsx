@@ -37,6 +37,7 @@ import {
   type Chat,
   CUSTOM_FILTERS_KEY 
 } from '@/Module/ChatRoom/messagesUtils';
+import { fetchConversationsForCurrentUser } from '@/Module/ChatRoom/normalizeConversation';
 
 const Tab = createMaterialTopTabNavigator();
 type MessagesScreenProps = {
@@ -80,6 +81,17 @@ export default function MessagesScreen({ onOpenChat }: MessagesScreenProps) {
 
 // if you still want selectCount as separate state:
 const [selectCount, setSelectCount] = useState<number | null>(null);
+
+const [conversations, setConversations] = useState<Chat[]>([]);
+
+useEffect(() => {
+  (async () => {
+    const convs = await fetchConversationsForCurrentUser(/* SAMPLE_CHATS or [] */);
+    console.log("checking if conversation is comming from the backend: ", convs)
+    setConversations(convs);
+  })();
+}, [onOpenChat]);
+
 
 useEffect(() => {
   if (selectedChat.length > 0) {
@@ -125,8 +137,9 @@ const handleMuteSelected = () => {
       easing: Easing.out(Easing.ease),
       useNativeDriver: true,
     }).start();
-  };
+  }
 
+  
   const closeChat = () => {
     Animated.timing(chatSlide, {
       toValue: 0,
@@ -692,6 +705,7 @@ const handleMuteSelected = () => {
           tabBar={(props) => <AnimatedTopBar {...props} />}
           screenOptions={{ swipeEnabled: true, tabBarScrollEnabled: false }}
         >
+          
           <Tab.Screen
             name="Chats"
             children={() => (
@@ -702,10 +716,11 @@ const handleMuteSelected = () => {
                 search={query}
                 onScroll={handleChatsScroll}
                 onEndReached={handleChatsEndReached}
-                onOpenChat={onOpenChat}  // if you’re still using the chat room, keep this
+                onOpenChat={onOpenChat} // if you’re still using the chat room, keep this
                 selectedChat={selectedChat}
-                setSelectedChat={setSelectedChat}
-              />
+                setSelectedChat={setSelectedChat} 
+                conversations={conversations}
+                />
             )}
           />
           <Tab.Screen name="Updates" component={UpdatesTab} />

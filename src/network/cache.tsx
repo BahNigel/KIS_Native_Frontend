@@ -7,22 +7,57 @@ const getBaseDirectoryPath = () => `${RNFS.DocumentDirectoryPath}/com.kis/`;
 const getSubDirectoryPath = (type: string) => `${getBaseDirectoryPath()}${type}/`;
 
 const ensureDirectoryExists = async (dirPath: string) => {
-  if (!(await RNFS.exists(dirPath))) {
+  const exists = await RNFS.exists(dirPath);
+  if (!exists) {
     await RNFS.mkdir(dirPath);
   }
 };
 
 const readJson = async (path: string) => {
-  if (!(await RNFS.exists(path))) return null;
-  return JSON.parse(await RNFS.readFile(path, 'utf8'));
+  const exists = await RNFS.exists(path);
+  if (!exists) return null;
+
+  const content = await RNFS.readFile(path, 'utf8');
+  try {
+    return JSON.parse(content);
+  } catch (e) {
+    // If something went wrong with the previous file, just drop it.
+    return null;
+  }
 };
 
 const writeJson = async (path: string, data: any) => {
   await RNFS.writeFile(path, JSON.stringify(data), 'utf8');
 };
 
+const isPaginated = (value: any) =>
+  value &&
+  typeof value === 'object' &&
+  'meta' in value &&
+  Array.isArray(value.results);
+
+const toPaginatedShape = (value: any): { meta?: any; results: any[] } => {
+  if (!value) {
+    return { meta: undefined, results: [] };
+  }
+
+  // Already in paginated form
+  if (isPaginated(value)) {
+    return { meta: value.meta, results: value.results || [] };
+  }
+
+  // Array of items
+  if (Array.isArray(value)) {
+    return { meta: undefined, results: value };
+  }
+
+  // Single item
+  return { meta: undefined, results: [value] };
+};
+
 export const getCache = async (type: string, key: string) => {
-  return readJson(`${getSubDirectoryPath(type)}${key}.json`);
+  const file = `${getSubDirectoryPath(type)}${key}.json`;
+  return readJson(file);
 };
 
 export const setCache = async (type: string, key: string, data: any) => {
@@ -31,25 +66,84 @@ export const setCache = async (type: string, key: string, data: any) => {
 
   await ensureDirectoryExists(dir);
 
-  const old = (await getCache(type, key)) ?? [];
-  const incoming = Array.isArray(data) ? data : [data];
+  const oldValue = await getCache(type, key);
 
-  const map = new Map();
-  old.forEach((i: { id: any; }) => map.set(i.id ?? Symbol(), i));
-  incoming.forEach((i) => map.set(i.id ?? Symbol(), i));
+  // --- Case 1: paginated responses { meta, results: [] } ---
+  if (isPaginated(oldValue) || isPaginated(data)) {
+    const { meta: oldMeta, results: oldResults } = toPaginatedShape(oldValue);
+    const { meta: newMeta, results: newResults } = toPaginatedShape(data);
 
-  const result = Array.from(map.values());
-  await writeJson(file, result);
+    const map = new Map<any, any>();
+
+    const addToMap = (item: any) => {
+      if (item == null) return;
+      const id = typeof item === 'object' && item.id != null ? item.id : Symbol();
+      map.set(id, item);
+    };
+
+    oldResults.forEach(addToMap);
+    newResults.forEach(addToMap);
+
+    const results = Array.from(map.values());
+
+    const meta = {
+      ...(oldMeta || {}),
+      ...(newMeta || {}),
+      count: results.length,
+    };
+
+    await writeJson(file, { meta, results });
+    return;
+  }
+
+  // --- Case 2: generic arrays of items (no meta/results wrapper) ---
+  if (Array.isArray(oldValue) || Array.isArray(data)) {
+    const oldArr = Array.isArray(oldValue)
+      ? oldValue
+      : oldValue != null
+      ? [oldValue]
+      : [];
+    const newArr = Array.isArray(data) ? data : data != null ? [data] : [];
+
+    const map = new Map<any, any>();
+
+    const addToMap = (item: any) => {
+      if (item == null) return;
+      if (typeof item === 'object') {
+        const id = item.id != null ? item.id : Symbol();
+        map.set(id, item);
+      } else {
+        // primitive value
+        map.set(Symbol(), item);
+      }
+    };
+
+    oldArr.forEach(addToMap);
+    newArr.forEach(addToMap);
+
+    const result = Array.from(map.values());
+    await writeJson(file, result);
+    return;
+  }
+
+  // --- Case 3: simple object or primitive – just overwrite ---
+  await writeJson(file, data);
 };
 
 export const clearCacheByKey = async (type: string, key: string) => {
   const file = `${getSubDirectoryPath(type)}${key}.json`;
-  if (await RNFS.exists(file)) await RNFS.unlink(file);
+  const exists = await RNFS.exists(file);
+  if (exists) {
+    await RNFS.unlink(file);
+  }
 };
 
 export const clearCacheByType = async (type: string) => {
   const dir = getSubDirectoryPath(type);
-  if (await RNFS.exists(dir)) await RNFS.unlink(dir);
+  const exists = await RNFS.exists(dir);
+  if (exists) {
+    await RNFS.unlink(dir);
+  }
 };
 
 export const getUserData = async () => ({
