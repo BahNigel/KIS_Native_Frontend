@@ -1,27 +1,68 @@
 // src/screens/chat/ChatRoomPage.tsx
-import React, { useCallback, useMemo, useState } from 'react';
+/* eslint-disable react-hooks/exhaustive-deps */
+
+/**
+ * ChatRoomPage
+ * -----------------------------------------------------------------------------
+ * This screen is the orchestration layer for:
+ * - Message rendering
+ * - Draft management
+ * - Selection / bulk actions
+ * - DM lock rules
+ * - Attachment & rich message dispatch
+ * - Socket-backed optimistic messaging
+ *
+ * IMPORTANT:
+ * - Business logic lives in hooks + handlers
+ * - This page ONLY coordinates state & UI
+ * - Socket lifecycle is abstracted away
+ */
+
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import {
   View,
   KeyboardAvoidingView,
   Platform,
-  Alert,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useKISTheme } from '../../theme/useTheme';
 import { chatRoomStyles as styles } from './chatRoomStyles';
+
+/* -------------------------------------------------------------------------- */
+/*                                   UI PARTS                                 */
+/* -------------------------------------------------------------------------- */
 
 import { ChatHeader } from './componets/main/ChatHeader';
 import { MessageList } from './componets/main/MessageList';
 import { MessageComposer } from './componets/main/MessageComposer';
+
 import {
   TextCardComposer,
   TextCardPayload,
 } from './componets/main/TextCardComposer';
-import { StickerEditor, Sticker } from './componets/main/StickerEditor';
+
+import {
+  StickerEditor,
+  Sticker,
+} from './componets/main/FroSticker/StickerEditor';
+
 import { ForwardChatSheet } from './componets/main/ForwardChatSheet';
 import { PinnedMessagesSheet } from './componets/main/PinnedMessagesSheet';
 import { SubRoomsSheet } from './componets/main/SubRoomsSheet';
+
+/* -------------------------------------------------------------------------- */
+/*                                   HOOKS                                    */
+/* -------------------------------------------------------------------------- */
 
 import { useChatAuth } from './hooks/useChatAuth';
 import { useConversationBootstrap } from './hooks/useConversationBootstrap';
@@ -30,11 +71,45 @@ import { useChatMessaging } from './hooks/useChatMessaging';
 import { useSelectionState } from './hooks/useSelectionState';
 import { useBulkMessageActions } from './hooks/useBulkMessageActions';
 
+/* -------------------------------------------------------------------------- */
+/*                                   TYPES                                    */
+/* -------------------------------------------------------------------------- */
+
 import type {
   ChatMessage,
   ChatRoomPageProps,
   SubRoom,
 } from './chatTypes';
+
+/* -------------------------------------------------------------------------- */
+/*                        ATTACHMENTS / RICH PAYLOADS                          */
+/* -------------------------------------------------------------------------- */
+
+import { SimpleContact } from './componets/main/ForAttachments/ContactsModal';
+import { PollDraft } from './componets/main/ForAttachments/PollModal';
+import { EventDraft } from './componets/main/ForAttachments/EventModal';
+
+/* -------------------------------------------------------------------------- */
+/*                               CENTRAL HANDLERS                              */
+/* -------------------------------------------------------------------------- */
+
+import * as Handlers from './ChatRoomHandlers';
+
+/* -------------------------------------------------------------------------- */
+/*                                   HELPERS                                  */
+/* -------------------------------------------------------------------------- */
+
+export type FilesType = {
+  uri: string;
+  name: string;
+  type: string | null;
+  size?: number | null;
+};
+
+export type AttachmentFilePayload = {
+  files?: FilesType[];
+  caption?: string;
+};
 
 type ExtendedChatRoomPageProps = ChatRoomPageProps & {
   hideHeader?: boolean;
@@ -45,6 +120,10 @@ type MessageLocator = {
   highlightMessage: (messageId: string) => void;
 };
 
+/* ========================================================================== */
+/*                                MAIN COMPONENT                              */
+/* ========================================================================== */
+
 export const ChatRoomPage: React.FC<ExtendedChatRoomPageProps> = ({
   chat,
   onBack,
@@ -52,14 +131,23 @@ export const ChatRoomPage: React.FC<ExtendedChatRoomPageProps> = ({
   onForwardMessages,
   hideHeader,
 }) => {
+  /* ------------------------------------------------------------------------ */
+  /*                               THEME / SAFE AREA                           */
+  /* ------------------------------------------------------------------------ */
+
   const { palette } = useKISTheme();
   const insets = useSafeAreaInsets();
 
-  React.useEffect(() => {
-    console.log('[ChatRoomPage] chat prop:', chat);
-  }, [chat]);
+  /* ------------------------------------------------------------------------ */
+  /*                               AUTH CONTEXT                                */
+  /* ------------------------------------------------------------------------ */
 
-  const { authToken, currentUserId, currentUserName } = useChatAuth(chat);
+  const { authToken, currentUserId, currentUserName } =
+    useChatAuth(chat);
+
+  /* ------------------------------------------------------------------------ */
+  /*                         CONVERSATION BOOTSTRAP                            */
+  /* ------------------------------------------------------------------------ */
 
   const {
     isDirectChat,
@@ -68,34 +156,24 @@ export const ChatRoomPage: React.FC<ExtendedChatRoomPageProps> = ({
     ensureConversationId,
   } = useConversationBootstrap(chat, authToken);
 
+  /* ------------------------------------------------------------------------ */
+  /*                                DRAFT STATE                                */
+  /* ------------------------------------------------------------------------ */
+
   const {
     draft,
     setDraft,
     draftKey,
-    draftsByKey,
     setDraftsByKey,
     handleChangeDraft,
   } = useDraftState(conversationId, chat?.id);
 
-  const [openStickerEditor, setOpenStickerEditor] = useState(false);
-  const [textCardBg, setTextCardBg] = useState<string | null>(null);
-  const [stickerLibraryVersion, setStickerLibraryVersion] = useState(0);
-
-  const [replyTo, setReplyTo] = useState<ChatMessage | null>(null);
-  const [editing, setEditing] = useState<ChatMessage | null>(null);
-
-  const [forwardSheetVisible, setForwardSheetVisible] = useState(false);
-  const [pinnedSheetVisible, setPinnedSheetVisible] = useState(false);
-  const [subRoomsSheetVisible, setSubRoomsSheetVisible] = useState(false);
-
-  const [subRooms] = useState<SubRoom[]>([]);
-  const [messageLocator, setMessageLocator] = useState<MessageLocator | null>(
-    null,
-  );
+  /* ------------------------------------------------------------------------ */
+  /*                          MESSAGING (SOCKET-BACKED)                        */
+  /* ------------------------------------------------------------------------ */
 
   const {
     messages,
-    isLoading,
     sendTextMessage,
     sendRichMessage,
     editMessage,
@@ -103,12 +181,40 @@ export const ChatRoomPage: React.FC<ExtendedChatRoomPageProps> = ({
     replyToMessage,
   } = useChatMessaging({
     chat,
-    authToken,
     storageRoomId,
     currentUserId,
     currentUserName,
     conversationId,
   });
+
+  /* ======================================================================== */
+  /*                              LOCAL UI STATE                               */
+  /* ======================================================================== */
+
+  const [replyTo, setReplyTo] = useState<ChatMessage | null>(null);
+  const [editing, setEditing] = useState<ChatMessage | null>(null);
+  const [hasLocallyAcceptedRequest, setHasLocallyAcceptedRequest] =
+    useState(false);
+
+  const [openStickerEditor, setOpenStickerEditor] = useState(false);
+  const [textCardBg, setTextCardBg] = useState<string | null>(null);
+  const [stickerLibraryVersion, setStickerLibraryVersion] =
+    useState(0);
+
+  const [forwardSheetVisible, setForwardSheetVisible] =
+    useState(false);
+  const [pinnedSheetVisible, setPinnedSheetVisible] =
+    useState(false);
+  const [subRoomsSheetVisible, setSubRoomsSheetVisible] =
+    useState(false);
+
+  const [subRooms] = useState<SubRoom[]>([]);
+  const [messageLocator, setMessageLocator] =
+    useState<MessageLocator | null>(null);
+
+  /* ======================================================================== */
+  /*                              SELECTION MODE                               */
+  /* ======================================================================== */
 
   const {
     selectionMode,
@@ -139,215 +245,166 @@ export const ChatRoomPage: React.FC<ExtendedChatRoomPageProps> = ({
     isSingleSelection,
   });
 
-  const isEmpty = !chat;
-  const canSend = useMemo(() => draft.trim().length > 0, [draft]);
-  const bgColor = palette.chatBg ?? palette.bg;
+  /* ======================================================================== */
+  /*                                 DM LOCK                                   */
+  /* ======================================================================== */
 
-  const handleSend = useCallback(async () => {
-    const text = draft.trim();
-    if (!text || !chat) return;
-
-    const convId = await ensureConversationId(text);
-    if (!convId) return;
-
-    if (editing) {
-      await editMessage(editing.id, {
-        text,
-        isEdited: true,
-        status: 'pending',
-        conversationId: convId,
-      } as any);
-      setEditing(null);
-    } else if (replyTo) {
-      await replyToMessage(replyTo, text, {
-        kind: 'text',
-        fromMe: true,
-        senderId: currentUserId,
-        conversationId: convId,
-      } as any);
-      setReplyTo(null);
-    } else {
-      await sendTextMessage(text, {
-        kind: 'text',
-        fromMe: true,
-        senderId: currentUserId,
-        conversationId: convId,
-      } as any);
+  const { dmRole, dmLockActive, firstMessage } = useMemo(() => {
+    if (!isDirectChat || !conversationId) {
+      return { dmRole: null, dmLockActive: false, firstMessage: null };
     }
 
-    setDraft('');
-    setDraftsByKey((prev) => ({
-      ...prev,
-      [draftKey]: '',
-    }));
+    const raw =
+      (chat as any)?.requestState ??
+      (chat as any)?.request_state;
+
+    const pending =
+      typeof raw === 'string' &&
+      raw.toLowerCase() === 'pending';
+
+    const first =
+      messages.find((m) => m.isFirstMessage) ??
+      messages[0] ??
+      null;
+
+    const hasMine = messages.some(
+      (m) => m.senderId === currentUserId,
+    );
+    const hasOther = messages.some(
+      (m) => m.senderId !== currentUserId,
+    );
+
+    let role: 'initiator' | 'recipient' | null = null;
+
+    if ((chat as any)?.request_initiator?.id === currentUserId)
+      role = 'initiator';
+    else if (
+      (chat as any)?.request_recipient?.id === currentUserId
+    )
+      role = 'recipient';
+    else if (first)
+      role =
+        first.senderId === currentUserId
+          ? 'initiator'
+          : 'recipient';
+
+    if (!pending || !role) {
+      return { dmRole: role, dmLockActive: false, firstMessage: first };
+    }
+
+    return {
+      dmRole: role,
+      dmLockActive:
+        role === 'initiator'
+          ? hasMine && !hasOther
+          : !hasMine && !hasLocallyAcceptedRequest,
+      firstMessage: first,
+    };
   }, [
     chat,
-    draft,
-    draftKey,
-    editMessage,
-    editing,
-    ensureConversationId,
-    replyTo,
-    replyToMessage,
-    sendTextMessage,
+    conversationId,
+    isDirectChat,
+    messages,
     currentUserId,
-    setDraft,
-    setDraftsByKey,
-    setEditing,
-    setReplyTo,
+    hasLocallyAcceptedRequest,
   ]);
 
-  const handleSendVoice = useCallback(
-    async ({ uri, durationMs }: { uri: string; durationMs: number }) => {
-      if (!chat) return;
-      const convId = await ensureConversationId('Voice message');
-      if (!convId) return;
+  const canSend =
+    draft.trim().length > 0 &&
+    !(dmLockActive && dmRole === 'initiator');
 
-      await sendRichMessage({
-        kind: 'voice',
-        fromMe: true,
-        senderId: currentUserId,
-        voice: { uri, durationMs },
-        conversationId: convId,
-      } as any);
-    },
-    [chat, ensureConversationId, currentUserId, sendRichMessage],
-  );
+  /* ======================================================================== */
+  /*                              HANDLER BINDINGS                             */
+  /* ======================================================================== */
 
-  const handleSendStyledText = useCallback(
-    async (payload: TextCardPayload) => {
-      if (!chat) return;
+  const handleSend = () =>
+    Handlers.handleSend({
+      draft,
+      chat,
+      editing,
+      replyTo,
+      currentUserId,
+      draftKey,
+      dmRole,
+      ensureConversationId,
+      editMessage,
+      replyToMessage,
+      sendTextMessage,
+      setDraft,
+      setDraftsByKey,
+      setEditing,
+      setReplyTo,
+      setHasLocallyAcceptedRequest,
+    });
 
-      const preview = payload.text ?? 'Styled message';
-      const convId = await ensureConversationId(preview);
-      if (!convId) return;
+  const handleSendVoice = (p: { uri: string; durationMs: number }) =>
+    Handlers.handleSendVoice({
+      ...p,
+      chat,
+      authToken,
+      currentUserId,
+      ensureConversationId,
+      sendRichMessage,
+    });
 
-      await sendRichMessage({
-        kind: 'styled_text',
-        fromMe: true,
-        senderId: currentUserId,
-        text: payload.text,
-        styledText: {
-          text: payload.text,
-          backgroundColor: payload.backgroundColor,
-          fontSize: payload.fontSize,
-          fontColor: payload.fontColor,
-          fontFamily: payload.fontFamily,
-        },
-        conversationId: convId,
-      } as any);
+  const handleSendSticker = (sticker: Sticker) =>
+    Handlers.handleSendSticker({
+      sticker,
+      chat,
+      authToken,
+      currentUserId,
+      ensureConversationId,
+      sendRichMessage,
+    });
 
-      setTextCardBg(null);
-    },
-    [chat, currentUserId, ensureConversationId, sendRichMessage],
-  );
+  const handleSendAttachment = (input: AttachmentFilePayload) =>
+    Handlers.handleSendAttachment({
+      input,
+      chat,
+      authToken,
+      currentUserId,
+      ensureConversationId,
+      sendRichMessage,
+    });
 
-  const handleSendSticker = useCallback(
-    async (sticker: Sticker) => {
-      if (!chat) return;
+  const handleSendContacts = (contacts: SimpleContact[]) =>
+    Handlers.handleSendContacts({
+      contacts,
+      chat,
+      currentUserId,
+      ensureConversationId,
+      sendRichMessage,
+    });
 
-      const convId = await ensureConversationId('Sticker');
-      if (!convId) return;
+  const handleCreatePoll = (poll: PollDraft) =>
+    Handlers.handleCreatePoll({
+      poll,
+      chat,
+      currentUserId,
+      ensureConversationId,
+      sendRichMessage,
+    });
 
-      await sendRichMessage({
-        kind: 'sticker',
-        fromMe: true,
-        senderId: currentUserId,
-        sticker: {
-          id: sticker.id,
-          uri: sticker.uri,
-          text: sticker.text,
-        },
-        conversationId: convId,
-      } as any);
-    },
-    [chat, currentUserId, ensureConversationId, sendRichMessage],
-  );
+  const handleCreateEvent = (event: EventDraft) =>
+    Handlers.handleCreateEvent({
+      event,
+      chat,
+      currentUserId,
+      ensureConversationId,
+      sendRichMessage,
+    });
 
-  const handleReplyRequest = useCallback(
-    (message: ChatMessage) => {
-      if (selectionMode) {
-        toggleSelectMessage(message);
-        return;
-      }
-      setReplyTo(message);
-    },
-    [selectionMode, toggleSelectMessage],
-  );
+  /* ======================================================================== */
+  /*                                   RENDER                                  */
+  /* ======================================================================== */
 
-  const handleEditRequest = useCallback(
-    (message: ChatMessage) => {
-      if (!message.fromMe) {
-        Alert.alert('Cannot edit', 'You can only edit your own messages.');
-        return;
-      }
-      setEditing(message);
-      setDraft(message.text ?? '');
-      setDraftsByKey((prev) => ({
-        ...prev,
-        [draftKey]: message.text ?? '',
-      }));
-    },
-    [draftKey, setDraft, setDraftsByKey],
-  );
-
-  const handlePressMessage = useCallback(
-    (message: ChatMessage) => {
-      if (selectionMode) {
-        toggleSelectMessage(message);
-      }
-    },
-    [selectionMode, toggleSelectMessage],
-  );
-
-  const handleLongPressMessage = useCallback(
-    (message: ChatMessage) => {
-      if (!selectionMode) {
-        enterSelectionMode(message);
-      }
-    },
-    [selectionMode, enterSelectionMode],
-  );
-
-  const handleForwardSelected = useCallback(() => {
-    if (!selectedMessages.length) return;
-    setForwardSheetVisible(true);
-  }, [selectedMessages]);
-
-  const handleConfirmForward = useCallback(
-    (chatIds: string[]) => {
-      setForwardSheetVisible(false);
-      if (!chatIds.length || !selectedMessages.length) return;
-
-      if (onForwardMessages) {
-        onForwardMessages({
-          fromRoomId: storageRoomId,
-          toChatIds: chatIds,
-          messages: selectedMessages,
-        });
-      } else {
-        console.log('Forward messages to chats', { chatIds, selectedMessages });
-      }
-
-      exitSelectionMode();
-    },
-    [
-      exitSelectionMode,
-      onForwardMessages,
-      selectedMessages,
-      storageRoomId,
-      setForwardSheetVisible,
-    ],
-  );
+  const bg = palette.chatBg ?? palette.bg;
 
   return (
     <View
       style={[
         styles.root,
-        {
-          backgroundColor: bgColor,
-          paddingTop: insets.top,
-        },
+        { backgroundColor: bg, paddingTop: insets.top },
       ]}
     >
       {!hideHeader && (
@@ -360,13 +417,11 @@ export const ChatRoomPage: React.FC<ExtendedChatRoomPageProps> = ({
           onCancelSelection={exitSelectionMode}
           onPinSelected={handlePinSelected}
           onDeleteSelected={handleDeleteSelected}
-          onForwardSelected={handleForwardSelected}
+          onForwardSelected={() => setForwardSheetVisible(true)}
           onCopySelected={handleCopySelected}
           onMoreSelected={handleMoreSelected}
           pinnedCount={pinnedCount}
           subRoomCount={subRoomCount}
-          onOpenPinned={() => setPinnedSheetVisible(true)}
-          onOpenSubRooms={() => setSubRoomsSheetVisible(true)}
           isSingleSelection={isSingleSelection}
           onContinueInSubRoom={handleContinueInSubRoom}
         />
@@ -375,20 +430,17 @@ export const ChatRoomPage: React.FC<ExtendedChatRoomPageProps> = ({
       <KeyboardAvoidingView
         style={styles.keyboardWrapper}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={0}
       >
         <MessageList
           messages={messages}
           palette={palette}
-          isEmpty={isEmpty}
-          onReplyToMessage={handleReplyRequest}
-          onEditMessage={handleEditRequest}
-          onPressMessage={handlePressMessage}
-          onLongPressMessage={handleLongPressMessage}
+          isEmpty={!chat}
           selectionMode={selectionMode}
           selectedMessageIds={selectedIds}
-          onStartSelection={enterSelectionMode}
-          onToggleSelect={toggleSelectMessage}
+          onReplyToMessage={setReplyTo}
+          onEditMessage={setEditing}
+          onPressMessage={toggleSelectMessage}
+          onLongPressMessage={enterSelectionMode}
           onMessageLocatorReady={setMessageLocator}
         />
 
@@ -398,16 +450,20 @@ export const ChatRoomPage: React.FC<ExtendedChatRoomPageProps> = ({
           onSend={handleSend}
           canSend={canSend}
           palette={palette}
-          disabled={!chat}
+          disabled={!chat || (dmLockActive && dmRole === 'initiator')}
           onSendVoice={handleSendVoice}
-          onChooseTextBackground={(bg) => setTextCardBg(bg)}
           onOpenStickerEditor={() => setOpenStickerEditor(true)}
+          onChooseTextBackground={setTextCardBg}
           onSendSticker={handleSendSticker}
           stickerVersion={stickerLibraryVersion}
           replyTo={replyTo}
           onClearReply={() => setReplyTo(null)}
           editing={editing}
           onCancelEditing={() => setEditing(null)}
+          onSendAttachment={handleSendAttachment}
+          onSendContacts={handleSendContacts}
+          onCreatePoll={handleCreatePoll}
+          onCreateEvent={handleCreateEvent}
         />
       </KeyboardAvoidingView>
 
@@ -416,7 +472,16 @@ export const ChatRoomPage: React.FC<ExtendedChatRoomPageProps> = ({
           palette={palette}
           backgroundColor={textCardBg}
           onClose={() => setTextCardBg(null)}
-          onSend={handleSendStyledText}
+          onSend={(payload: TextCardPayload) =>
+            Handlers.handleSendStyledText?.({
+              payload,
+              chat,
+              currentUserId,
+              ensureConversationId,
+              sendRichMessage,
+              setTextCardBg,
+            })
+          }
         />
       )}
 
@@ -424,43 +489,12 @@ export const ChatRoomPage: React.FC<ExtendedChatRoomPageProps> = ({
         <StickerEditor
           palette={palette}
           onClose={() => setOpenStickerEditor(false)}
-          onSaveSticker={(sticker) => {
+          onSaveSticker={() => {
             setStickerLibraryVersion((v) => v + 1);
             setOpenStickerEditor(false);
           }}
         />
       )}
-
-      <ForwardChatSheet
-        visible={forwardSheetVisible}
-        palette={palette}
-        chats={allChats}
-        maxTargets={5}
-        onClose={() => setForwardSheetVisible(false)}
-        onConfirm={handleConfirmForward}
-      />
-
-      <PinnedMessagesSheet
-        visible={pinnedSheetVisible}
-        onClose={() => setPinnedSheetVisible(false)}
-        roomId={storageRoomId}
-        pinnedMessages={pinnedMessages}
-        palette={palette}
-        onJumpToMessage={(messageId: string) => {
-          if (!messageLocator) return;
-          setPinnedSheetVisible(false);
-          messageLocator.scrollToMessage(messageId);
-          messageLocator.highlightMessage(messageId);
-        }}
-      />
-
-      <SubRoomsSheet
-        visible={subRoomsSheetVisible}
-        onClose={() => setSubRoomsSheetVisible(false)}
-        parentRoomId={storageRoomId}
-        subRooms={subRooms}
-        palette={palette}
-      />
     </View>
   );
 };

@@ -15,6 +15,7 @@ export const getRequest = async (
     cacheType?: string;
     successMessage?: string;
     errorMessage?: string;
+    params?: Record<string, any>;
   } = {}
 ) => {
   try {

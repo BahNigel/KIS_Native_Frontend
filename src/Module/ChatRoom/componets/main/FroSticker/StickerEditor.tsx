@@ -10,8 +10,6 @@ import {
   Dimensions,
   PanResponder,
   Image,
-  Alert,
-  ActivityIndicator,
 } from 'react-native';
 
 import { launchImageLibrary } from 'react-native-image-picker';
@@ -21,6 +19,7 @@ import RNFS from 'react-native-fs';
 import ImageResizer from 'react-native-image-resizer';
 
 import { KISIcon } from '@/constants/kisIcons';
+import { StickerBackgroundRemovalScreen } from './StickerBackgroundRemovalScreen';
 
 export type Sticker = {
   id: string;
@@ -30,9 +29,9 @@ export type Sticker = {
   // KIS-specific metadata so your app recognizes stickers
   fileType: 'kis-sticker';
   mimeType: 'image/png';
-  extension: '.kisstk';
+  extension: '.png';
 
-  // Path to the .kisstk metadata file on disk
+  // Path to the PNG file on disk
   metaPath: string;
 };
 
@@ -42,14 +41,20 @@ type StickerEditorProps = {
   onSaveSticker: (sticker: Sticker) => void;
 };
 
+// 🔴🟡🟢 Rich palette (12 colors)
 const TEXT_COLORS = [
-  '#FFFFFF',
-  '#000000',
-  '#FFEB3B',
-  '#FFCDD2',
-  '#F8BBD0',
-  '#C8E6C9',
-  '#BBDEFB',
+  '#FFFFFF', // white
+  '#000000', // black
+  '#FFEB3B', // yellow
+  '#FFCDD2', // soft red
+  '#F8BBD0', // pink
+  '#C8E6C9', // light green
+  '#BBDEFB', // light blue
+  '#FF9800', // orange
+  '#9C27B0', // purple
+  '#4CAF50', // green
+  '#03A9F4', // blue
+  '#E91E63', // strong pink
 ];
 
 const FONT_SIZES = [16, 20, 24, 30, 36];
@@ -57,23 +62,11 @@ const FONT_SIZES = [16, 20, 24, 30, 36];
 // AsyncStorage key for quick access to sticker library
 export const STICKER_STORAGE_KEY = 'KIS_STICKER_LIBRARY_V1';
 
-// Folder where we store sticker image + .kisstk files
+// Folder where we store sticker PNG files
 const STICKER_DIR = `${RNFS.DocumentDirectoryPath}/stickers`;
 
 // For logging only
 const SUPPORTED_BASE_TYPES = ['image/jpeg', 'image/jpg', 'image/png'];
-
-/**
- * OPTIONAL: remote background-removal API.
- *
- * If you have a backend or 3rd-party service that accepts
- * { imageBase64 } and returns { imageBase64 } for a PNG with
- * transparent background, put its URL here.
- *
- * If this is left empty, the "Remove BG" button will do nothing
- * except toggle the flag and log a warning.
- */
-const BG_REMOVAL_API_URL = ''; // e.g. 'https://api.yourdomain.com/remove-bg'
 
 export const StickerEditor: React.FC<StickerEditorProps> = ({
   palette,
@@ -94,7 +87,6 @@ export const StickerEditor: React.FC<StickerEditorProps> = ({
   const [textColor, setTextColor] = useState('#FFFFFF');
   const [fontSize, setFontSize] = useState(24);
   const [bgRemoved, setBgRemoved] = useState(false);
-  const [bgRemoving, setBgRemoving] = useState(false);
 
   const [textPos, setTextPos] = useState({ x: 40, y: 40 });
   const textStartPosRef = useRef({ x: 40, y: 40 });
@@ -102,6 +94,14 @@ export const StickerEditor: React.FC<StickerEditorProps> = ({
   const viewShotRef = useRef<ViewShot | null>(null);
 
   const [saving, setSaving] = useState(false);
+
+  // ❗ NEW: control the background-removal bottom sheet
+  const [showBgRemoval, setShowBgRemoval] = useState(false);
+
+  const handleOpenBgRemoval = () => {
+    if (!imageUri) return;
+    setShowBgRemoval(true);
+  };
 
   /* ------------------------------------------------------------- */
   /*                        SLIDE-IN SCREEN                        */
@@ -162,107 +162,6 @@ export const StickerEditor: React.FC<StickerEditorProps> = ({
   };
 
   /* ------------------------------------------------------------- */
-  /*              REAL (CONFIGURABLE) BACKGROUND REMOVAL           */
-  /* ------------------------------------------------------------- */
-
-  /**
-   * removeBackground
-   * Sends the base64 image to your BG_REMOVAL_API_URL and expects
-   * JSON: { imageBase64: string } (PNG with transparent background)
-   * Returns a file:// URI pointing to the new PNG written locally.
-   *
-   * If BG_REMOVAL_API_URL is not configured or imageBase64 is missing,
-   * it just returns the original uri (no-op).
-   */
-  const removeBackground = async (uri: string): Promise<string> => {
-    // If no API configured, just no-op with a warning
-    if (!BG_REMOVAL_API_URL) {
-      console.warn(
-        '[StickerEditor] BG_REMOVAL_API_URL not configured. ' +
-          'Background removal is currently a no-op. Configure your API to enable it.',
-      );
-      // keep UX behavior: we treat it as "removed" visually, but it's the same image.
-      return uri;
-    }
-
-    if (!imageBase64) {
-      console.warn(
-        '[StickerEditor] No base64 data available for background removal.',
-      );
-      return uri;
-    }
-
-    try {
-      const res = await fetch(BG_REMOVAL_API_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          imageBase64,
-          // optional extra fields if your API supports them:
-          // format: 'png',
-          // crop: true,
-        }),
-      });
-
-      if (!res.ok) {
-        console.warn(
-          'BG removal API non-OK status:',
-          res.status,
-          await res.text(),
-        );
-        return uri;
-      }
-
-      const json = await res.json();
-      const outBase64: string | undefined = json.imageBase64;
-
-      if (!outBase64) {
-        console.warn('BG removal API did not return imageBase64');
-        return uri;
-      }
-
-      // Ensure sticker directory exists
-      await ensureStickerDir();
-
-      const outPath = `${STICKER_DIR}/bgremoved-${Date.now()}.png`;
-      await RNFS.writeFile(outPath, outBase64, 'base64');
-
-      return `file://${outPath}`;
-    } catch (error) {
-      console.warn('BG removal error:', error);
-      return uri;
-    }
-  };
-
-  const handleToggleRemoveBg = async () => {
-    if (!imageUri || bgRemoving) return;
-
-    if (!bgRemoved) {
-      // Remove background
-      try {
-        setBgRemoving(true);
-        const newUri = await removeBackground(imageUri);
-        setImageUri(newUri);
-        setBgRemoved(true);
-      } catch (err) {
-        console.warn('Failed to remove background', err);
-        Alert.alert(
-          'Background removal failed',
-          'Unable to remove background for this image.',
-        );
-      } finally {
-        setBgRemoving(false);
-      }
-    } else {
-      // Restore original
-      if (originalUri) setImageUri(originalUri);
-      setBgRemoved(false);
-    }
-  };
-
-  /* ------------------------------------------------------------- */
   /*                       DRAGGABLE TEXT                          */
   /* ------------------------------------------------------------- */
   const panResponder = useRef(
@@ -290,7 +189,6 @@ export const StickerEditor: React.FC<StickerEditorProps> = ({
   /*                PERSIST STICKER TO DEVICE STORAGE              */
   /* ------------------------------------------------------------- */
 
-  // ensure sticker directory exists
   const ensureStickerDir = async () => {
     try {
       const exists = await RNFS.exists(STICKER_DIR);
@@ -369,8 +267,7 @@ export const StickerEditor: React.FC<StickerEditorProps> = ({
       );
 
       // 4) Use the path returned by ImageResizer as the final PNG
-      const basePath =
-        (resized as any).path ?? resized.uri; // path on Android, uri on iOS
+      const basePath = (resized as any).path ?? resized.uri; // path on Android, uri on iOS
 
       const normalizedPath = basePath.startsWith('file://')
         ? basePath.slice(7)
@@ -381,31 +278,23 @@ export const StickerEditor: React.FC<StickerEditorProps> = ({
         : `file://${normalizedPath}`;
 
       const stickerId = `${Date.now()}`;
-      const metaPath = `${STICKER_DIR}/${stickerId}.kisstk`;
       const trimmedText = text.trim();
 
-      // 5) Build sticker metadata
+      // 5) Build sticker metadata — ONLY PNG
       const sticker: Sticker = {
         id: stickerId,
         uri: finalImageUri,
         text: trimmedText || undefined,
         fileType: 'kis-sticker',
         mimeType: 'image/png',
-        extension: '.kisstk',
-        metaPath,
+        extension: '.png',
+        metaPath: normalizedPath, // path to the PNG on disk
       };
 
-      // 6) Write .kisstk metadata file
-      try {
-        await RNFS.writeFile(metaPath, JSON.stringify(sticker), 'utf8');
-      } catch (err) {
-        console.warn('Failed to write .kisstk file', err);
-      }
-
-      // 7) Save to AsyncStorage for the library
+      // 6) Save to AsyncStorage for the library
       await persistStickerLocally(sticker);
 
-      // 8) Notify parent (so it can "reload" any sticker lists), then close
+      // 7) Notify parent, then close
       onSaveSticker(sticker);
       onClose();
     } catch (err) {
@@ -443,12 +332,12 @@ export const StickerEditor: React.FC<StickerEditorProps> = ({
         }}
       >
         <Pressable onPress={onClose} style={{ padding: 8, marginRight: 8 }}>
-          <KISIcon name="back" size={22} color={palette.onPrimary} />
+          <KISIcon name="back" size={22} color={palette.primary} />
         </Pressable>
 
         <Text
           style={{
-            color: palette.onPrimary,
+            color: palette.primary,
             fontSize: 16,
             fontWeight: '600',
             flex: 1,
@@ -482,7 +371,6 @@ export const StickerEditor: React.FC<StickerEditorProps> = ({
         <View style={{ alignItems: 'center', marginBottom: 16 }}>
           <ViewShot
             ref={viewShotRef}
-            collapsable={false}
             options={{
               // We force PNG; from here on everything is PNG.
               format: 'png',
@@ -496,6 +384,8 @@ export const StickerEditor: React.FC<StickerEditorProps> = ({
               borderRadius: 24,
               backgroundColor: '#00000055',
               overflow: 'hidden',
+              justifyContent: 'center',
+              alignItems: 'center',
             }}
           >
             {imageUri ? (
@@ -538,7 +428,11 @@ export const StickerEditor: React.FC<StickerEditorProps> = ({
                 </View>
               </View>
             ) : (
-              <Pressable onPress={handlePickImage}>
+              <Pressable
+                style={{ justifyContent: 'center', alignItems: 'center' }}
+                onPress={handlePickImage}
+              >
+                <KISIcon name="camera" color="white" />
                 <Text style={{ color: '#fff', fontSize: 13 }}>
                   Tap to select an image
                 </Text>
@@ -571,8 +465,8 @@ export const StickerEditor: React.FC<StickerEditorProps> = ({
             </Pressable>
 
             <Pressable
-              onPress={handleToggleRemoveBg}
-              disabled={!imageUri || bgRemoving}
+              onPress={handleOpenBgRemoval}
+              disabled={!imageUri || showBgRemoval}
               style={{
                 flexDirection: 'row',
                 alignItems: 'center',
@@ -580,24 +474,13 @@ export const StickerEditor: React.FC<StickerEditorProps> = ({
                 paddingVertical: 8,
                 borderRadius: 20,
                 backgroundColor:
-                  imageUri && !bgRemoving
+                  imageUri && !showBgRemoval
                     ? palette.card
                     : 'rgba(255,255,255,0.2)',
               }}
             >
-              {bgRemoving && (
-                <ActivityIndicator
-                  size="small"
-                  color={palette.text}
-                  style={{ marginRight: 6 }}
-                />
-              )}
               <Text style={{ color: palette.text }}>
-                {bgRemoving
-                  ? 'Removing…'
-                  : bgRemoved
-                  ? 'BG Removed ✓'
-                  : 'Remove BG'}
+                {bgRemoved ? 'BG Removed ✓' : 'Remove BG'}
               </Text>
             </Pressable>
           </View>
@@ -682,6 +565,23 @@ export const StickerEditor: React.FC<StickerEditorProps> = ({
           </View>
         </View>
       </View>
+
+      {/* 🔹 Background removal as a BOTTOM SHEET, not full-page */}
+      {showBgRemoval && imageUri && (
+          <StickerBackgroundRemovalScreen
+            palette={palette}
+            originalUri={imageUri}
+            originalBase64={imageBase64}
+            onCancel={() => setShowBgRemoval(false)}
+            onDone={(newUri, { bgRemoved }) => {
+              setImageUri(newUri);
+              setBgRemoved(bgRemoved);
+              // If you want to keep the ability to "restore original", keep originalUri untouched
+              // or update it here depending on UX decision.
+              setShowBgRemoval(false);
+            }}
+          />
+      )}
     </Animated.View>
   );
 };

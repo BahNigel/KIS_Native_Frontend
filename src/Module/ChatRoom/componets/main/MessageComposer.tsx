@@ -1,5 +1,3 @@
-// src/screens/chat/components/MessageComposer.tsx
-
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View,
@@ -14,13 +12,22 @@ import AudioRecorderPlayer, {
 } from 'react-native-audio-recorder-player';
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Sticker, STICKER_STORAGE_KEY } from './StickerEditor';
+import { Sticker, STICKER_STORAGE_KEY } from './FroSticker/StickerEditor';
 import { ChatMessage } from '../../chatTypes';
 import { AVATAR_OPTIONS, AvatarPicker } from '../AvatarPicker';
 import { EmojiPicker } from '../EmojiPicker';
 import { KISIcon } from '@/constants/kisIcons';
 import { HoldToLockComposer } from '../HoldToLockComposer';
-import { chatRoomStyles as styles } from '@/Module/ChatRoom/chatRoomStyles'
+import { chatRoomStyles as styles } from '@/Module/ChatRoom/chatRoomStyles';
+import {
+  AttachmentSheet,
+} from './AttachmentSheet';
+import { CameraCaptureModal } from './CameraCaptureModal';
+import type { SimpleContact } from './ForAttachments/ContactsModal';
+import type { PollDraft } from './ForAttachments/PollModal';
+import type { EventDraft } from './ForAttachments/EventModal';
+import { AttachmentFilePayload } from '../../ChatRoomPage';
+
 /* -------------------------------------------------------------------------- */
 /*                          STICKER PICKER (BOTTOM PANEL)                     */
 /* -------------------------------------------------------------------------- */
@@ -110,20 +117,21 @@ type MessageComposerProps = {
   onSendVoice?: (payload: { uri: string; durationMs: number }) => void;
   onChooseTextBackground?: (backgroundColor: string) => void;
 
-  // send sticker message upward to ChatRoomPage
   onSendSticker?: (sticker: Sticker) => void;
-
-  // trigger opening full-screen sticker editor
   onOpenStickerEditor?: () => void;
-
-  // bump this when the sticker library changes
   stickerVersion?: number;
 
-  // NEW: reply / edit support
   replyTo?: ChatMessage | null;
   onClearReply?: () => void;
   editing?: ChatMessage | null;
   onCancelEditing?: () => void;
+
+  onSendAttachment?: (files: AttachmentFilePayload) => void;
+
+  // NEW: contacts / polls / events
+  onSendContacts?: (contacts: SimpleContact[]) => void;
+  onCreatePoll?: (poll: PollDraft) => void;
+  onCreateEvent?: (event: EventDraft) => void;
 };
 
 /* -------------------------------------------------------------------------- */
@@ -146,6 +154,10 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
   onClearReply,
   editing,
   onCancelEditing,
+  onSendAttachment,
+  onSendContacts,
+  onCreatePoll,
+  onCreateEvent,
 }) => {
   /* ----------------------------- VOICE STATE ----------------------------- */
   const [recordUri, setRecordUri] = useState<string | null>(null);
@@ -156,6 +168,31 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
   const [isPlayingPreview, setIsPlayingPreview] = useState(false);
   const [previewProgress, setPreviewProgress] = useState(0);
   const playListenerActiveRef = useRef(false);
+
+  /* ----------------------------- ATTACHMENT SHEET ------------------------- */
+  const [attachmentMenuVisible, setAttachmentMenuVisible] =
+    useState(false);
+
+  const openAttachmentMenu = () => {
+    if (disabled) return;
+    setAttachmentMenuVisible(true);
+  };
+
+  const closeAttachmentMenu = () => {
+    setAttachmentMenuVisible(false);
+  };
+
+  /* ----------------------------- CAMERA MODAL ----------------------------- */
+  const [cameraVisible, setCameraVisible] = useState(false);
+
+  const openCameraModal = () => {
+    if (disabled) return;
+    setCameraVisible(true);
+  };
+
+  const closeCameraModal = () => {
+    setCameraVisible(false);
+  };
 
   /* ----------------------------- STICKER STORAGE -------------------------- */
   const [stickers, setStickers] = useState<Sticker[]>([]);
@@ -204,15 +241,12 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
     loadStickers();
   }, [loadStickers]);
 
-  // Reload whenever stickerVersion changes (e.g. after saving a new sticker)
   useEffect(() => {
     loadStickers();
   }, [stickerVersion, loadStickers]);
 
   /* ----------------------------- PANEL STATE ------------------------------ */
   const [keyboardMode, setKeyboardMode] = useState(true);
-
-  // DEFAULT TAB → emoji
   const [panelTab, setPanelTab] =
     useState<'custom' | 'emoji' | 'stickers'>('emoji');
 
@@ -277,7 +311,6 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
 
   /* ----------------------------- SEND GUARD (DEDUP) ----------------------- */
 
-  // Prevent double-send (e.g. double tap or event firing twice very fast)
   const lastSendRef = useRef<number | null>(null);
 
   const handleTextSend = () => {
@@ -285,7 +318,6 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
 
     const now = Date.now();
     if (lastSendRef.current && now - lastSendRef.current < 400) {
-      // Duplicate send within 400 ms → ignore
       console.log('[MessageComposer] Ignored duplicate send (too fast)');
       return;
     }
@@ -297,27 +329,22 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
   /* ----------------------------- PANEL TOGGLING --------------------------- */
   const toggleEmojiKeyboard = () => {
     if (keyboardMode) {
-      // OPEN PANEL → default to Emoji tab
       setKeyboardMode(false);
       setPanelTab('emoji');
       textInputRef.current?.blur();
     } else {
-      // CLOSE PANEL → go back to keyboard
       setKeyboardMode(true);
       textInputRef.current?.focus();
     }
   };
 
-  // Voice activity flag for hiding the text input + buttons
   const isVoiceActive = isRecording || previewVisible;
-
   const showTextSend = canSend && !isRecording && !previewVisible;
 
   /* -------------------------------------------------------------------------- */
   /*                             PANEL CONTENT                                  */
   /* -------------------------------------------------------------------------- */
 
-  // Reload when user switches into stickers tab
   useEffect(() => {
     if (panelTab === 'stickers') {
       loadStickers();
@@ -353,7 +380,6 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
             }}
             onSelectSticker={(sticker) => {
               onSendSticker?.(sticker);
-              // Close panel after sending sticker
               setKeyboardMode(true);
               textInputRef.current?.focus();
             }}
@@ -427,6 +453,9 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
         editing.styledText?.text ||
         (editing.sticker ? 'Sticker' : '') ||
         (editing.voice ? 'Voice message' : '') ||
+        (editing.contacts ? 'Contact(s)' : '') ||
+        (editing.poll ? 'Poll' : '') ||
+        (editing.event ? 'Event' : '') ||
         '';
 
       return (
@@ -472,7 +501,7 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
           {onCancelEditing && (
             <Pressable onPress={onCancelEditing}>
               <KISIcon
-                name='close'
+                name="close"
                 size={16}
                 color={palette.subtext}
               />
@@ -488,6 +517,9 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
         replyTo.styledText?.text ||
         (replyTo.sticker ? 'Sticker' : '') ||
         (replyTo.voice ? 'Voice message' : '') ||
+        (replyTo.contacts ? 'Contact(s)' : '') ||
+        (replyTo.poll ? 'Poll' : '') ||
+        (replyTo.event ? 'Event' : '') ||
         '';
 
       return (
@@ -533,7 +565,7 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
           {onClearReply && (
             <Pressable onPress={onClearReply}>
               <KISIcon
-                name='close'
+                name="close"
                 size={16}
                 color={palette.subtext}
               />
@@ -549,6 +581,7 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
   /* -------------------------------------------------------------------------- */
   /*                                  RENDER                                     */
   /* -------------------------------------------------------------------------- */
+
   return (
     <View
       style={[
@@ -559,12 +592,10 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
         },
       ]}
     >
-      {/* REPLY / EDIT BANNER */}
       {renderReplyOrEditBanner()}
 
       {/* MAIN INPUT ROW */}
       <View style={styles.composerMainRow}>
-        {/* TOGGLE + INPUT + ACTIONS (hidden during recording/preview) */}
         {!isVoiceActive && (
           <>
             <Pressable
@@ -583,7 +614,8 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
                 styles.composerInputWrapper,
                 {
                   backgroundColor: palette.composerInputBg,
-                  borderColor: palette.composerInputBorder ?? 'transparent',
+                  borderColor:
+                    palette.composerInputBorder ?? 'transparent',
                 },
               ]}
             >
@@ -605,13 +637,30 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
               />
             </View>
 
-            {/* ACTIONS */}
-            <Pressable style={styles.iconTextButton}>
-              <KISIcon name="add" size={22} color={palette.subtext} />
+            {/* "+" → attachment sheet */}
+            <Pressable
+              style={styles.iconTextButton}
+              disabled={!!disabled}
+              onPress={openAttachmentMenu}
+            >
+              <KISIcon
+                name="add"
+                size={22}
+                color={palette.subtext}
+              />
             </Pressable>
 
-            <Pressable style={styles.iconTextButton}>
-              <KISIcon name="camera" size={22} color={palette.subtext} />
+            {/* Camera → open full-screen camera modal (ONLY place for images/videos) */}
+            <Pressable
+              style={styles.iconTextButton}
+              disabled={!!disabled}
+              onPress={openCameraModal}
+            >
+              <KISIcon
+                name="camera"
+                size={22}
+                color={palette.subtext}
+              />
             </Pressable>
           </>
         )}
@@ -624,17 +673,22 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
             style={[
               styles.composerActionButton,
               {
-                backgroundColor: (!canSend || disabled)
-                  ? palette.subtext
-                  : palette.primary,
+                backgroundColor:
+                  !canSend || disabled
+                    ? palette.subtext
+                    : palette.primary,
                 marginRight: 12,
                 height: 50,
                 width: 50,
-                opacity: (!canSend || disabled) ? 0.6 : 1,
+                opacity: !canSend || disabled ? 0.6 : 1,
               },
             ]}
           >
-            <KISIcon name="send" size={18} color={palette.onPrimary} />
+            <KISIcon
+              name="send"
+              size={18}
+              color={palette.onPrimary}
+            />
           </Pressable>
         ) : (
           <HoldToLockComposer
@@ -645,13 +699,56 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
         )}
       </View>
 
-      {/* PANEL */}
+      {/* EMOJI / CUSTOM / STICKERS PANEL */}
       {!keyboardMode && !disabled && !isVoiceActive && (
         <View>
           {renderTabBar()}
           {renderPanelContent()}
         </View>
       )}
+
+      {/* ATTACHMENT SHEET MODAL (files, audio, contacts, poll, event) */}
+      <AttachmentSheet
+        visible={attachmentMenuVisible}
+        palette={palette}
+        onClose={closeAttachmentMenu}
+        onSendFiles={(files) => {
+          console.log(
+            '[MessageComposer] onSendFiles from sheet:',
+            files,
+          );
+          onSendAttachment?.(files);
+        }}
+        onSendContacts={(contacts) => {
+          console.log(
+            '[MessageComposer] contacts selected:',
+            contacts,
+          );
+          onSendContacts?.(contacts);
+        }}
+        onCreatePoll={(poll) => {
+          console.log('[MessageComposer] poll created:', poll);
+          onCreatePoll?.(poll);
+        }}
+        onCreateEvent={(event) => {
+          console.log('[MessageComposer] event created:', event);
+          onCreateEvent?.(event);
+        }}
+      />
+
+      {/* CAMERA FULL-SCREEN MODAL (ONLY source for images/videos) */}
+      <CameraCaptureModal
+        visible={cameraVisible}
+        palette={palette}
+        onClose={closeCameraModal}
+        onCapture={(files) => {
+          console.log(
+            '[MessageComposer] camera captured files (images/videos):',
+            files,
+          );
+          onSendAttachment?.(files);
+        }}
+      />
     </View>
   );
 };

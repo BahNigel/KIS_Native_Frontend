@@ -1,10 +1,28 @@
-// src/screens/tabs/messagesUtils.ts
-
 import { KIS_TOKENS } from '@/theme/constants';
 import React from 'react';
 import { StyleSheet, Text } from 'react-native';
 
 /* ----------------------------- Types & Storage ----------------------------- */
+
+// Wire types that may arrive from your Django API
+export type UserWire = {
+  id: string;
+  display_name?: string | null;
+  username?: string | null;
+  phone?: string | null;
+  [key: string]: any;
+};
+
+export type ParticipantWire = {
+  id?: number | string;
+  user?: UserWire | number | string | null;
+  base_role?: string;
+  display_name?: string;
+  joined_at?: string | null;
+  left_at?: string | null;
+  is_active?: boolean;
+  [key: string]: any;
+};
 
 export type Chat = {
   /* Core identity */
@@ -19,9 +37,13 @@ export type Chat = {
   unreadCount?: number;
   hasMention?: boolean;
   hasMedia?: boolean;
-  participants?: string[];
+  // participants can be a simple string list OR the richer wire payload from server
+  participants?: string[] | ParticipantWire[];
 
-  /* Type flags */
+  /**
+   * Conversation type – mirrors Django Conversation.type
+   * ('direct' | 'group' | 'channel' | 'post' | 'thread' | 'system'),
+   */
   kind?: 'direct' | 'group' | 'community' | 'channel';
   isGroup?: boolean;
   isGroupChat?: boolean;
@@ -33,13 +55,20 @@ export type Chat = {
   communityId?: string | number;
   contactPhone?: string;
 
-  /* Backend / conversation metadata */
+  /* Backend / conversation metadata (Django / Nest) */
   conversationId?: string;
 
-  /* DM request / lock metadata */
-  requestState?: 'none' | 'pending' | 'accepted' | 'rejected';
-  requestInitiatorId?: string;
-  requestRecipientId?: string;
+  /* DM request / lock metadata (optional rich shapes supported) */
+  requestState?: 'none' | 'pending' | 'accepted' | 'rejected' | string;
+
+  // request initiator/recipient may be either a simple id string
+  // OR a full nested user object (wire shape)
+  requestInitiatorId?: string | UserWire | null;
+  requestRecipientId?: string | UserWire | null;
+
+  requestInitiatorName?: string | null;
+  requestRecipientName?: string | null;
+
   isRequestOutbound?: boolean;
   isRequestInbound?: boolean;
 };
@@ -64,6 +93,119 @@ export type CustomFilter = {
 
 export const CUSTOM_FILTERS_KEY = 'kis_custom_filters:v1';
 
+/* ------------------------------ Helpers ------------------------------ */
+
+/**
+ * Safely extracts a plain string list from `chat.participants`.
+ * Supports both `string[]` (legacy) and `ParticipantWire[]` (server).
+ */
+export function participantsToStrings(participants?: string[] | ParticipantWire[]): string[] {
+  if (!participants) return [];
+  // already strings
+  if (Array.isArray(participants) && participants.length > 0 && typeof participants[0] === 'string') {
+    return (participants as string[]).map((s) => String(s));
+  }
+
+  // wire objects
+  if (Array.isArray(participants)) {
+    const out: string[] = [];
+    for (const p of participants as ParticipantWire[]) {
+      if (!p) continue;
+      // prefer nested user display_name / phone
+      const u = (p as ParticipantWire).user;
+      if (u && typeof u === 'object') {
+        const name = (u as UserWire).display_name ?? (u as UserWire).username ?? (u as UserWire).phone;
+        if (name) out.push(String(name));
+        continue;
+      }
+
+      // if `user` is an id string/number, fall back to participant.display_name
+      if ((p as ParticipantWire).display_name) {
+        out.push(String((p as ParticipantWire).display_name));
+        continue;
+      }
+
+      // finally, try id
+      if ((p as ParticipantWire).id != null) {
+        out.push(String((p as ParticipantWire).id));
+      }
+    }
+    return out;
+  }
+
+  return [];
+}
+
+/**
+ * Try to pick a friendly display name for a participant wire (used in request banners)
+ */
+export function participantDisplayName(p?: ParticipantWire | string): string | null {
+  if (!p) return null;
+  if (typeof p === 'string') return p;
+  const u = (p as ParticipantWire).user;
+  if (u && typeof u === 'object') {
+    return (u as UserWire).display_name ?? (u as UserWire).username ?? (u as UserWire).phone ?? null;
+  }
+  return (p as ParticipantWire).display_name ?? null;
+}
+
+/**
+ * Normalizes server-side conversation payload into the Chat shape used by the UI.
+ * Accepts partial shapes and is safe to call repeatedly.
+ */
+export function normalizeChatFromServer(raw: any): Chat {
+  const chat: Partial<Chat> = {};
+  chat.id = raw?.id ? String(raw.id) : raw?.conversationId ? String(raw.conversationId) : 'unknown';
+  chat.name = raw?.name ?? raw?.title ?? 'Unnamed Conversation';
+  chat.title = raw?.title ?? undefined;
+  chat.avatarUrl = raw?.avatar_url ?? raw?.avatarUrl ?? undefined;
+
+  chat.lastMessage = raw?.lastMessage ?? raw?.last_message ?? raw?.last_message_preview ?? undefined;
+  chat.lastAt = raw?.lastAt ?? raw?.last_at ?? undefined;
+  chat.unreadCount = typeof raw?.unreadCount === 'number' ? raw.unreadCount : raw?.unread_count ?? 0;
+  chat.hasMention = raw?.hasMention ?? raw?.has_mention ?? false;
+  chat.hasMedia = raw?.hasMedia ?? raw?.has_media ?? false;
+
+  // participants: if the server uses "participants" as rich objects, keep them.
+  if (Array.isArray(raw?.participants)) {
+    // Heuristic: if first participant has `.user` key it's the rich form
+    if (raw.participants.length > 0 && raw.participants[0] && raw.participants[0].user != null) {
+      chat.participants = raw.participants as ParticipantWire[];
+    } else {
+      chat.participants = (raw.participants || []).map((p: any) => String(p));
+    }
+  } else if (Array.isArray(raw?.participants_list)) {
+    chat.participants = raw.participants_list.map((p: any) => String(p));
+  }
+
+  chat.kind = raw?.kind ?? raw?.type ?? undefined;
+  chat.isGroup = !!raw?.isGroup;
+  chat.isGroupChat = !!raw?.isGroupChat;
+  chat.isCommunityChat = !!raw?.isCommunityChat;
+  chat.isContactChat = !!raw?.isContactChat;
+  chat.isDirect = !!raw?.isDirect;
+
+  chat.groupId = raw?.groupId ?? raw?.group_id ?? undefined;
+  chat.communityId = raw?.communityId ?? raw?.community_id ?? undefined;
+  chat.contactPhone = raw?.contactPhone ?? raw?.contact_phone ?? undefined;
+
+  chat.conversationId = raw?.conversationId ?? raw?.conversation_id ?? (raw?.id ? String(raw.id) : undefined);
+
+  // DM request fields (flexible)
+  chat.requestState = raw?.requestState ?? raw?.request_state ?? raw?.request_state_raw ?? undefined;
+
+  const maybeInitiator = raw?.requestInitiatorId ?? raw?.request_initiator ?? raw?.requestInitiator ?? null;
+  const maybeRecipient = raw?.requestRecipientId ?? raw?.request_recipient ?? raw?.requestRecipient ?? null;
+
+  chat.requestInitiatorId = maybeInitiator;
+  chat.requestRecipientId = maybeRecipient;
+
+  chat.requestInitiatorName = participantDisplayName(maybeInitiator as any) ?? null;
+  chat.requestRecipientName = participantDisplayName(maybeRecipient as any) ?? null;
+
+  return chat as Chat;
+}
+
 /* ------------------------------ Filter utils ------------------------------ */
 
 export type QuickChip = 'Unread' | 'Groups' | 'Mentions';
@@ -83,17 +225,13 @@ export function applyCustomRules(chat: Chat, rules?: CustomFilterRule) {
   if (rules.includeGroups === true && !chat.isGroup) return false;
   if (rules.includeDMs === true && chat.isGroup) return false;
 
-  if (
-    typeof rules.minUnread === 'number' &&
-    (chat.unreadCount ?? 0) < rules.minUnread
-  )
-    return false;
+  if (typeof rules.minUnread === 'number' && (chat.unreadCount ?? 0) < rules.minUnread) return false;
 
   if (rules.withMedia === true && !chat.hasMedia) return false;
 
   if (rules.participantIncludes?.trim()) {
     const q = rules.participantIncludes.trim().toLowerCase();
-    const hay = (chat.participants || []).join(' ').toLowerCase();
+    const hay = participantsToStrings(chat.participants).join(' ').toLowerCase();
     if (!hay.includes(q)) return false;
   }
 
@@ -111,7 +249,7 @@ export function bySearch(chat: Chat, query: string) {
   return (
     chat.name.toLowerCase().includes(q) ||
     (chat.lastMessage ?? '').toLowerCase().includes(q) ||
-    (chat.participants || []).join(' ').toLowerCase().includes(q)
+    participantsToStrings(chat.participants).join(' ').toLowerCase().includes(q)
   );
 }
 

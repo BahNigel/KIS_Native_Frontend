@@ -1,16 +1,19 @@
-// src/screens/chat/chatTypes.ts
-
 import type { Chat } from './messagesUtils';
 
+/**
+ * Message kind must match backend enum:
+ * 'text' | 'voice' | 'styled_text' | 'sticker' | 'contacts' | 'poll' | 'event' | 'system'
+ * Media/files are represented via attachments, not kind.
+ */
 export type MessageKind =
   | 'text'
-  | 'styled_text'
   | 'voice'
-  | 'image'
-  | 'video'
-  | 'file'
+  | 'styled_text'
   | 'sticker'
-  | 'system';
+  | 'system'
+  | 'contacts'
+  | 'poll'
+  | 'event';
 
 export type MessageStatus =
   | 'local_only'
@@ -20,6 +23,79 @@ export type MessageStatus =
   | 'delivered'
   | 'read'
   | 'failed';
+
+/**
+ * Kind of attachment file (frontend side).
+ * Backend also has AttachmentKind; keep in sync if needed.
+ */
+export type AttachmentKindType =
+  | 'image'
+  | 'video'
+  | 'file'
+  | 'audio'
+  | 'voice'
+  | 'other';
+
+/**
+ * Attachment payload coming from / going to backend.
+ * Mirrors the Mongoose schema for `attachments`.
+ */
+export type ChatAttachment = {
+  id: string;
+  url: string;
+  originalName: string;
+  mimeType: string;
+  size: number;
+
+  kind?: AttachmentKindType | string;
+
+  width?: number;
+  height?: number;
+  durationMs?: number;
+  thumbUrl?: string;
+};
+
+/**
+ * Contact card(s) shared in a message.
+ * These are built from real user contacts (name + phone).
+ */
+export type ContactAttachment = {
+  id: string;
+  name: string;
+  phone: string; // used for sending / rendering
+};
+
+/**
+ * Poll option + votes.
+ */
+export type PollOption = {
+  id: string;
+  text: string;
+  votes?: number;
+};
+
+/**
+ * Poll content stored in a message.
+ */
+export type PollMessage = {
+  id?: string;
+  question: string;
+  options: PollOption[];
+  allowMultiple?: boolean;
+  expiresAt?: string | null;
+};
+
+/**
+ * Event content stored in a message.
+ */
+export type EventMessage = {
+  id?: string;
+  title: string;
+  description?: string;
+  location?: string;
+  startsAt: string; // ISO datetime
+  endsAt?: string;  // ISO datetime
+};
 
 export type ChatMessage = {
   id: string;
@@ -36,14 +112,28 @@ export type ChatMessage = {
    */
   roomId: string;
 
+  /**
+   * Client-generated identifier used for dedupe and ACK correlation.
+   * This should match the clientId you send to the backend.
+   */
+  clientId?: string;
+
   createdAt: string;
   updatedAt?: string;
 
   senderId: string;
+
   /**
-   * Optional display name for UI (server fills it when broadcasting).
+   * Marked true by the backend for the very first message in the conversation.
+   * Used by DM-request UX (initiator vs recipient banners, lock state).
+   */
+  isFirstMessage?: boolean;
+
+  /**
+   * Optional display name for UI (server fills it when broadcasting / in history).
    */
   senderName?: string;
+
   fromMe: boolean;
 
   kind?: MessageKind;
@@ -51,6 +141,7 @@ export type ChatMessage = {
 
   /**
    * Plain text content (used to derive ciphertext on the wire).
+   * Backend field name is `ciphertext`, but frontend uses `text`.
    */
   text?: string;
 
@@ -77,9 +168,24 @@ export type ChatMessage = {
 
   /**
    * Attachments payload coming from the backend (files, images, etc.).
-   * For now it's generic; you can strongly type it later.
+   * Matches MessageEntity.attachments.
    */
-  attachments?: any[];
+  attachments?: ChatAttachment[];
+
+  /**
+   * Contact cards shared in this message (kind === 'contacts').
+   */
+  contacts?: ContactAttachment[];
+
+  /**
+   * Poll content (kind === 'poll').
+   */
+  poll?: PollMessage;
+
+  /**
+   * Event content (kind === 'event').
+   */
+  event?: EventMessage;
 
   replyToId?: string;
 
@@ -93,8 +199,7 @@ export type ChatMessage = {
 };
 
 /**
- * Minimal sub-room type for now (will be refined when we wire backend + store).
- * This supports the header count + sheets.
+ * Minimal sub-room type for now.
  */
 export type SubRoom = {
   id: string;

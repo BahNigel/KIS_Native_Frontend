@@ -23,6 +23,7 @@ import DeviceVerificationScreen from './src/screens/DeviceVerificationScreen';
 import { MainTabs } from '@/navigation/AppNavigator';
 import { getRequest } from '@/network/get';
 import ROUTES from '@/network';
+import { SocketProvider } from './SocketProvider';
 
 type AuthCtx = {
   isAuth: boolean;
@@ -122,24 +123,26 @@ export default function App() {
 
   return (
     <AuthContext.Provider value={ctx}>
-      <NavigationContainer theme={scheme === 'dark' ? DarkTheme : DefaultTheme}>
-        <RootStack.Navigator screenOptions={{ headerShown: false }}>
-          {isAuth ? (
-            <RootStack.Screen name="MainTabs" component={MainTabs} />
-          ) : (
-            <>
-              <RootStack.Screen name="Welcome" component={WelcomeScreen} />
-              <RootStack.Screen name="Login" component={LoginScreen} />
-              <RootStack.Screen name="Register" component={RegisterScreen} />
-              <RootStack.Screen name="DeviceVerification">
-                {(props) => (
-                  <DeviceVerificationScreen {...props} setLoad={setLoad} />
-                )}
-              </RootStack.Screen>
-            </>
-          )}
-        </RootStack.Navigator>
-      </NavigationContainer>
+      <SocketProvider>
+        <NavigationContainer theme={scheme === 'dark' ? DarkTheme : DefaultTheme}>
+          <RootStack.Navigator screenOptions={{ headerShown: false }}>
+            {isAuth ? (
+              <RootStack.Screen name="MainTabs" component={MainTabs} />
+            ) : (
+              <>
+                <RootStack.Screen name="Welcome" component={WelcomeScreen} />
+                <RootStack.Screen name="Login" component={LoginScreen} />
+                <RootStack.Screen name="Register" component={RegisterScreen} />
+                <RootStack.Screen name="DeviceVerification">
+                  {(props) => (
+                    <DeviceVerificationScreen {...props} setLoad={setLoad} />
+                  )}
+                </RootStack.Screen>
+              </>
+            )}
+          </RootStack.Navigator>
+        </NavigationContainer>
+      </SocketProvider>
     </AuthContext.Provider>
   );
 }

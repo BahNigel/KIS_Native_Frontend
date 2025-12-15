@@ -1,4 +1,3 @@
-// src/theme/constants.ts
 import { Platform } from 'react-native';
 
 /** ─────────────────────────
@@ -73,6 +72,7 @@ export type KISPalette = {
   // Text
   text: string;
   subtext: string;
+  mutedText: string;        // 🆕 alias used by chat/request UI
   inverseText: string;
 
   // Inputs & borders
@@ -159,7 +159,7 @@ export const createPalette = (tone: KISTone): KISPalette => {
   // 🆕 KIS-style chat colors using both gradientStart & gradientEnd
   // - Light: soft tints of orange (sender) & purple (receiver)
   // - Dark: richer, deeper variants of orange & purple
-   // 🆕 KIS-style chat colors using deeper, desaturated variants in dark mode
+  // 🆕 KIS-style chat colors using deeper, desaturated variants in dark mode
   const chatBg =
     tone === 'dark'
       ? '#0C0B0F'          // nearly-black violet/charcoal base
@@ -168,15 +168,14 @@ export const createPalette = (tone: KISTone): KISPalette => {
   // Outgoing (sender) bubble → dark muted burnt-orange
   const outgoingBubble =
     tone === 'dark'
-      ? '#3F2A1F'          // 🔥 extremely dark warm orange tone (not using brand orange directly)
-      : '#FFE3CF';         // light orange-tinted bubble (unchanged)
+      ? '#3F2A1F'          // extremely dark warm orange tone
+      : '#FFE3CF';         // light orange-tinted bubble
 
   // Incoming (receiver) bubble → deep muted purple/indigo
   const incomingBubble =
     tone === 'dark'
-      ? '#1E1A2B'          // 💜 deep desaturated purple, almost charcoal
-      : '#ECE6FF';         // light lavender bubble (unchanged)
-
+      ? '#1E1A2B'          // deep desaturated purple, almost charcoal
+      : '#ECE6FF';         // light lavender bubble
 
   const chatHeaderBg = base.card;
   const chatComposerBg = base.card;
@@ -234,6 +233,7 @@ export const createPalette = (tone: KISTone): KISPalette => {
     // Text
     text: base.text,
     subtext: base.subtext,
+    mutedText: base.subtext,     // 🆕 keeps request banners aligned with subtext
     inverseText: tone === 'dark' ? '#0F0D14' : '#FFFFFF',
 
     // Inputs & borders

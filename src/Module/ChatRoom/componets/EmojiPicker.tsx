@@ -1,17 +1,16 @@
-import React from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
-  ScrollView,
   Pressable,
+  SectionList,
+  ActivityIndicator,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 type EmojiPickerProps = {
   palette: any;
   onSelectEmoji: (emoji: string) => void;
-
-  // Recents come from your own cache (AsyncStorage, DB, etc.)
-  // Pass whatever you’ve stored for the current user.
   recentEmojis?: string[];
 };
 
@@ -21,16 +20,20 @@ type EmojiCategory = {
   emojis: string[];
 };
 
+type EmojiRow = {
+  key: string;
+  emojis: string[];
+};
+
+const RECENT_EMOJIS_KEY = '@kis_recent_emojis';
+const MAX_RECENT_EMOJIS = 40;
+const EMOJIS_PER_ROW = 8;
+
 /**
  * ============================
  * Emoji constants by category
  * ============================
- *
- * NOTE:
- * - I’ve populated each category with real emojis as a base.
- * - You can (and should) extend each array to hit your exact
- *   minimum counts (448+, 216+, 136+, 128+, 128+, 216+, 300+, 300+).
- * - Just keep adding emoji string literals in each array.
+ * (same as your current file – truncated comments only)
  */
 
 // Smileys & People (add until ≥ 448)
@@ -85,9 +88,7 @@ export const EMOJI_SMILEYS_PEOPLE: string[] = [
   // other people-ish
   '🧙', '🧚', '🧛', '🧜', '🧝', '🧞', '🧟', '🧌',
 
-  // TODO: keep extending with ALL remaining smileys, people, professions,
-  // family combinations, gender variants, skin tones, etc. until you
-  // comfortably exceed 448 items.
+  // TODO: extend to exceed 448 items.
 ];
 
 // Animals & Nature (add until ≥ 216)
@@ -106,7 +107,6 @@ export const EMOJI_ANIMALS_NATURE: string[] = [
   '🐈', '🐈‍⬛', '🐓', '🦃', '🦚', '🦜', '🦢', '🕊️',
   '🐇', '🦝', '🦨', '🦡', '🦫', '🦦', '🦥', '🐿️',
 
-  // plants, weather, etc.
   '🌵', '🎄', '🌲', '🌳', '🌴', '🌱', '🌿', '☘️',
   '🍀', '🎍', '🪴', '🌷', '🌹', '🥀', '🌺', '🌸',
   '🌼', '🌻', '🌞', '🌝', '🌛', '🌜', '🌚', '🌕',
@@ -115,8 +115,7 @@ export const EMOJI_ANIMALS_NATURE: string[] = [
   '🌦️', '🌧️', '⛈️', '🌩️', '🌨️', '❄️', '☃️', '⛄',
   '🌬️', '💨', '🌪️', '🌫️', '🌈', '💧', '💦', '☔',
   '🔥', '💥',
-
-  // TODO: extend to reach ≥ 216 animals & nature emojis.
+  // TODO: extend to ≥ 216.
 ];
 
 // Food & Drink (add until ≥ 136)
@@ -136,8 +135,7 @@ export const EMOJI_FOOD_DRINK: string[] = [
   '🍼', '🥛', '☕', '🍵', '🧃', '🥤', '🧋', '🍺',
   '🍻', '🥂', '🍷', '🥃', '🍸', '🍹', '🧉', '🍾',
   '🧊',
-
-  // TODO: extend to ≥ 136 with more foods, drinks, ingredients.
+  // TODO: extend to ≥ 136.
 ];
 
 // Activity (add until ≥ 128)
@@ -149,20 +147,16 @@ export const EMOJI_ACTIVITY: string[] = [
   '🥌', '🛶', '🚣', '🏊', '🤽', '🤾', '🏄', '🏇',
   '🚴', '🚵', '🤸', '⛹️', '🤺', '🤼', '🤹',
   '🎖️', '🏆', '🏅', '🥇', '🥈', '🥉',
-
-  // events, shows, leisure
   '🎭', '🎨', '🎬', '🎤', '🎧', '🎼', '🎹', '🥁',
   '🎷', '🎺', '🎸', '🪕', '🪗',
   '🎮', '🕹️', '🎲', '♟️', '🧩',
   '🎯', '🎳', '🧗', '🏕️', '🏖️', '🎡', '🎢', '🎠',
   '🎪', '🎟️', '🎫',
-
-  // TODO: extend to ≥ 128 with more sport/arts/emojis.
+  // TODO: extend to ≥ 128.
 ];
 
 // Travel & Places (add until ≥ 128)
 export const EMOJI_TRAVEL_PLACES: string[] = [
-  // transport
   '🚗', '🚕', '🚙', '🚌', '🚎', '🏎️', '🚓', '🚑',
   '🚒', '🚐', '🚚', '🚛', '🚜', '🛴', '🚲', '🛵',
   '🏍️', '🛺', '🚨', '🚔', '🚍', '🚘', '🚖',
@@ -171,19 +165,15 @@ export const EMOJI_TRAVEL_PLACES: string[] = [
   '✈️', '🛫', '🛬', '🛩️', '🛸', '🚁', '⛵', '🚤',
   '🛶', '🚀', '🛳️', '⛴️', '🚢',
 
-  // buildings & places
   '🏠', '🏡', '🏘️', '🏚️', '🏗️', '🏭', '🏢', '🏬',
   '🏣', '🏤', '🏥', '🏦', '🏨', '🏩', '🏪', '🏫',
-  '🏛️', '⛪', '🕌', '🕍', '🕋', '⛩️', '🛕', '🕋',
-  '🛖', '🕋', '🛕',
+  '🏛️', '⛪', '🕌', '🕍', '🕋', '⛩️', '🛕',
   '🏰', '🏯', '🏟️', '🎡', '🎢', '🎠',
   '⛲', '⛺', '🌁', '🌃', '🏙️', '🌄', '🌅', '🌆',
   '🌇', '🌉', '🌌',
 
-  // maps & location
   '🗺️', '🗾', '🧭', '📍', '📌', '🧱',
-
-  // TODO: extend to ≥ 128 with more landscapes, buildings, etc.
+  // TODO: extend to ≥ 128.
 ];
 
 // Objects (add until ≥ 216)
@@ -193,12 +183,10 @@ export const EMOJI_OBJECTS: string[] = [
   '📷', '📸', '📹', '🎥', '📽️', '🎞️', '📞', '☎️',
   '📟', '📠', '📺', '📻', '🎙️', '🎚️', '🎛️', '🧭',
   '⏱️', '⏲️', '⏰', '🕰️', '⌛', '⏳',
-
   '📡', '🔋', '🔌', '💡', '🔦', '🕯️',
   '🧯', '🛢️', '💸', '💵', '💴', '💶', '💷', '💰',
   '💳', '🧾', '💹',
 
-  // office / stationery
   '✉️', '📧', '📨', '📩', '📤', '📥', '📦', '📫',
   '📪', '📬', '📭', '📮',
   '📁', '📂', '🗂️', '📅', '📆', '🗒️', '🗓️', '📇',
@@ -206,35 +194,29 @@ export const EMOJI_OBJECTS: string[] = [
   '📏', '📐', '✂️', '🖊️', '🖋️', '✒️', '🖌️', '🖍️',
   '📝', '📙', '📘', '📗', '📕', '📚', '📖',
 
-  // tools
   '🧰', '🪛', '🔧', '🔨', '⚒️', '🛠️', '⛏️', '🪓',
   '🔩', '⚙️', '🗜️', '⚖️', '🔗', '⛓️',
   '🧱', '🪚', '🪜', '🧲', '🪤',
 
-  // household
   '🔑', '🗝️', '🚪', '🪑', '🛏️', '🛋️', '🚿', '🛁',
   '🚽', '🪠', '🪥', '🧴', '🧼', '🧻', '🧽', '🪣',
   '🧺', '🧹', '🧯', '🧸', '🪆',
   '🧷', '🧵', '🪡', '🧶',
   '🛒', '🎁', '🎈', '🎀', '🎊',
 
-  // clothing
   '👓', '🕶️', '🥽', '🥼', '🦺', '👔', '👕', '👖',
   '🧣', '🧤', '🧥', '🧦', '👗', '👘', '🥻', '🩱',
   '🩲', '🩳', '👙', '👚', '👛', '👜', '👝', '🛍️',
   '🎒', '👞', '👟', '🥾', '🥿', '👠', '👡', '🩴',
   '👢', '👑', '👒', '🎩', '🎓', '🧢', '🪖', '⛑️',
 
-  // health / misc objects
   '🩺', '💉', '💊', '🩹', '🩼', '🩻',
   '🔬', '🔭', '📡',
-
-  // TODO: extend to ≥ 216 with more gadgets, tools, clothes, random objects.
+  // TODO: extend to ≥ 216.
 ];
 
 // Symbols (add until ≥ 300)
 export const EMOJI_SYMBOLS: string[] = [
-  // basic symbols
   '❤️', '💔', '❣️', '💕', '💞', '💓', '💗', '💖',
   '💘', '💝', '💟',
   '💯', '♻️', '⚜️', '🔱', '📛', '🔰', '⭕', '✅',
@@ -244,17 +226,14 @@ export const EMOJI_SYMBOLS: string[] = [
   '#️⃣', '*️⃣', '0️⃣', '1️⃣', '2️⃣', '3️⃣', '4️⃣',
   '5️⃣', '6️⃣', '7️⃣', '8️⃣', '9️⃣',
 
-  // arrows
   '⬆️', '↗️', '➡️', '↘️', '⬇️', '↙️', '⬅️', '↖️',
   '↕️', '↔️', '↩️', '↪️', '⤴️', '⤵️',
   '🔃', '🔄', '🔁', '🔂', '🔀', '🔼', '🔽',
 
-  // shapes
   '⚪', '⚫', '🔵', '🔴', '🟠', '🟡', '🟢', '🟣',
   '🟤', '🟥', '🟧', '🟨', '🟩', '🟦', '🟪', '🟫',
   '⬛', '⬜', '◼️', '◻️', '◾', '◽', '▪️', '▫️',
 
-  // zodiac / religion / misc
   '♈', '♉', '♊', '♋', '♌', '♍', '♎', '♏',
   '♐', '♑', '♒', '♓',
   '☮️', '✝️', '☪️', '🕉️', '☸️', '✡️', '🔯', '🕎',
@@ -264,19 +243,15 @@ export const EMOJI_SYMBOLS: string[] = [
   '🔞', '🚫', '⛔', '📵', '🚭', '❗', '❕',
   '⚠️', '☢️', '☣️',
 
-  // time / gender / misc
   '⏱️', '⏲️', '⏰', '🕛', '🕧', '🕐', '🕜', '🕑',
   '🕝', '🕒', '🕞', '🕓', '🕟', '🕔', '🕠', '🕕',
   '🕡', '🕖', '🕢', '🕗', '🕣', '🕘', '🕤', '🕙',
   '🕥', '🕚', '🕦',
-
-  // TODO: extend with more signs, math symbols, alphanumerics, tags, etc.
-  // until you exceed 300 items.
+  // TODO: extend to ≥ 300.
 ];
 
 // Flags (add until ≥ 300)
 export const EMOJI_FLAGS: string[] = [
-  // some common flags to start
   '🏁', '🚩', '🎌', '🏴', '🏳️', '🏳️‍🌈', '🏴‍☠️',
 
   '🇦🇫', '🇦🇱', '🇩🇿', '🇦🇸', '🇦🇩', '🇦🇴', '🇦🇮', '🇦🇶',
@@ -313,9 +288,9 @@ export const EMOJI_FLAGS: string[] = [
   '🇺🇬', '🇺🇦', '🇦🇪', '🇬🇧', '🇺🇸', '🇺🇾', '🇺🇿',
   '🇻🇺', '🇻🇪', '🇻🇳',
   '🇾🇪', '🇿🇲', '🇿🇼',
-
-  // TODO: add remaining territories & special flags until ≥ 300.
+  // TODO: extend to ≥ 300.
 ];
+
 
 /**
  * Build categories array. Recents will be dynamically injected
@@ -346,15 +321,181 @@ const buildCategories = (recentEmojis?: string[]): EmojiCategory[] => {
   return categories;
 };
 
+// Utility to chunk emojis into rows
+const chunkEmojisToRows = (emojis: string[], catId: string): EmojiRow[] => {
+  const rows: EmojiRow[] = [];
+  for (let i = 0; i < emojis.length; i += EMOJIS_PER_ROW) {
+    const rowEmojis = emojis.slice(i, i + EMOJIS_PER_ROW);
+    rows.push({
+      key: `${catId}-row-${i / EMOJIS_PER_ROW}`,
+      emojis: rowEmojis,
+    });
+  }
+  return rows;
+};
+
 export const EmojiPicker: React.FC<EmojiPickerProps> = ({
   palette,
   onSelectEmoji,
-  recentEmojis,
+  recentEmojis, // optional external override
 }) => {
-  const categories = buildCategories(recentEmojis).map(cat => ({
-    ...cat,
-    emojis: Array.from(new Set(cat.emojis)), // remove duplicates
-    }));
+  const [internalRecents, setInternalRecents] = useState<string[]>([]);
+  const [loadingRecents, setLoadingRecents] = useState<boolean>(!recentEmojis);
+
+  // Load recents from AsyncStorage on mount, if we're managing them internally
+  useEffect(() => {
+    if (recentEmojis) {
+      setLoadingRecents(false);
+      return;
+    }
+
+    const loadRecents = async () => {
+      try {
+        const raw = await AsyncStorage.getItem(RECENT_EMOJIS_KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) {
+            setInternalRecents(parsed.filter((e) => typeof e === 'string'));
+          }
+        }
+      } catch (err) {
+        console.warn('[EmojiPicker] Failed to load recent emojis', err);
+      } finally {
+        setLoadingRecents(false);
+      }
+    };
+
+    loadRecents();
+  }, [recentEmojis]);
+
+  const effectiveRecents = recentEmojis ?? internalRecents;
+
+  // Build categories only when recents change
+  const categories = useMemo(
+    () =>
+      buildCategories(effectiveRecents).map((cat) => ({
+        ...cat,
+        emojis: Array.from(new Set(cat.emojis)), // remove duplicates
+      })),
+    [effectiveRecents],
+  );
+
+  // Build SectionList sections (virtualized)
+  const sections = useMemo(
+    () =>
+      categories.map((cat) => ({
+        id: cat.id,
+        title: cat.label,
+        data: chunkEmojisToRows(cat.emojis, cat.id),
+      })),
+    [categories],
+  );
+
+  const handleEmojiPress = (emoji: string) => {
+    onSelectEmoji(emoji);
+
+    if (recentEmojis) return;
+
+    setInternalRecents((prev) => {
+      const filtered = prev.filter((e) => e !== emoji);
+      const updated = [emoji, ...filtered].slice(0, MAX_RECENT_EMOJIS);
+
+      AsyncStorage.setItem(RECENT_EMOJIS_KEY, JSON.stringify(updated)).catch(
+        (err) =>
+          console.warn('[EmojiPicker] Failed to save recent emojis', err),
+      );
+
+      return updated;
+    });
+  };
+
+  const renderRow = ({ item, section }: { item: EmojiRow; section: { id: string } }) => (
+    <View
+      style={{
+        flexDirection: 'row',
+        flexWrap: 'nowrap',
+      }}
+    >
+      {item.emojis.map((emoji) => (
+        <Pressable
+          key={`${section.id}-${emoji}`}
+          onPress={() => handleEmojiPress(emoji)}
+          style={{
+            width: 40,
+            height: 40,
+            alignItems: 'center',
+            justifyContent: 'center',
+            margin: 4,
+            borderRadius: 20,
+          }}
+          android_ripple={{ color: '#ccc', borderless: true }}
+        >
+          <Text style={{ fontSize: 30 }}>{emoji}</Text>
+        </Pressable>
+      ))}
+    </View>
+  );
+
+  const renderSectionHeader = ({ section }: { section: any }) => (
+    <Text
+      style={{
+        color: palette.textSecondary ?? '#888',
+        fontSize: 14,
+        marginVertical: 4,
+        paddingHorizontal: 8,
+      }}
+    >
+      {section.title}
+    </Text>
+  );
+
+  // Skeleton while recents are loading (to give immediate feedback)
+  if (loadingRecents) {
+    return (
+      <View
+        style={{
+          borderTopWidth: 1,
+          borderTopColor: palette.divider,
+          backgroundColor: palette.chatComposerBg ?? palette.card,
+          paddingVertical: 8,
+          paddingHorizontal: 8,
+        }}
+      >
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            marginBottom: 8,
+          }}
+        >
+          <ActivityIndicator size="small" color={palette.textSecondary ?? '#888'} />
+          <Text
+            style={{
+              marginLeft: 8,
+              color: palette.textSecondary ?? '#888',
+            }}
+          >
+            Loading emojis…
+          </Text>
+        </View>
+
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
+          {Array.from({ length: 24 }).map((_, idx) => (
+            <View
+              key={idx}
+              style={{
+                width: 40,
+                height: 40,
+                margin: 4,
+                borderRadius: 20,
+                backgroundColor: palette.skeleton ?? '#ddd',
+              }}
+            />
+          ))}
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View
@@ -365,52 +506,22 @@ export const EmojiPicker: React.FC<EmojiPickerProps> = ({
         paddingVertical: 4,
       }}
     >
-      <ScrollView
+      <SectionList
+        sections={sections}
+        keyExtractor={(item: EmojiRow) => item.key}
+        renderItem={renderRow}
+        renderSectionHeader={renderSectionHeader}
         style={{ maxHeight: 220 }}
         contentContainerStyle={{
-          paddingHorizontal: 8,
           paddingBottom: 8,
         }}
-      >
-        {categories.map(category => (
-          <View key={category.id} style={{ marginBottom: 8 }}>
-            <Text
-              style={{
-                color: palette.textSecondary ?? '#888',
-                fontSize: 14,
-                marginVertical: 4,
-              }}
-            >
-              {category.label}
-            </Text>
-
-            <View
-              style={{
-                flexDirection: 'row',
-                flexWrap: 'wrap',
-              }}
-            >
-              {category.emojis.map(emoji => (
-                <Pressable
-                  key={category.id + '-' + emoji}
-                  onPress={() => onSelectEmoji(emoji)}
-                  style={{
-                    width: 40,
-                    height: 40,
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    margin: 4,
-                    borderRadius: 20,
-                  }}
-                  android_ripple={{ color: '#ccc', borderless: true }}
-                >
-                  <Text style={{ fontSize: 30 }}>{emoji}</Text>
-                </Pressable>
-              ))}
-            </View>
-          </View>
-        ))}
-      </ScrollView>
+        // Virtualization tuning so the first screen loads < 1s, others as you scroll
+        initialNumToRender={20}        // first rows to render
+        maxToRenderPerBatch={20}
+        windowSize={7}
+        removeClippedSubviews
+        showsVerticalScrollIndicator={true}
+      />
     </View>
   );
 };

@@ -16,6 +16,39 @@ export const chatRoomStyles = StyleSheet.create({
     marginLeft: 4,
   },
 
+  banner: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  title: {
+    fontWeight: '600',
+    marginBottom: 4,
+    fontSize: 14,
+  },
+  text: {
+    fontSize: 13,
+  },
+  actions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    marginTop: 8,
+  },
+  btn: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    marginLeft: 8,
+  },
+  btnText: {
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  btnPrimary: {},
+  btnSecondary: {},
+  btnDanger: {},
+
   // used across header / composer
   iconTextButton: {
     width: 32,

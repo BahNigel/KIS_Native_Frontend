@@ -33,6 +33,10 @@ export function useConversationBootstrap(
       return String(chat.id);
     }
 
+    if (isDirectChat && chat.id && !String(chat.id).startsWith('newContact-')) {
+      return String(chat.id);
+    }
+
     return null;
   }, [chat, isDirectChat]);
 
@@ -56,139 +60,98 @@ export function useConversationBootstrap(
 
   const storageRoomId = chat?.id ?? 'local-room';
 
+  /**
+   * Ensure we have a real conversationId.
+   * - Non-direct: return existing id
+   * - Direct:
+   *    - If chat already has a real id, reuse it
+   *    - Else call Django /direct to create/fetch the DM conversation (pending request flow)
+   *
+   * NOTE: We accept an optional reason/preview arg just for logging.
+   */
   const ensureConversationId = useCallback(
-    async (previewText?: string): Promise<string | null> => {
+    async (reason?: string): Promise<string | null> => {
       if (!chat) return null;
 
       let currentConversationId: string | null =
         conversationId != null ? String(conversationId) : null;
 
       console.log(
-        '[ChatRoomPage] ensureConversationId called. Current conversationId:',
-        currentConversationId,
-        'isDirectChat:',
-        isDirectChat,
+        '[ChatRoomPage] ensureConversationId called:',
+        { reason, currentConversationId, isDirectChat },
       );
 
-      // NON-DIRECT CHATS
+      // ---------------- NON-DIRECT ----------------
       if (!isDirectChat) {
-        const existingId =
-          (chat as any).conversationId ??
-          chat.id ??
-          null;
-
-        if (!existingId) {
-          console.warn(
-            '[ChatRoomPage] Non-direct chat without id/conversationId:',
-            chat,
-          );
-          return null;
-        }
+        const existingId = (chat as any).conversationId ?? chat.id ?? null;
+        if (!existingId) return null;
 
         const idStr = String(existingId);
-
         if (idStr !== currentConversationId) {
-          console.log(
-            '[ChatRoomPage] Using non-direct conversationId from chat:',
-            idStr,
-          );
-          currentConversationId = idStr;
           setConversationId(idStr);
         }
-
         return idStr;
       }
 
-      // DIRECT CHATS
-      if (currentConversationId) {
-        return currentConversationId;
-      }
+      // ---------------- DIRECT ----------------
+      if (currentConversationId) return currentConversationId;
 
       const chatIdStr = chat.id != null ? String(chat.id) : null;
       const isNewContact = chatIdStr?.startsWith('newContact-') ?? false;
 
+      // If chat.id exists and isn't temp, treat it as conversationId.
       if (!isNewContact && chatIdStr) {
-        console.log(
-          '[ChatRoomPage] Using existing direct conversationId from chat.id:',
-          chatIdStr,
-        );
-        currentConversationId = chatIdStr;
         setConversationId(chatIdStr);
         return chatIdStr;
       }
 
       if (!authToken) {
-        Alert.alert(
-          'Not signed in',
-          'Please sign in again before sending messages.',
-        );
+        Alert.alert('Not signed in', 'Please sign in again.');
         return null;
       }
 
       const participantsPhones: string[] = (chat.participants ?? [])
         .filter(Boolean)
-        .map((p) => String(p).trim());
+        .map((p) => String(p).trim())
+        .filter((p) => p.length > 0);
 
       if (!participantsPhones.length) {
-        Alert.alert(
-          'Cannot start chat',
-          'No participant phone numbers found for this chat.',
-        );
+        Alert.alert('Cannot start chat', 'No participant phone numbers found.');
         return null;
       }
 
-      const conversationName = chat.name || 'New chat';
-      const last_message_preview = previewText?.trim() ?? '';
-
       const payload = {
-        type: 'direct',
-        title: conversationName,
-        last_message_preview,
-        participants: participantsPhones,
-        user_id: { participants: participantsPhones },
+        participants: [participantsPhones[0]],
         client_context: {
           temp_chat_id: String(chat.id),
           source: 'mobile',
         },
       };
 
-      console.log('[ChatRoomPage] Creating conversation with payload:', payload);
+      console.log('[ChatRoomPage] /direct payload:', payload);
 
       try {
-        const res = await postRequest(
-          ROUTES.chat.directConversation,
-          payload,
-          {
-            errorMessage: 'conversation.',
-          },
-        );
+        const res = await postRequest(ROUTES.chat.directConversation, payload, {
+          errorMessage: 'Could not start conversation.',
+        });
+
+        if (!res?.success) {
+          Alert.alert('Error', res?.message || 'Could not start conversation.');
+          return null;
+        }
 
         const newId = res?.data?.id;
         if (!newId) {
-          console.warn(
-            '[ChatRoomPage] directConversation: no id returned in response',
-            res,
-          );
-          Alert.alert(
-            'Error',
-            'Conversation created but id is missing from server response.',
-          );
+          Alert.alert('Error', 'Conversation created but id is missing.');
           return null;
         }
 
         const idStr = String(newId);
-        console.log('[ChatRoomPage] Final direct conversationId:', idStr);
-
-        currentConversationId = idStr;
         setConversationId(idStr);
-
         return idStr;
       } catch (e) {
         console.warn('[ChatRoomPage] ensureConversationId error', e);
-        Alert.alert(
-          'Network error',
-          'Could not start this conversation. Please check your connection.',
-        );
+        Alert.alert('Network error', 'Could not start this conversation.');
         return null;
       }
     },

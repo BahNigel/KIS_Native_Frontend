@@ -14,6 +14,11 @@ const API_PORT = 8000;
 // KIS Chat backend (NestJS + Fastify)
 const CHAT_PORT = 4000;
 
+const API_BASE = 'http://localhost:8000/api/v1';
+export const BG_REMOVAL_START_URL = `${API_BASE}/remove-background/`;
+export const BG_REMOVAL_STATUS_URL = (jobId: string) => `${API_BASE}/gbJobs/${jobId}/`;
+
+
 const emulatorHost = Platform.OS === 'android' ? '10.0.2.2' : '127.0.0.1';
 const host = USE_EMULATOR ? emulatorHost : LAN_IP;
 console.log('KIS host =', host);
@@ -34,6 +39,8 @@ export const CHAT_UPLOAD_URL = `${CHAT_BASE_URL}/uploads/file`;
 
 // Backwards-compat: old WEBSOCKET_URL now points to the Nest chat backend
 export const WEBSOCKET_URL = CHAT_WS_URL;
+
+export const NEST_API_BASE_URL = 'http://localhost:4000'; // or from env/config
 
 const ROUTES = {
   auth: {
@@ -93,7 +100,7 @@ const ROUTES = {
   },
   chat: {
     // Django DRF ConversationViewSet @action(detail=False, url_path='direct')
-    directConversation: `${API_BASE_URL}/api/v1/conversations/`,
+    directConversation: `${API_BASE_URL}/api/v1/conversations/direct/`,
     listConversations: `${API_BASE_URL}/api/v1/conversations/`,
   },
   community: {
