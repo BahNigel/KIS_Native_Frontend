@@ -135,6 +135,7 @@ type BackendMessage = {
   status?: string;
 
   clientId?: string | null;
+  serverId?: string | null;
 };
 
 function mapBackendToChatMessage(

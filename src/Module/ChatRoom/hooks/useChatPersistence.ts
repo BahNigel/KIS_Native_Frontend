@@ -1,5 +1,20 @@
 // src/screens/chat/hooks/useChatPersistence.ts
 
+/* ============================================================================
+ * OFFLINE-FIRST CHAT PERSISTENCE HOOK (TYPE-SAFE, serverId AWARE)
+ * ---------------------------------------------------------------------------
+ * This version FIXES all TypeScript issues reported:
+ *
+ * 1) SendOverNetworkResult union narrowing (serverId access safe)
+ * 2) ChatMessage.id optional vs required mismatch
+ * 3) string | undefined key usage
+ * 4) Strict clientId / serverId identity rules
+ *
+ * It intentionally exceeds 500 LOC to remain explicit, debuggable,
+ * and production-grade.
+ * ============================================================================
+ */
+
 import {
   useCallback,
   useEffect,
@@ -7,20 +22,54 @@ import {
   useState,
 } from 'react';
 
-import { ChatMessage, MessageStatus } from '../chatTypes';
+import {
+  ChatMessage,
+  MessageStatus,
+} from '../chatTypes';
+
 import {
   loadMessages,
   saveMessages,
 } from '../Storage/chatStorage';
 
 /* ============================================================================
- * TYPES
+ * NETWORK CONTRACT TYPES (STRICT)
  * ============================================================================
  */
 
+/**
+ * Transport ACK when message is accepted by server.
+ */
+export type SendOverNetworkAck = {
+  ok: true;
+  serverId: string;
+};
+
+/**
+ * Transport NACK or failure.
+ */
+export type SendOverNetworkNack = {
+  ok: false;
+};
+
+/**
+ * Discriminated union for safe narrowing.
+ */
+export type SendOverNetworkResult =
+  | SendOverNetworkAck
+  | SendOverNetworkNack;
+
+/**
+ * Transport function injected from messaging layer.
+ */
 export type SendOverNetworkFn = (
   message: ChatMessage,
-) => Promise<boolean>;
+) => Promise<SendOverNetworkResult>;
+
+/* ============================================================================
+ * HOOK OPTIONS / API
+ * ============================================================================
+ */
 
 type UseChatPersistenceOptions = {
   roomId: string;
@@ -64,20 +113,42 @@ export type UseChatPersistenceResult = {
 };
 
 /* ============================================================================
- * CONSTANTS & HELPERS
+ * STATUS CONSTANTS
  * ============================================================================
  */
 
-const STATUS_PENDING: MessageStatus = 'pending';
+const STATUS_QUEUED: MessageStatus = 'pending';
 const STATUS_SENT: MessageStatus = 'sent';
 const STATUS_FAILED: MessageStatus = 'failed';
 
-const nowIso = () => new Date().toISOString();
+/* ============================================================================
+ * ID & TIME HELPERS
+ * ============================================================================
+ */
 
-const createLocalId = () =>
-  `local_${Date.now()}_${Math.random()
+const nowIso = (): string => new Date().toISOString();
+
+/**
+ * Always returns a NON-EMPTY string.
+ */
+const createClientId = (): string => {
+  return `client_${Date.now()}_${Math.random()
     .toString(36)
     .slice(2)}`;
+};
+
+/**
+ * Ensures we always have a usable identity key.
+ */
+const getIdentityKey = (msg: ChatMessage): string => {
+  if (msg.serverId) return msg.serverId;
+  return msg.clientId;
+};
+
+/* ============================================================================
+ * SORTING & NORMALIZATION
+ * ============================================================================
+ */
 
 function sortMessages(
   list: ChatMessage[],
@@ -86,13 +157,12 @@ function sortMessages(
     if (a.createdAt !== b.createdAt) {
       return a.createdAt.localeCompare(b.createdAt);
     }
-    return (a.id ?? '').localeCompare(b.id ?? '');
+    return getIdentityKey(a).localeCompare(
+      getIdentityKey(b),
+    );
   });
 }
 
-/**
- * Always returns a ChatMessage (never widens)
- */
 function withStatus(
   msg: ChatMessage,
   status: MessageStatus,
@@ -107,11 +177,11 @@ function withStatus(
   };
 }
 
-/**
- * Merge server messages with local cache
- * - Deduplicate by id OR clientId
- * - Server message wins
+/* ============================================================================
+ * MERGE / DEDUPLICATION
+ * ============================================================================
  */
+
 function mergeMessages(
   existing: ChatMessage[],
   incoming: ChatMessage[],
@@ -119,22 +189,20 @@ function mergeMessages(
   const map = new Map<string, ChatMessage>();
 
   for (const msg of existing) {
-    const key = msg.id ?? msg.clientId;
-    if (key) map.set(key, msg);
+    map.set(getIdentityKey(msg), msg);
   }
 
   for (const msg of incoming) {
-    const key = msg.id ?? msg.clientId;
-    if (!key) continue;
-
+    const key = getIdentityKey(msg);
     const prev = map.get(key);
+
     if (!prev) {
       map.set(key, msg);
       continue;
     }
 
     if (
-      prev.status === STATUS_PENDING &&
+      prev.status === STATUS_QUEUED &&
       msg.status === STATUS_SENT
     ) {
       map.set(key, {
@@ -142,6 +210,11 @@ function mergeMessages(
         ...msg,
         fromMe: prev.fromMe,
       });
+      continue;
+    }
+
+    if (msg.serverId) {
+      map.set(key, { ...prev, ...msg });
     }
   }
 
@@ -149,7 +222,7 @@ function mergeMessages(
 }
 
 /* ============================================================================
- * HOOK
+ * MAIN HOOK
  * ============================================================================
  */
 
@@ -170,10 +243,9 @@ export function useChatPersistence(
   const messagesRef = useRef<ChatMessage[]>([]);
   const roomIdRef = useRef<string>(roomId);
 
-  /* --------------------------------------------------------------------------
-   * KEEP REFS IN SYNC
-   * --------------------------------------------------------------------------
-   */
+  /* ------------------------------------------------------------------------
+   * REF SYNC
+   * --------------------------------------------------------------------- */
 
   useEffect(() => {
     messagesRef.current = messages;
@@ -183,10 +255,9 @@ export function useChatPersistence(
     roomIdRef.current = roomId;
   }, [roomId]);
 
-  /* --------------------------------------------------------------------------
+  /* ------------------------------------------------------------------------
    * INITIAL LOAD
-   * --------------------------------------------------------------------------
-   */
+   * --------------------------------------------------------------------- */
 
   useEffect(() => {
     let mounted = true;
@@ -196,17 +267,11 @@ export function useChatPersistence(
 
     (async () => {
       try {
-        const loaded =
-          await loadMessages(roomId);
-
+        const loaded = await loadMessages(roomId);
         if (!mounted) return;
-
         setMessages(sortMessages(loaded ?? []));
       } catch (err) {
-        console.warn(
-          '[useChatPersistence] load error',
-          err,
-        );
+        console.warn('[useChatPersistence] load error', err);
         setMessages([]);
       } finally {
         if (mounted) setIsLoading(false);
@@ -218,52 +283,53 @@ export function useChatPersistence(
     };
   }, [roomId]);
 
-  /* --------------------------------------------------------------------------
+  /* ------------------------------------------------------------------------
    * PERSIST
-   * --------------------------------------------------------------------------
-   */
+   * --------------------------------------------------------------------- */
 
   const persist = useCallback(
     async (next: ChatMessage[]) => {
       const sorted = sortMessages(next);
       setMessages(sorted);
-      await saveMessages(roomId, sorted);
+      await saveMessages(roomIdRef.current, sorted);
     },
-    [roomId],
+    [],
   );
 
-  /* --------------------------------------------------------------------------
+  /* ------------------------------------------------------------------------
    * SEND RICH MESSAGE
-   * --------------------------------------------------------------------------
-   */
+   * --------------------------------------------------------------------- */
 
   const sendRichMessage = useCallback(
     async (payload: Partial<ChatMessage>) => {
-      const hasContent =
-        Boolean(
-          payload.text?.trim() ||
-            payload.voice ||
-            payload.styledText ||
-            payload.sticker ||
-            payload.poll ||
-            payload.event ||
-            payload.attachments?.length ||
-            payload.contacts?.length,
-        );
+      const hasContent = Boolean(
+        payload.text?.trim() ||
+          payload.voice ||
+          payload.styledText ||
+          payload.sticker ||
+          payload.poll ||
+          payload.event ||
+          payload.attachments?.length ||
+          payload.contacts?.length,
+      );
 
       if (!hasContent) return;
 
+      const clientId = payload.clientId ?? createClientId();
+
       const draft: ChatMessage = {
-        id: createLocalId(),
-        clientId:
-          payload.clientId ?? createLocalId(),
+        // IMPORTANT: id is REQUIRED in your ChatMessage type
+        // We map it to clientId for local-only identity
+        id: clientId,
+        clientId,
+        serverId: payload.serverId,
         roomId,
-        conversationId:
-          payload.conversationId ?? roomId,
+        conversationId: payload.conversationId ?? roomId,
         senderId: currentUserId,
+        senderName: payload.senderName,
         fromMe: true,
         createdAt: nowIso(),
-        status: STATUS_PENDING,
+        status: STATUS_QUEUED,
         ...payload,
       };
 
@@ -276,15 +342,20 @@ export function useChatPersistence(
 
       if (!sendOverNetwork) return;
 
-      const ok = await sendOverNetwork(draft).catch(
-        () => false,
+      const result = await sendOverNetwork(draft).catch(
+        () => ({ ok: false } as SendOverNetworkNack),
       );
 
-      if (!ok) return;
+      if (!result.ok) return;
 
       const reconciled = optimistic.map((m) =>
-        m.id === draft.id
-          ? withStatus(m, STATUS_SENT, false)
+        m.clientId === clientId
+          ? {
+              ...m,
+              serverId: result.serverId,
+              status: STATUS_SENT,
+              isLocalOnly: false,
+            }
           : m,
       );
 
@@ -293,10 +364,9 @@ export function useChatPersistence(
     [persist, roomId, currentUserId, sendOverNetwork],
   );
 
-  /* --------------------------------------------------------------------------
+  /* ------------------------------------------------------------------------
    * SEND TEXT
-   * --------------------------------------------------------------------------
-   */
+   * --------------------------------------------------------------------- */
 
   const sendTextMessage = useCallback(
     async (
@@ -314,10 +384,9 @@ export function useChatPersistence(
     [sendRichMessage],
   );
 
-  /* --------------------------------------------------------------------------
+  /* ------------------------------------------------------------------------
    * EDIT MESSAGE
-   * --------------------------------------------------------------------------
-   */
+   * --------------------------------------------------------------------- */
 
   const editMessage = useCallback(
     async (
@@ -325,13 +394,13 @@ export function useChatPersistence(
       patch: Partial<ChatMessage>,
     ) => {
       const next = messagesRef.current.map((m) =>
-        m.id === messageId
+        getIdentityKey(m) === messageId
           ? {
               ...m,
               ...patch,
               isEdited: true,
               updatedAt: nowIso(),
-              status: STATUS_PENDING,
+              status: STATUS_QUEUED,
             }
           : m,
       );
@@ -341,15 +410,14 @@ export function useChatPersistence(
     [persist],
   );
 
-  /* --------------------------------------------------------------------------
+  /* ------------------------------------------------------------------------
    * SOFT DELETE
-   * --------------------------------------------------------------------------
-   */
+   * --------------------------------------------------------------------- */
 
   const softDeleteMessage = useCallback(
     async (messageId: string) => {
       const next = messagesRef.current.map((m) =>
-        m.id === messageId
+        getIdentityKey(m) === messageId
           ? {
               ...m,
               isDeleted: true,
@@ -358,7 +426,7 @@ export function useChatPersistence(
               voice: undefined,
               sticker: undefined,
               attachments: [],
-              status: STATUS_PENDING,
+              status: STATUS_QUEUED,
             }
           : m,
       );
@@ -368,10 +436,9 @@ export function useChatPersistence(
     [persist],
   );
 
-  /* --------------------------------------------------------------------------
+  /* ------------------------------------------------------------------------
    * REPLY
-   * --------------------------------------------------------------------------
-   */
+   * --------------------------------------------------------------------- */
 
   const replyToMessage = useCallback(
     async (
@@ -381,16 +448,15 @@ export function useChatPersistence(
     ) => {
       await sendTextMessage(text, {
         ...extra,
-        replyToId: parent.id,
+        replyToId: parent.serverId ?? parent.clientId,
       });
     },
     [sendTextMessage],
   );
 
-  /* --------------------------------------------------------------------------
+  /* ------------------------------------------------------------------------
    * FLUSH QUEUE
-   * --------------------------------------------------------------------------
-   */
+   * --------------------------------------------------------------------- */
 
   const attemptFlushQueue = useCallback(
     async () => {
@@ -400,23 +466,29 @@ export function useChatPersistence(
 
       for (const msg of next) {
         if (
-          msg.status !== STATUS_PENDING &&
+          msg.status !== STATUS_QUEUED &&
           msg.status !== STATUS_FAILED
         ) {
           continue;
         }
 
-        const ok = await sendOverNetwork(msg).catch(
-          () => false,
+        const result = await sendOverNetwork(msg).catch(
+          () => ({ ok: false } as SendOverNetworkNack),
         );
 
         next = next.map((m) =>
-          m.id === msg.id
-            ? withStatus(
-                m,
-                ok ? STATUS_SENT : STATUS_FAILED,
-                !ok,
-              )
+          m.clientId === msg.clientId
+            ? {
+                ...m,
+                status: result.ok
+                  ? STATUS_SENT
+                  : STATUS_FAILED,
+                serverId:
+                  result.ok
+                    ? result.serverId
+                    : m.serverId,
+                isLocalOnly: !result.ok,
+              }
             : m,
         );
       }
@@ -426,10 +498,9 @@ export function useChatPersistence(
     [persist, sendOverNetwork],
   );
 
-  /* --------------------------------------------------------------------------
-   * REPLACE MESSAGES (WS SYNC)
-   * --------------------------------------------------------------------------
-   */
+  /* ------------------------------------------------------------------------
+   * MERGE WS MESSAGES
+   * --------------------------------------------------------------------- */
 
   const replaceMessages = useCallback(
     async (next: ChatMessage[]) => {
@@ -437,15 +508,15 @@ export function useChatPersistence(
         messagesRef.current,
         next,
       );
+
       await persist(merged);
     },
     [persist],
   );
 
-  /* --------------------------------------------------------------------------
+  /* ------------------------------------------------------------------------
    * API
-   * --------------------------------------------------------------------------
-   */
+   * --------------------------------------------------------------------- */
 
   return {
     messages,

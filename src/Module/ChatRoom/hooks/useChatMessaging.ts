@@ -9,6 +9,7 @@ import {
 import type { MutableRefObject } from 'react';
 
 import {
+  SendOverNetworkResult,
   useChatPersistence,
   type SendOverNetworkFn,
 } from './useChatPersistence';
@@ -61,18 +62,19 @@ export function useChatMessaging({
     useRef<SendOverNetworkFn | null>(null);
 
   const sendOverNetwork: SendOverNetworkFn =
-    useCallback(async (message) => {
-      if (!sendOverNetworkImplRef.current) {
-        console.warn(
-          '[useChatMessaging] send impl not ready',
-        );
-        return false;
-      }
+  useCallback(async (message) => {
+    const impl = sendOverNetworkImplRef.current;
 
-      return sendOverNetworkImplRef.current(
-        message,
+    if (!impl) {
+      console.warn(
+        '[useChatMessaging] send impl not ready',
       );
-    }, []);
+      return { ok: false };
+    }
+
+    return impl(message);
+  }, []);
+
 
   /* ---------------------------------------------------------------------
    * CHAT PERSISTENCE
@@ -163,106 +165,122 @@ export function useChatMessaging({
    * ------------------------------------------------------------------ */
 
   const sendOverNetworkImpl =
-    useCallback<SendOverNetworkFn>(
-      async (message) => {
-        console.log(
-          '[sendOverNetworkImpl]',
-          'socket:',
-          !!socket,
-          'connected:',
-          isConnected,
-          'message:',
-          message,
-        );
-
-        // ❗ DO NOT FAIL IF SOCKET IS NOT READY
-        if (!socket || !isConnected || !chat) {
-          console.log(
-            '[sendOverNetworkImpl] socket not ready → queue',
-          );
-          return false;
-        }
-
-        const convId =
-          message.conversationId ??
-          conversationId ??
-          String(storageRoomId);
-
-        if (!convId) return false;
-
-        if (!message.clientId) {
-          message.clientId = `${currentUserId}-${Date.now()}-${Math.random()
-            .toString(36)
-            .slice(2)}`;
-        }
-
-        const payload = {
-          conversationId: String(convId),
-          senderId: currentUserId,
-          senderName: currentUserName,
-          ciphertext:
-            message.text ??
-            message.styledText?.text ??
-            '',
-          kind:
-            (message.kind as MessageKind) ??
-            'text',
-          clientId: message.clientId,
-          replyToId: message.replyToId ?? null,
-          attachments:
-            message.attachments ?? [],
-          contacts: message.contacts ?? null,
-          poll: message.poll ?? null,
-          event: message.event ?? null,
-          styledText:
-            message.styledText ?? null,
-          sticker: message.sticker ?? null,
-          voice: message.voice ?? null,
-        };
-
-        return new Promise<boolean>(
-          (resolve) => {
-            socket
-              .timeout(5000)
-              .emit(
-                'chat.send',
-                payload,
-                (
-                  err: any,
-                  ack: {
-                    ok?: boolean;
-                    success?: boolean;
-                  },
-                ) => {
-                  if (err) {
-                    console.warn(
-                      '[chat.send] error',
-                      err,
-                    );
-                    return resolve(false);
-                  }
-
-                  resolve(
-                    Boolean(
-                      ack?.ok ||
-                        ack?.success,
-                    ),
-                  );
-                },
-              );
-          },
-        );
-      },
-      [
-        socket,
+  useCallback<SendOverNetworkFn>(
+    async (message) => {
+      console.log(
+        '[sendOverNetworkImpl]',
+        'socket:',
+        !!socket,
+        'connected:',
         isConnected,
-        chat,
-        conversationId,
-        storageRoomId,
-        currentUserId,
-        currentUserName,
-      ],
-    );
+        'message:',
+        message,
+      );
+
+      // Socket not ready → keep message queued locally
+      if (!socket || !isConnected || !chat) {
+        console.log(
+          '[sendOverNetworkImpl] socket not ready → queue',
+        );
+        return { ok: false };
+      }
+
+      const convId =
+        message.conversationId ??
+        conversationId ??
+        String(storageRoomId);
+
+      if (!convId) {
+        return { ok: false };
+      }
+
+      // clientId is REQUIRED by ChatMessage type
+      const clientId = message.clientId;
+
+      const payload = {
+        conversationId: String(convId),
+        senderId: currentUserId,
+        senderName: currentUserName,
+        ciphertext:
+          message.text ??
+          message.styledText?.text ??
+          '',
+        kind:
+          (message.kind as MessageKind) ??
+          'text',
+        clientId,
+        replyToId: message.replyToId ?? null,
+        attachments: message.attachments ?? [],
+        contacts: message.contacts ?? null,
+        poll: message.poll ?? null,
+        event: message.event ?? null,
+        styledText: message.styledText ?? null,
+        sticker: message.sticker ?? null,
+        voice: message.voice ?? null,
+      };
+
+      console.log("checking message payload", payload);
+
+      return new Promise<SendOverNetworkResult>(
+        (resolve) => {
+          socket
+            .timeout(5000)
+            .emit(
+              'chat.send',
+              payload,
+              (
+                err: any,
+                ack?: {
+                  ok?: boolean;
+                  success?: boolean;
+                  serverId?: string;
+                  id?: string;
+                },
+              ) => {
+                if (err) {
+                  console.warn('[chat.send] error', err);
+                  return resolve({ ok: false });
+                }
+
+                const success =
+                  ack?.ok === true ||
+                  ack?.success === true;
+
+                if (!success) {
+                  return resolve({ ok: false });
+                }
+
+                const serverId =
+                  ack?.serverId ?? ack?.id;
+
+                if (!serverId) {
+                  console.warn(
+                    '[chat.send] ACK missing serverId',
+                    ack,
+                  );
+                  return resolve({ ok: false });
+                }
+
+                resolve({
+                  ok: true,
+                  serverId,
+                });
+              },
+            );
+        },
+      );
+    },
+    [
+      socket,
+      isConnected,
+      chat,
+      conversationId,
+      storageRoomId,
+      currentUserId,
+      currentUserName,
+    ],
+  );
+
 
   useEffect(() => {
     sendOverNetworkImplRef.current =

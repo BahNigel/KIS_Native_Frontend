@@ -1,9 +1,43 @@
 import type { Chat } from './messagesUtils';
 
 /**
+ * ============================================================================
+ * CHAT DOMAIN TYPES (OFFLINE-FIRST, WHATSAPP-STYLE)
+ * ============================================================================
+ *
+ * This file defines the authoritative frontend chat domain model.
+ * It is intentionally verbose and explicit to guarantee:
+ *
+ *  - Offline-first behavior
+ *  - Deterministic identity & deduplication
+ *  - Safe retries without duplication
+ *  - Proper ACK reconciliation with the backend
+ *  - TypeScript strictness (no `string | undefined` leaks)
+ *
+ * Architectural principles followed here:
+ *
+ * 1. Every message ALWAYS has a client-generated ID (clientId)
+ * 2. `id` is NEVER undefined (initially equals clientId)
+ * 3. `serverId` is assigned later by the backend ACK
+ * 4. clientId is the deduplication + retry key
+ * 5. serverId is the authoritative DB identity
+ *
+ * This mirrors WhatsApp / Signal / iMessage design.
+ * ============================================================================
+ */
+
+/* ============================================================================
+ * MESSAGE KIND
+ * ============================================================================
+ */
+
+/**
  * Message kind must match backend enum:
  * 'text' | 'voice' | 'styled_text' | 'sticker' | 'contacts' | 'poll' | 'event' | 'system'
- * Media/files are represented via attachments, not kind.
+ *
+ * NOTE:
+ * - Media/files are represented via attachments
+ * - `kind` describes semantic intent, not transport
  */
 export type MessageKind =
   | 'text'
@@ -15,6 +49,22 @@ export type MessageKind =
   | 'poll'
   | 'event';
 
+/* ============================================================================
+ * MESSAGE STATUS (STATE MACHINE)
+ * ============================================================================
+ */
+
+/**
+ * Message lifecycle states.
+ *
+ * local_only  → exists only on device, never attempted to send
+ * pending     → queued, awaiting network
+ * sending     → send in progress
+ * sent        → ACKed by server (serverId assigned)
+ * delivered   → delivered to recipient device
+ * read        → read by recipient
+ * failed      → send attempt failed (retryable)
+ */
 export type MessageStatus =
   | 'local_only'
   | 'pending'
@@ -23,6 +73,11 @@ export type MessageStatus =
   | 'delivered'
   | 'read'
   | 'failed';
+
+/* ============================================================================
+ * ATTACHMENTS
+ * ============================================================================
+ */
 
 /**
  * Kind of attachment file (frontend side).
@@ -38,7 +93,7 @@ export type AttachmentKindType =
 
 /**
  * Attachment payload coming from / going to backend.
- * Mirrors the Mongoose schema for `attachments`.
+ * Mirrors the Mongoose / ORM schema for attachments.
  */
 export type ChatAttachment = {
   id: string;
@@ -55,28 +110,31 @@ export type ChatAttachment = {
   thumbUrl?: string;
 };
 
+/* ============================================================================
+ * CONTACT SHARING
+ * ============================================================================
+ */
+
 /**
  * Contact card(s) shared in a message.
- * These are built from real user contacts (name + phone).
  */
 export type ContactAttachment = {
   id: string;
   name: string;
-  phone: string; // used for sending / rendering
+  phone: string;
 };
 
-/**
- * Poll option + votes.
+/* ============================================================================
+ * POLLS
+ * ============================================================================
  */
+
 export type PollOption = {
   id: string;
   text: string;
   votes?: number;
 };
 
-/**
- * Poll content stored in a message.
- */
 export type PollMessage = {
   id?: string;
   question: string;
@@ -85,38 +143,75 @@ export type PollMessage = {
   expiresAt?: string | null;
 };
 
-/**
- * Event content stored in a message.
+/* ============================================================================
+ * EVENTS
+ * ============================================================================
  */
+
 export type EventMessage = {
   id?: string;
   title: string;
   description?: string;
   location?: string;
-  startsAt: string; // ISO datetime
-  endsAt?: string;  // ISO datetime
+  startsAt: string;
+  endsAt?: string;
 };
 
+/* ============================================================================
+ * CORE CHAT MESSAGE TYPE
+ * ============================================================================
+ */
+
+/**
+ * ChatMessage is the SINGLE source of truth for message state on the client.
+ *
+ * IMPORTANT INVARIANTS:
+ * ---------------------
+ * - `id` is ALWAYS defined
+ * - `clientId` is ALWAYS defined
+ * - `id === clientId` until the backend ACK assigns `serverId`
+ * - `serverId` is optional and appears only after server persistence
+ */
 export type ChatMessage = {
+  /**
+   * Stable identifier used by UI & storage.
+   *
+   * Before ACK: id === clientId
+   * After  ACK: id remains unchanged (do NOT overwrite)
+   */
   id: string;
 
   /**
-   * Backend conversation identifier (Django / Nest / Mongo).
+   * Backend conversation identifier.
+   *
    * This is what the server expects as conversationId.
+   * Optional to allow local-only / draft rooms.
    */
   conversationId?: string;
 
   /**
-   * Local storage key / UI room id.
-   * This can be different from conversationId (e.g. temp rows, local-only rooms).
+   * Local storage / UI room identifier.
+   * Always defined.
    */
   roomId: string;
 
   /**
-   * Client-generated identifier used for dedupe and ACK correlation.
-   * This should match the clientId you send to the backend.
+   * Client-generated identifier.
+   *
+   * REQUIRED.
+   * Used for:
+   * - deduplication
+   * - retries
+   * - ACK correlation
    */
-  clientId?: string;
+  clientId: string;
+
+  /**
+   * Authoritative server identifier.
+   *
+   * Assigned ONLY after successful persistence on backend.
+   */
+  serverId?: string;
 
   createdAt: string;
   updatedAt?: string;
@@ -124,14 +219,10 @@ export type ChatMessage = {
   senderId: string;
 
   /**
-   * Marked true by the backend for the very first message in the conversation.
-   * Used by DM-request UX (initiator vs recipient banners, lock state).
+   * Backend flag for conversation bootstrap logic.
    */
   isFirstMessage?: boolean;
 
-  /**
-   * Optional display name for UI (server fills it when broadcasting / in history).
-   */
   senderName?: string;
 
   fromMe: boolean;
@@ -140,8 +231,7 @@ export type ChatMessage = {
   status?: MessageStatus;
 
   /**
-   * Plain text content (used to derive ciphertext on the wire).
-   * Backend field name is `ciphertext`, but frontend uses `text`.
+   * Plain text payload.
    */
   text?: string;
 
@@ -166,41 +256,35 @@ export type ChatMessage = {
     height?: number;
   };
 
-  /**
-   * Attachments payload coming from the backend (files, images, etc.).
-   * Matches MessageEntity.attachments.
-   */
   attachments?: ChatAttachment[];
 
-  /**
-   * Contact cards shared in this message (kind === 'contacts').
-   */
   contacts?: ContactAttachment[];
 
-  /**
-   * Poll content (kind === 'poll').
-   */
   poll?: PollMessage;
 
-  /**
-   * Event content (kind === 'event').
-   */
   event?: EventMessage;
 
   replyToId?: string;
 
   isEdited?: boolean;
   isDeleted?: boolean;
+
+  /**
+   * True if message has never been accepted by server.
+   */
   isLocalOnly?: boolean;
+
   isStarred?: boolean;
   isPinned?: boolean;
 
   reactions?: Record<string, string[]>;
 };
 
-/**
- * Minimal sub-room type for now.
+/* ============================================================================
+ * SUB ROOMS (THREADS / REPLIES)
+ * ============================================================================
  */
+
 export type SubRoom = {
   id: string;
   parentRoomId: string;
@@ -208,12 +292,17 @@ export type SubRoom = {
   title?: string;
 };
 
+/* ============================================================================
+ * CHAT ROOM PAGE PROPS
+ * ============================================================================
+ */
+
 export type ChatRoomPageProps = {
   chat: Chat | null;
   onBack: () => void;
 
-  // For forwarding
   allChats?: Chat[];
+
   onForwardMessages?: (params: {
     fromRoomId: string;
     toChatIds: string[];
