@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, Pressable, Image, Dimensions } from 'react-native';
+import { View, Text, Pressable, Image, Dimensions, Modal } from 'react-native';
 
 import { chatRoomStyles as styles } from '../chatRoomStyles';
 
@@ -8,6 +8,7 @@ import AudioRecorderPlayer, {
 } from 'react-native-audio-recorder-player';
 import { KISIcon } from '@/constants/kisIcons';
 import { ChatMessage } from '../chatTypes';
+import { EmojiPicker } from './EmojiPicker';
 
 // Use a shared player instance for all bubbles
 const audioPlayer = new AudioRecorderPlayer();
@@ -63,6 +64,9 @@ type MessageBubbleProps = {
   // ✅ Accept both your internal ChatMessage and direct server messages
   message: ChatMessage | ServerMessageLike;
   palette: any;
+  currentUserId?: string;
+  onReact?: (message: ChatMessage, emoji: string) => void;
+  onRetry?: (message: ChatMessage) => void;
 
   // reply preview
   replySource?: ChatMessage;
@@ -123,6 +127,9 @@ const statusToSymbol = (status?: ChatMessage['status'] | string) => {
 export const MessageBubble: React.FC<MessageBubbleProps> = ({
   message,
   palette,
+  currentUserId,
+  onReact,
+  onRetry,
   replySource,
   onPressReplySource,
   isHighlighted,
@@ -181,6 +188,9 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
 
   const isPinned = !!(message as any).isPinned;
   const isDeleted = !!(message as any).isDeleted;
+  const reactions = (message as any).reactions as
+    | Record<string, string[]>
+    | undefined;
 
   // ---------------------------------------------------------------------------
   // Attachments: be SUPER defensive about shape
@@ -248,6 +258,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
   const [isPlaying, setIsPlaying] = useState(false);
   const [progress, setProgress] = useState(0); // 0..1
   const width = Dimensions.get('window').width;
+  const [reactionPickerVisible, setReactionPickerVisible] = useState(false);
 
   // ✅ local state for selected poll option
   const [selectedPollOptionKey, setSelectedPollOptionKey] = useState<
@@ -379,6 +390,13 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
     status === 'read'
       ? palette.readStatus ?? '#34B7F1'
       : metaColor;
+  const showRetry = status === 'failed';
+
+  const reactionEntries = reactions
+    ? Object.entries(reactions).filter(
+        ([emoji, users]) => !!emoji && Array.isArray(users) && users.length > 0,
+      )
+    : [];
 
   /* ─────────────────────────────────────────
    * Helper: small "Pinned" icon next to time
@@ -462,6 +480,136 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
           </Text>
         )}
       </Pressable>
+    );
+  };
+
+  const renderReactionsRow = () => {
+    if (!reactionEntries.length && !onReact) return null;
+
+    return (
+      <View
+        style={{
+          flexDirection: 'row',
+          flexWrap: 'wrap',
+          marginTop: 6,
+        }}
+      >
+        {reactionEntries.map(([emoji, users]) => {
+          const safeUsers = Array.isArray(users) ? users : [];
+          const count = safeUsers.length;
+          const reactedByMe = currentUserId
+            ? safeUsers.includes(currentUserId)
+            : false;
+
+          return (
+            <Pressable
+              key={`${emoji}-${count}`}
+              onPress={() => onReact?.(message as ChatMessage, emoji)}
+              style={{
+                paddingHorizontal: 8,
+                paddingVertical: 4,
+                borderRadius: 12,
+                marginRight: 6,
+                marginBottom: 6,
+                backgroundColor: reactedByMe
+                  ? palette.reactionActiveBg ?? '#00000022'
+                  : palette.reactionBg ?? '#00000011',
+                borderWidth: reactedByMe ? 1 : 0,
+                borderColor: reactedByMe
+                  ? palette.reactionActiveBorder ?? palette.primary
+                  : 'transparent',
+              }}
+            >
+              <Text
+                style={{
+                  fontSize: 12,
+                  color: textColor,
+                  fontWeight: reactedByMe ? '600' : '400',
+                }}
+              >
+                {emoji}
+                {count > 1 ? ` ${count}` : ''}
+              </Text>
+            </Pressable>
+          );
+        })}
+
+        {onReact && (
+          <Pressable
+            onPress={() => setReactionPickerVisible(true)}
+            style={{
+              paddingHorizontal: 8,
+              paddingVertical: 4,
+              borderRadius: 12,
+              marginRight: 6,
+              marginBottom: 6,
+              backgroundColor: palette.reactionAddBg ?? '#0000000d',
+              borderWidth: 1,
+              borderColor: palette.reactionAddBorder ?? '#00000022',
+            }}
+          >
+            <Text style={{ fontSize: 12, color: textColor }}>+</Text>
+          </Pressable>
+        )}
+      </View>
+    );
+  };
+
+  const renderRetry = () => {
+    if (!showRetry || !onRetry) return null;
+    return (
+      <Pressable
+        onPress={() => onRetry(message as ChatMessage)}
+        style={{
+          marginTop: 6,
+          alignSelf: 'flex-end',
+        }}
+      >
+        <Text style={{ color: palette.errorText ?? '#E74C3C', fontSize: 12 }}>
+          Tap to retry
+        </Text>
+      </Pressable>
+    );
+  };
+
+  const renderReactionPicker = () => {
+    if (!onReact) return null;
+
+    return (
+      <Modal
+        transparent
+        visible={reactionPickerVisible}
+        animationType="fade"
+        onRequestClose={() => setReactionPickerVisible(false)}
+      >
+        <Pressable
+          style={{
+            flex: 1,
+            backgroundColor: 'rgba(0,0,0,0.35)',
+            justifyContent: 'flex-end',
+          }}
+          onPress={() => setReactionPickerVisible(false)}
+        >
+          <View
+            style={{
+              maxHeight: '60%',
+              backgroundColor: palette.surface ?? '#fff',
+              borderTopLeftRadius: 16,
+              borderTopRightRadius: 16,
+              paddingBottom: 16,
+            }}
+            onStartShouldSetResponder={() => true}
+          >
+            <EmojiPicker
+              palette={palette}
+              onSelectEmoji={(emoji) => {
+                setReactionPickerVisible(false);
+                onReact(message as ChatMessage, emoji);
+              }}
+            />
+          </View>
+        </Pressable>
+      </Modal>
     );
   };
 
@@ -989,6 +1137,9 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
             Message deleted
           </Text>
 
+          {renderReactionsRow()}
+          {renderRetry()}
+
           <View style={styles.messageMetaRow}>
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
               <Text
@@ -1018,6 +1169,8 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
             )}
           </View>
         </View>
+
+        {renderReactionPicker()}
       </View>
     );
   }
@@ -1057,6 +1210,9 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
             resizeMode="contain"
           />
 
+          {renderReactionsRow()}
+          {renderRetry()}
+
           {/* time + ticks row */}
           <View
             style={[
@@ -1093,6 +1249,8 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
             )}
           </View>
         </View>
+
+        {renderReactionPicker()}
       </View>
     );
   }
@@ -1136,6 +1294,9 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
             {styled.text}
           </Text>
 
+          {renderReactionsRow()}
+          {renderRetry()}
+
           {/* time + ticks row */}
           <View style={styles.messageMetaRow}>
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
@@ -1167,6 +1328,8 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
             )}
           </View>
         </View>
+
+        {renderReactionPicker()}
       </View>
     );
   }
@@ -1243,6 +1406,9 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
             </View>
           </Pressable>
 
+          {renderReactionsRow()}
+          {renderRetry()}
+
           {/* time + ticks row */}
           <View style={styles.messageMetaRow}>
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
@@ -1274,6 +1440,8 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
             )}
           </View>
         </View>
+
+        {renderReactionPicker()}
       </View>
     );
   }
@@ -1319,6 +1487,9 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
         {/* Attachments (images, files, etc.) */}
         {renderAttachments()}
 
+        {renderReactionsRow()}
+        {renderRetry()}
+
         <View style={styles.messageMetaRow}>
           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
             <Text
@@ -1349,6 +1520,8 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
           )}
         </View>
       </View>
+
+      {renderReactionPicker()}
     </View>
   );
 };

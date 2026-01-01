@@ -340,7 +340,10 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
               color={palette.onHeader ?? palette.text}
             />
           </Pressable>
-          <Pressable style={styles.headerIconButton}>
+          <Pressable
+            style={styles.headerIconButton}
+            onPress={() => onMoreSelected?.()}
+          >
             <KISIcon
               name="menu"
               size={20}

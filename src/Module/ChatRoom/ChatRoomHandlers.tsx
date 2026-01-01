@@ -7,6 +7,7 @@ import {
 } from './uploadFileToBackend';
 import ROUTES, { NEST_API_BASE_URL } from '@/network';
 import { getRequest } from '@/network/get';
+import { postRequest } from '@/network/post';
 
 import type { ChatMessage } from './chatTypes';
 
@@ -444,8 +445,14 @@ export const handleAcceptRequest = async ({
 export const handleBlockRequest = async (chatId?: string) => {
   if (!chatId) return;
 
+  const moderationUrl = `${NEST_API_BASE_URL}/moderation/block`;
+  await postRequest(moderationUrl, {
+    conversationId: chatId,
+    blocked: true,
+  });
+
   const url = `${ROUTES.chat.listConversations}${chatId}/block_chat/`;
-  await getRequest(url);
+  await postRequest(url, {});
 };
 
 export const handleArchiveRequest = () => {
@@ -453,4 +460,110 @@ export const handleArchiveRequest = () => {
     'Archive chat',
     'Archiving is not wired to backend yet.',
   );
+};
+
+export const handleAcceptConversationRequest = async (chatId?: string) => {
+  if (!chatId) return;
+  const url = `${ROUTES.chat.listConversations}${chatId}/accept-request/`;
+  await postRequest(url, {});
+};
+
+export const handleAddGroupMember = async ({
+  conversationId,
+  userId,
+  baseRole,
+}: {
+  conversationId?: string;
+  userId?: string;
+  baseRole?: string;
+}) => {
+  if (!conversationId || !userId) return;
+  const url = `${ROUTES.chat.listConversations}${conversationId}/members/`;
+  await postRequest(url, {
+    user_id: userId,
+    base_role: baseRole ?? 'member',
+  });
+};
+
+export const handleRemoveGroupMember = async ({
+  conversationId,
+  userId,
+}: {
+  conversationId?: string;
+  userId?: string;
+}) => {
+  if (!conversationId || !userId) return;
+  const url = `${ROUTES.chat.listConversations}${conversationId}/members/remove/`;
+  await postRequest(url, { user_id: userId });
+};
+
+export const handleSetGroupMemberRole = async ({
+  conversationId,
+  userId,
+  baseRole,
+}: {
+  conversationId?: string;
+  userId?: string;
+  baseRole?: string;
+}) => {
+  if (!conversationId || !userId || !baseRole) return;
+  const url = `${ROUTES.chat.listConversations}${conversationId}/members/role/`;
+  await postRequest(url, { user_id: userId, base_role: baseRole });
+};
+
+export const handleSetPinned = async ({
+  conversationId,
+  messageId,
+  pinned,
+}: {
+  conversationId?: string;
+  messageId?: string;
+  pinned: boolean;
+}) => {
+  if (!conversationId || !messageId) return;
+  const url = `${NEST_API_BASE_URL}/pins/set`;
+  await postRequest(url, {
+    conversationId,
+    messageId,
+    pinned,
+  });
+};
+
+export const handleMuteConversation = async ({
+  conversationId,
+  muted,
+  untilMs,
+}: {
+  conversationId?: string;
+  muted: boolean;
+  untilMs?: number;
+}) => {
+  if (!conversationId) return;
+  const url = `${NEST_API_BASE_URL}/moderation/mute`;
+  await postRequest(url, {
+    conversationId,
+    muted,
+    untilMs,
+  });
+};
+
+export const handleReportMessage = async ({
+  conversationId,
+  messageId,
+  reason,
+  note,
+}: {
+  conversationId?: string;
+  messageId?: string;
+  reason?: string;
+  note?: string;
+}) => {
+  if (!conversationId || !messageId) return;
+  const url = `${NEST_API_BASE_URL}/moderation/report`;
+  await postRequest(url, {
+    conversationId,
+    messageId,
+    reason,
+    note,
+  });
 };

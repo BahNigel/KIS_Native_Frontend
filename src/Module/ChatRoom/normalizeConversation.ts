@@ -1,6 +1,6 @@
 // src/utils/normalizeConversation.ts
 
-import { Chat } from './messagesUtils';
+import { Chat, directConversationName } from './messagesUtils';
 import ROUTES from '@/network';
 import { getRequest } from '@/network/get';
 import { clearCacheByKey, getCache, setCache } from '@/network/cache';
@@ -61,7 +61,7 @@ function computeChatId(raw: any): string {
 /**
  * Normalize raw Django conversation into Chat model.
  */
-export function normalizeConversation(raw: any): Chat {
+export function normalizeConversation(raw: any, currentUserId?: string): Chat {
   if (!raw) {
     return {
       id: 'unknown',
@@ -85,9 +85,27 @@ export function normalizeConversation(raw: any): Chat {
 
   const id = computeChatId(raw);
 
+  const name =
+    raw.title || raw.name || raw.description || 'Unnamed Conversation';
+
+  const isDirect = (raw.type ?? raw.kind) === 'direct';
+  const directName = isDirect
+    ? directConversationName(raw.participants ?? [], currentUserId)
+    : null;
+  const participantRecords = Array.isArray(raw.participants) ? raw.participants : [];
+  const selfMember = currentUserId
+    ? participantRecords.find(
+        (p: any) =>
+          p?.user?.id === currentUserId ||
+          p?.user === currentUserId ||
+          p?.id === currentUserId,
+      )
+    : null;
+  const isBlocked = Boolean(selfMember?.is_blocked ?? selfMember?.isBlocked);
+
   return {
     id,
-    name: raw.title || raw.name || raw.description || 'Unnamed Conversation',
+    name: directName || name,
 
     lastMessage: raw.last_message_preview ?? raw.lastMessage ?? '',
     lastAt: raw.last_message_at ?? raw.lastAt ?? '',
@@ -102,13 +120,17 @@ export function normalizeConversation(raw: any): Chat {
     isGroupChat: (raw.type ?? raw.kind) === 'group',
     isCommunityChat: (raw.type ?? raw.kind) === 'community',
     isContactChat: (raw.type ?? raw.kind) === 'direct',
-    isDirect: (raw.type ?? raw.kind) === 'direct',
+    isDirect,
 
     requestState: raw.request_state ?? raw.requestState ?? 'none',
     requestInitiatorId:
       raw.request_initiator ?? raw.requestInitiatorId ?? undefined,
     requestRecipientId:
       raw.request_recipient ?? raw.requestRecipientId ?? undefined,
+
+    isArchived: raw.is_archived ?? raw.isArchived ?? false,
+    isLocked: raw.is_locked ?? raw.isLocked ?? false,
+    isBlocked,
   };
 }
 
@@ -212,6 +234,7 @@ function dedupeChats(chats: Chat[]): Chat[] {
  */
 export async function fetchConversationsForCurrentUser(
   fallback: Chat[] = [],
+  currentUserId?: string,
 ): Promise<Chat[]> {
   // Fire-and-forget background refresh
   refreshConversationsAndHandleEmpty();
@@ -222,7 +245,7 @@ export async function fetchConversationsForCurrentUser(
   const baseList = cachedRaw.length ? cachedRaw : fallback;
 
   const normalized = baseList.map((item: any) =>
-    normalizeConversation(item),
+    normalizeConversation(item, currentUserId),
   );
 
   const deduped = dedupeChats(normalized);

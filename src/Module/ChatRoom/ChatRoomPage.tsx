@@ -32,6 +32,10 @@ import {
   Text,
   TouchableOpacity,
   StyleSheet,
+  Pressable,
+  Alert,
+  TextInput,
+  Modal,
 } from 'react-native';
 
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -183,6 +187,8 @@ export const ChatRoomPage: React.FC<ExtendedChatRoomPageProps> = ({
     softDeleteMessage,
     replyToMessage,
     sendTyping,
+    sendReaction,
+    retryMessage,
   } = useChatMessaging({
     chat,
     storageRoomId,
@@ -210,12 +216,34 @@ export const ChatRoomPage: React.FC<ExtendedChatRoomPageProps> = ({
     useState(false);
   const [subRoomsSheetVisible, setSubRoomsSheetVisible] =
     useState(false);
+  const [menuVisible, setMenuVisible] = useState(false);
 
-  const [subRooms] = useState<SubRoom[]>([]);
+  const [subRooms, setSubRooms] = useState<SubRoom[]>([]);
   const [messageLocator, setMessageLocator] =
     useState<MessageLocator | null>(null);
 
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [lockOverride, setLockOverride] = useState<boolean | null>(null);
+  const [muteOverride, setMuteOverride] = useState<boolean | null>(null);
+  const [requestStateOverride, setRequestStateOverride] = useState<string | null>(null);
+  const [groupAction, setGroupAction] = useState<'add' | 'remove' | 'role' | null>(null);
+  const [groupUserIdInput, setGroupUserIdInput] = useState('');
+  const [groupRoleInput, setGroupRoleInput] = useState('member');
+
+  const handleReactMessage = useCallback(
+    (message: ChatMessage, emoji: string) => {
+      const fallbackId =
+        message.id && message.id.startsWith('client_')
+          ? null
+          : message.id;
+      const messageId = message.serverId ?? fallbackId;
+      const convId =
+        message.conversationId ?? conversationId ?? chat?.id ?? null;
+      if (!messageId || !convId) return;
+      sendReaction(messageId, emoji, convId);
+    },
+    [sendReaction, conversationId, chat?.id],
+  );
 
   /* ======================================================================== */
   /*                              SELECTION MODE                               */
@@ -248,15 +276,61 @@ export const ChatRoomPage: React.FC<ExtendedChatRoomPageProps> = ({
     softDeleteMessage,
     exitSelectionMode,
     isSingleSelection,
+    onReportMessage: (message) => {
+      const convId =
+        message.conversationId ?? conversationId ?? chat?.id ?? null;
+      const messageId =
+        message.serverId ??
+        (message.id && message.id.startsWith('client_') ? null : message.id);
+      if (!convId || !messageId) return;
+      Handlers.handleReportMessage({
+        conversationId: String(convId),
+        messageId: String(messageId),
+        reason: 'user_reported',
+      });
+    },
+    onPinMessage: (message, pinned) => {
+      const convId =
+        message.conversationId ?? conversationId ?? chat?.id ?? null;
+      const messageId =
+        message.serverId ??
+        (message.id && message.id.startsWith('client_') ? null : message.id);
+      if (!convId || !messageId) return;
+      Handlers.handleSetPinned({
+        conversationId: String(convId),
+        messageId: String(messageId),
+        pinned,
+      });
+    },
+    onContinueInSubRoom: (message) => {
+      const rootId = message.serverId ?? message.id;
+      if (!rootId) return;
+      const title =
+        message.text ||
+        message.styledText?.text ||
+        (message.sticker ? 'Sticker' : '') ||
+        (message.voice ? 'Voice message' : '') ||
+        'Sub-room';
+      setSubRooms((prev) => [
+        ...prev,
+        {
+          id: `sub_${rootId}`,
+          parentRoomId: String(storageRoomId),
+          rootMessageId: rootId,
+          title,
+        },
+      ]);
+      setSubRoomsSheetVisible(true);
+    },
   });
 
   /* ======================================================================== */
   /*                                 DM LOCK                                   */
   /* ======================================================================== */
 
-  const { dmRole, firstMessage } = useMemo(() => {
+  const { dmRole } = useMemo(() => {
     if (!isDirectChat || !conversationId) {
-      return { dmRole: null, firstMessage: null };
+      return { dmRole: null };
     }
 
     const first =
@@ -278,8 +352,60 @@ export const ChatRoomPage: React.FC<ExtendedChatRoomPageProps> = ({
           ? 'initiator'
           : 'recipient';
 
-    return { dmRole: role, firstMessage: first };
+    return { dmRole: role };
   }, [chat, conversationId, isDirectChat, messages, currentUserId]);
+
+  const { dmStatusLabel, dmStatusVariant } = useMemo(() => {
+    const isArchived = Boolean((chat as any)?.isArchived);
+    const isLocked = lockOverride ?? Boolean((chat as any)?.isLocked);
+    const requestState = String(
+      requestStateOverride ?? (chat as any)?.requestState ?? 'none',
+    );
+
+    if (isArchived) {
+      return { dmStatusLabel: 'Archived', dmStatusVariant: 'locked' as const };
+    }
+
+    if (isLocked) {
+      return { dmStatusLabel: 'Chat locked', dmStatusVariant: 'locked' as const };
+    }
+
+    if (requestState === 'pending') {
+      const label =
+        dmRole === 'initiator'
+          ? 'Waiting for acceptance'
+          : 'Request pending';
+      return { dmStatusLabel: label, dmStatusVariant: 'pending' as const };
+    }
+
+    if (requestState === 'rejected') {
+      return { dmStatusLabel: 'Request rejected', dmStatusVariant: 'rejected' as const };
+    }
+
+    return { dmStatusLabel: null, dmStatusVariant: 'normal' as const };
+  }, [chat, dmRole, lockOverride, requestStateOverride]);
+
+  const currentMembership = useMemo(() => {
+    const participants = (chat as any)?.participants;
+    if (!Array.isArray(participants) || !currentUserId) return null;
+    return (
+      participants.find(
+        (p: any) =>
+          p?.user?.id === currentUserId ||
+          p?.user === currentUserId ||
+          p?.id === currentUserId,
+      ) ?? null
+    );
+  }, [chat, currentUserId]);
+
+  const isMuted =
+    muteOverride ??
+    Boolean(currentMembership?.is_muted ?? currentMembership?.isMuted);
+
+  const isLocked = lockOverride ?? Boolean((chat as any)?.isLocked);
+  const requestStateEffective = String(
+    requestStateOverride ?? (chat as any)?.requestState ?? 'none',
+  );
 
   const canSend = draft.trim().length > 0;
 
@@ -293,7 +419,29 @@ export const ChatRoomPage: React.FC<ExtendedChatRoomPageProps> = ({
     const participantIds = participantsToIds(chat?.participants ?? []);
     const otherIds = participantIds.filter((u) => u && u !== currentUserId);
     const anyOnline = otherIds.some((u) => presenceByUser?.[u]?.isOnline);
-    return anyOnline ? 'online' : 'offline';
+    if (anyOnline) return 'online';
+
+    if ((chat as any)?.isDirect && otherIds.length > 0) {
+      const lastSeenAt = otherIds
+        .map((u) => presenceByUser?.[u]?.at)
+        .filter((v) => typeof v === 'number')
+        .sort()
+        .slice(-1)[0];
+      if (lastSeenAt) {
+        const dt = new Date(lastSeenAt);
+        const now = new Date();
+        const isSameDay =
+          dt.getFullYear() === now.getFullYear() &&
+          dt.getMonth() === now.getMonth() &&
+          dt.getDate() === now.getDate();
+        const label = isSameDay
+          ? dt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          : dt.toLocaleDateString();
+        return `last seen ${label}`;
+      }
+    }
+
+    return 'offline';
   }, [typingByConversation, presenceByUser, conversationId, storageRoomId, chat, currentUserId]);
 
   useEffect(() => {
@@ -339,6 +487,64 @@ export const ChatRoomPage: React.FC<ExtendedChatRoomPageProps> = ({
       setReplyTo,
       setHasLocallyAcceptedRequest: noop,
     });
+
+  const handleToggleMute = async () => {
+    const convId = conversationId ?? chat?.id;
+    if (!convId) return;
+    const next = !isMuted;
+    await Handlers.handleMuteConversation({
+      conversationId: String(convId),
+      muted: next,
+    });
+    setMuteOverride(next);
+  };
+
+  const handleBlockChat = async () => {
+    const convId = conversationId ?? chat?.id;
+    if (!convId) return;
+    await Handlers.handleBlockRequest(String(convId));
+    setLockOverride(true);
+  };
+
+  const handleAcceptRequest = async () => {
+    const convId = conversationId ?? chat?.id;
+    if (!convId) return;
+    await Handlers.handleAcceptConversationRequest(String(convId));
+    setRequestStateOverride('accepted');
+    Alert.alert('Request accepted', 'You can now chat freely.');
+  };
+
+  const handleGroupActionSubmit = async () => {
+    const convId = conversationId ?? chat?.id;
+    const userId = groupUserIdInput.trim();
+    if (!convId || !userId || !groupAction) return;
+
+    if (groupAction === 'add') {
+      await Handlers.handleAddGroupMember({
+        conversationId: String(convId),
+        userId,
+        baseRole: groupRoleInput.trim() || 'member',
+      });
+    }
+
+    if (groupAction === 'remove') {
+      await Handlers.handleRemoveGroupMember({
+        conversationId: String(convId),
+        userId,
+      });
+    }
+
+    if (groupAction === 'role') {
+      await Handlers.handleSetGroupMemberRole({
+        conversationId: String(convId),
+        userId,
+        baseRole: groupRoleInput.trim() || 'member',
+      });
+    }
+
+    setGroupAction(null);
+    setGroupUserIdInput('');
+  };
 
   const handleSendVoice = (p: { uri: string; durationMs: number }) =>
     Handlers.handleSendVoice({
@@ -416,6 +622,8 @@ export const ChatRoomPage: React.FC<ExtendedChatRoomPageProps> = ({
           onBack={selectionMode ? exitSelectionMode : onBack}
           palette={palette}
           statusText={statusText}
+          dmStatusLabel={dmStatusLabel}
+          dmStatusVariant={dmStatusVariant}
           selectionMode={selectionMode}
           selectedCount={selectedIds.length}
           onCancelSelection={exitSelectionMode}
@@ -423,13 +631,238 @@ export const ChatRoomPage: React.FC<ExtendedChatRoomPageProps> = ({
           onDeleteSelected={handleDeleteSelected}
           onForwardSelected={() => setForwardSheetVisible(true)}
           onCopySelected={handleCopySelected}
-          onMoreSelected={handleMoreSelected}
+          onMoreSelected={selectionMode ? handleMoreSelected : () => setMenuVisible(true)}
           pinnedCount={pinnedCount}
           subRoomCount={subRoomCount}
+          onOpenPinned={() => setPinnedSheetVisible(true)}
+          onOpenSubRooms={() => setSubRoomsSheetVisible(true)}
           isSingleSelection={isSingleSelection}
           onContinueInSubRoom={handleContinueInSubRoom}
         />
       )}
+
+      {!selectionMode && (
+        <View
+          pointerEvents={menuVisible ? 'auto' : 'none'}
+          style={localStyles.menuRoot}
+        >
+          {menuVisible && (
+            <>
+              <Pressable
+                onPress={() => setMenuVisible(false)}
+                style={localStyles.menuOverlay}
+              />
+              <View
+                style={[
+                  localStyles.menuBox,
+                  {
+                    borderColor: palette.inputBorder ?? palette.divider,
+                    backgroundColor: palette.card ?? palette.surface,
+                  },
+                ]}
+              >
+                {dmRole === 'recipient' &&
+                  requestStateEffective === 'pending' && (
+                    <Pressable
+                      onPress={async () => {
+                        setMenuVisible(false);
+                        await handleAcceptRequest();
+                      }}
+                      style={({ pressed }) => [
+                        localStyles.menuItem,
+                        { backgroundColor: pressed ? palette.surface : 'transparent' },
+                      ]}
+                    >
+                      <Text style={{ color: palette.text, fontSize: 14 }}>
+                        Accept request
+                      </Text>
+                    </Pressable>
+                  )}
+
+                {!isLocked && (
+                  <Pressable
+                    onPress={async () => {
+                      setMenuVisible(false);
+                      await handleBlockChat();
+                    }}
+                    style={({ pressed }) => [
+                      localStyles.menuItem,
+                      { backgroundColor: pressed ? palette.surface : 'transparent' },
+                    ]}
+                  >
+                    <Text style={{ color: palette.text, fontSize: 14 }}>
+                      Block chat
+                    </Text>
+                  </Pressable>
+                )}
+
+                <Pressable
+                  onPress={async () => {
+                    setMenuVisible(false);
+                    await handleToggleMute();
+                  }}
+                  style={({ pressed }) => [
+                    localStyles.menuItem,
+                    { backgroundColor: pressed ? palette.surface : 'transparent' },
+                  ]}
+                >
+                  <Text style={{ color: palette.text, fontSize: 14 }}>
+                    {isMuted ? 'Unmute notifications' : 'Mute notifications'}
+                  </Text>
+                </Pressable>
+
+                {(chat as any)?.isGroup && (
+                  <Pressable
+                    onPress={() => {
+                      setMenuVisible(false);
+                      setGroupRoleInput('member');
+                      setGroupAction('add');
+                    }}
+                    style={({ pressed }) => [
+                      localStyles.menuItem,
+                      { backgroundColor: pressed ? palette.surface : 'transparent' },
+                    ]}
+                  >
+                    <Text style={{ color: palette.text, fontSize: 14 }}>
+                      Add member
+                    </Text>
+                  </Pressable>
+                )}
+
+                {(chat as any)?.isGroup && (
+                  <Pressable
+                    onPress={() => {
+                      setMenuVisible(false);
+                      setGroupAction('remove');
+                    }}
+                    style={({ pressed }) => [
+                      localStyles.menuItem,
+                      { backgroundColor: pressed ? palette.surface : 'transparent' },
+                    ]}
+                  >
+                    <Text style={{ color: palette.text, fontSize: 14 }}>
+                      Remove member
+                    </Text>
+                  </Pressable>
+                )}
+
+                {(chat as any)?.isGroup && (
+                  <Pressable
+                    onPress={() => {
+                      setMenuVisible(false);
+                      setGroupRoleInput('admin');
+                      setGroupAction('role');
+                    }}
+                    style={({ pressed }) => [
+                      localStyles.menuItem,
+                      { backgroundColor: pressed ? palette.surface : 'transparent' },
+                    ]}
+                  >
+                    <Text style={{ color: palette.text, fontSize: 14 }}>
+                      Set member role
+                    </Text>
+                  </Pressable>
+                )}
+
+                <Pressable
+                  onPress={() => {
+                    setMenuVisible(false);
+                    Handlers.handleArchiveRequest();
+                  }}
+                  style={({ pressed }) => [
+                    localStyles.menuItem,
+                    { backgroundColor: pressed ? palette.surface : 'transparent' },
+                  ]}
+                >
+                  <Text style={{ color: palette.text, fontSize: 14 }}>
+                    Archive chat
+                  </Text>
+                </Pressable>
+              </View>
+            </>
+          )}
+        </View>
+      )}
+
+      <Modal
+        transparent
+        animationType="fade"
+        visible={groupAction != null}
+        onRequestClose={() => setGroupAction(null)}
+      >
+        <Pressable
+          style={[
+            localStyles.modalOverlay,
+            { backgroundColor: 'rgba(0,0,0,0.35)' },
+          ]}
+          onPress={() => setGroupAction(null)}
+        >
+          <View
+            style={[
+              localStyles.modalCard,
+              { backgroundColor: palette.card ?? palette.surface },
+            ]}
+            onStartShouldSetResponder={() => true}
+          >
+            <Text style={[localStyles.modalTitle, { color: palette.text }]}>
+              {groupAction === 'add'
+                ? 'Add member'
+                : groupAction === 'remove'
+                ? 'Remove member'
+                : 'Set member role'}
+            </Text>
+
+            <TextInput
+              value={groupUserIdInput}
+              onChangeText={setGroupUserIdInput}
+              placeholder="User ID"
+              placeholderTextColor={palette.subtext}
+              style={[
+                localStyles.modalInput,
+                { color: palette.text, borderColor: palette.inputBorder },
+              ]}
+              autoCapitalize="none"
+            />
+
+            {groupAction !== 'remove' && (
+              <TextInput
+                value={groupRoleInput}
+                onChangeText={setGroupRoleInput}
+                placeholder="Role (member/admin/owner)"
+                placeholderTextColor={palette.subtext}
+                style={[
+                  localStyles.modalInput,
+                  { color: palette.text, borderColor: palette.inputBorder },
+                ]}
+                autoCapitalize="none"
+              />
+            )}
+
+            <View style={localStyles.modalActions}>
+              <Pressable
+                onPress={() => setGroupAction(null)}
+                style={[
+                  localStyles.modalButton,
+                  { borderColor: palette.inputBorder },
+                ]}
+              >
+                <Text style={{ color: palette.text }}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                onPress={handleGroupActionSubmit}
+                style={[
+                  localStyles.modalButton,
+                  { backgroundColor: palette.primary, borderColor: palette.primary },
+                ]}
+              >
+                <Text style={{ color: palette.onPrimary ?? '#fff' }}>
+                  Confirm
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        </Pressable>
+      </Modal>
 
       <KeyboardAvoidingView
         style={styles.keyboardWrapper}
@@ -439,12 +872,15 @@ export const ChatRoomPage: React.FC<ExtendedChatRoomPageProps> = ({
           messages={messages}
           palette={palette}
           isEmpty={!chat}
+          currentUserId={currentUserId}
           selectionMode={selectionMode}
           selectedMessageIds={selectedIds}
           onReplyToMessage={setReplyTo}
           onEditMessage={setEditing}
           onPressMessage={toggleSelectMessage}
           onLongPressMessage={enterSelectionMode}
+          onReactMessage={handleReactMessage}
+          onRetryMessage={retryMessage}
           onMessageLocatorReady={setMessageLocator}
         />
 
@@ -499,8 +935,92 @@ export const ChatRoomPage: React.FC<ExtendedChatRoomPageProps> = ({
           }}
         />
       )}
+
+      <PinnedMessagesSheet
+        visible={pinnedSheetVisible}
+        onClose={() => setPinnedSheetVisible(false)}
+        roomId={String(storageRoomId)}
+        pinnedMessages={pinnedMessages}
+        palette={palette}
+        onJumpToMessage={(messageId) => {
+          setPinnedSheetVisible(false);
+          messageLocator?.scrollToMessage(messageId);
+          messageLocator?.highlightMessage(messageId);
+        }}
+      />
+
+      <SubRoomsSheet
+        visible={subRoomsSheetVisible}
+        onClose={() => setSubRoomsSheetVisible(false)}
+        parentRoomId={String(storageRoomId)}
+        subRooms={subRooms}
+        palette={palette}
+      />
     </View>
   );
 };
+
+const localStyles = StyleSheet.create({
+  menuRoot: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 10,
+  },
+  menuOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
+  menuBox: {
+    position: 'absolute',
+    right: 12,
+    top: 60,
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingVertical: 6,
+    width: 220,
+  },
+  menuItem: {
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    padding: 16,
+  },
+  modalCard: {
+    borderRadius: 16,
+    padding: 16,
+  },
+  modalTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    marginBottom: 12,
+  },
+  modalInput: {
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginBottom: 10,
+  },
+  modalActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 10,
+  },
+  modalButton: {
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+  },
+});
 
 export default ChatRoomPage;

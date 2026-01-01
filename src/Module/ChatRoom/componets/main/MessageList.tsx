@@ -23,11 +23,14 @@ type MessageListProps = {
   messages: ChatMessage[];
   palette: any;
   isEmpty: boolean;
+  currentUserId?: string;
 
   onReplyToMessage?: (message: ChatMessage) => void;
   onEditMessage?: (message: ChatMessage) => void;
   onPressMessage?: (message: ChatMessage) => void;
   onLongPressMessage?: (message: ChatMessage) => void;
+  onReactMessage?: (message: ChatMessage, emoji: string) => void;
+  onRetryMessage?: (message: ChatMessage) => void;
 
   // Selection
   selectionMode?: boolean;
@@ -99,10 +102,13 @@ export const MessageList: React.FC<MessageListProps> = ({
   messages,
   palette,
   isEmpty,
+  currentUserId,
   onReplyToMessage,
   onEditMessage,
   onPressMessage,
   onLongPressMessage,
+  onReactMessage,
+  onRetryMessage,
   selectionMode = false,
   selectedMessageIds = [],
   onStartSelection,
@@ -625,6 +631,7 @@ export const MessageList: React.FC<MessageListProps> = ({
             <InteractiveMessageRow
               message={item}
               palette={palette}
+              currentUserId={currentUserId}
               replySource={replySource}
               isHighlighted={isHighlighted}
               isSelected={isSelected}
@@ -634,6 +641,8 @@ export const MessageList: React.FC<MessageListProps> = ({
               onEditMessage={onEditMessage}
               onPressMessage={onPressMessage}
               onLongPressMessage={onLongPressMessage}
+              onReactMessage={onReactMessage}
+              onRetryMessage={onRetryMessage}
               onStartSelection={onStartSelection}
               onToggleSelect={onToggleSelect}
             />

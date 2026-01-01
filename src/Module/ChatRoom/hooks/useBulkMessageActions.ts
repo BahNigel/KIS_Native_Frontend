@@ -13,6 +13,9 @@ type UseBulkMessageActionsParams = {
   softDeleteMessage: (id: string) => Promise<void>;
   exitSelectionMode: () => void;
   isSingleSelection: boolean;
+  onReportMessage?: (message: ChatMessage) => void;
+  onPinMessage?: (message: ChatMessage, pinned: boolean) => void;
+  onContinueInSubRoom?: (message: ChatMessage) => void;
 };
 
 export function useBulkMessageActions({
@@ -23,15 +26,20 @@ export function useBulkMessageActions({
   softDeleteMessage,
   exitSelectionMode,
   isSingleSelection,
+  onReportMessage,
+  onPinMessage,
+  onContinueInSubRoom,
 }: UseBulkMessageActionsParams) {
   const handlePinSelected = useCallback(async () => {
     if (!selectedIds.length) return;
 
-    for (const id of selectedIds) {
-      await editMessage(id, { isPinned: true } as any);
+    for (const msg of selectedMessages) {
+      const nextPinned = !msg.isPinned;
+      await editMessage(msg.id, { isPinned: nextPinned } as any);
+      onPinMessage?.(msg, nextPinned);
     }
     exitSelectionMode();
-  }, [editMessage, exitSelectionMode, selectedIds]);
+  }, [editMessage, exitSelectionMode, onPinMessage, selectedIds, selectedMessages]);
 
   const handleDeleteSelected = useCallback(async () => {
     if (!selectedIds.length) return;
@@ -84,11 +92,15 @@ export function useBulkMessageActions({
     const message = messages.find((m) => m.id === msgId);
     if (!message) return;
 
+    if (onContinueInSubRoom) {
+      onContinueInSubRoom(message);
+      return;
+    }
     Alert.alert(
       'Sub-room',
       'This will create or open a dedicated sub-room for this message once backend + navigation are wired.',
     );
-  }, [isSingleSelection, messages, selectedIds]);
+  }, [isSingleSelection, messages, onContinueInSubRoom, selectedIds]);
 
   const handleMoreSelected = useCallback(() => {
     if (!selectedMessages.length) return;
@@ -105,6 +117,12 @@ export function useBulkMessageActions({
       {
         text: 'Report',
         onPress: () => {
+          const target = selectedMessages[0];
+          if (onReportMessage) {
+            onReportMessage(target);
+            exitSelectionMode();
+            return;
+          }
           Alert.alert(
             'Reported',
             'Thanks, this message has been reported (local only for now).',
@@ -114,7 +132,13 @@ export function useBulkMessageActions({
       },
       { text: 'Cancel', style: 'cancel' },
     ]);
-  }, [exitSelectionMode, handleCopySelected, handlePinSelected, selectedMessages]);
+  }, [
+    exitSelectionMode,
+    handleCopySelected,
+    handlePinSelected,
+    onReportMessage,
+    selectedMessages,
+  ]);
 
   return {
     handlePinSelected,

@@ -92,6 +92,7 @@ export function useChatMessaging({
     replyToMessage,
     attemptFlushQueue,
     replaceMessages,
+    retryMessage,
   } = useChatPersistence({
     roomId: String(storageRoomId),
     currentUserId,
@@ -128,6 +129,26 @@ export function useChatMessaging({
     [],
   );
 
+  const normalizeReactions = useCallback((input: any) => {
+    if (!input) return undefined;
+    if (Array.isArray(input)) {
+      return input.reduce((acc: Record<string, string[]>, item: any) => {
+        const emoji = item?.emoji;
+        const userId = item?.userId;
+        if (!emoji || !userId) return acc;
+        if (!acc[emoji]) acc[emoji] = [];
+        if (!acc[emoji].includes(userId)) {
+          acc[emoji].push(userId);
+        }
+        return acc;
+      }, {});
+    }
+    if (typeof input === 'object') {
+      return input as Record<string, string[]>;
+    }
+    return undefined;
+  }, []);
+
   const mapServerMessage = useCallback(
     (serverMsg: any): ChatMessage => {
       const mapAttachments = (list: any[]) =>
@@ -161,9 +182,10 @@ export function useChatMessaging({
         status: 'sent' as MessageStatus,
         roomId: String(storageRoomId),
         fromMe: serverMsg.senderId === currentUserId,
+        reactions: normalizeReactions(serverMsg.reactions),
       };
     },
-    [storageRoomId, currentUserId],
+    [storageRoomId, currentUserId, normalizeReactions],
   );
 
   /* ---------------------------------------------------------------------
@@ -201,6 +223,18 @@ export function useChatMessaging({
 
     const markRead = async () => {
       const roomId = String(storageRoomId);
+      const unread = messagesRef.current.filter(
+        (m) => !m.fromMe && m.conversationId === conversationId && m.status !== 'read',
+      );
+      for (const msg of unread) {
+        if (!msg.serverId) continue;
+        socket.emit('chat.receipt', {
+          conversationId,
+          messageId: msg.serverId,
+          type: 'read',
+        });
+      }
+
       const updated = await bulkUpdateMessages(roomId, (m) =>
         !m.fromMe && m.conversationId === conversationId
           ? { ...m, status: 'read' }
@@ -243,6 +277,7 @@ export function useChatMessaging({
     leaveConversation,
     replaceMessages,
     mapServerMessage,
+    storageRoomId,
   ]);
 
   /* ---------------------------------------------------------------------
@@ -447,6 +482,30 @@ export function useChatMessaging({
       onIncomingMessage,
     );
 
+    const onReceipt = (payload: any) => {
+      const conversationId = payload?.conversationId;
+      const messageId = payload?.messageId ?? payload?.id;
+      const type = payload?.type;
+      if (!conversationId || !messageId || !type) return;
+
+      const roomId = String(storageRoomId);
+      const status =
+        type === 'read'
+          ? 'read'
+          : type === 'delivered'
+          ? 'delivered'
+          : undefined;
+
+      if (!status) return;
+      bulkUpdateMessages(roomId, (m) =>
+        m.serverId === messageId || m.id === messageId
+          ? { ...m, status }
+          : m,
+      ).then(replaceMessages);
+    };
+
+    socket.on('chat.message_receipt', onReceipt);
+
     const onEdit = (serverMsg: any) => {
       const activeConv =
         conversationIdRef.current;
@@ -522,15 +581,52 @@ export function useChatMessaging({
     socket.on('chat.edit', onEdit);
     socket.on('chat.delete', onDelete);
 
+    const onReaction = (serverMsg: any) => {
+      const activeConv =
+        conversationIdRef.current;
+      if (
+        !activeConv ||
+        String(serverMsg.conversationId) !==
+          String(activeConv)
+      ) {
+        return;
+      }
+
+      const id =
+        serverMsg.id ??
+        serverMsg._id ??
+        serverMsg.messageId;
+      if (!id) return;
+
+      const reactions = normalizeReactions(serverMsg.reactions);
+      const roomId = String(storageRoomId);
+      bulkUpdateMessages(roomId, (m) =>
+        m.serverId === id || m.id === id
+          ? { ...m, reactions }
+          : m,
+      ).then(replaceMessages);
+    };
+
+    socket.on('chat.message_reaction', onReaction);
+
     return () => {
       socket.off(
         'chat.message',
         onIncomingMessage,
       );
+      socket.off('chat.message_receipt', onReceipt);
       socket.off('chat.edit', onEdit);
       socket.off('chat.delete', onDelete);
+      socket.off('chat.message_reaction', onReaction);
     };
-  }, [socket, replaceMessages, storageRoomId, mapServerMessage]);
+  }, [
+    socket,
+    replaceMessages,
+    storageRoomId,
+    mapServerMessage,
+    conversationId,
+    normalizeReactions,
+  ]);
 
   /* ---------------------------------------------------------------------
    * CONVERSATION FAN-OUT EVENTS
@@ -621,6 +717,22 @@ export function useChatMessaging({
       socket.emit('chat.typing', {
         conversationId: String(convId),
         isTyping,
+      });
+    },
+    retryMessage: async (messageId: string) => {
+      await retryMessage(messageId);
+      await attemptFlushQueue();
+    },
+    sendReaction: (messageId: string, emoji: string, convId?: string | null) => {
+      const resolvedConvId =
+        convId ??
+        conversationIdRef.current ??
+        String(storageRoomId);
+      if (!socket || !resolvedConvId || !messageId) return;
+      socket.emit('chat.react', {
+        conversationId: String(resolvedConvId),
+        messageId,
+        emoji,
       });
     },
     socket,

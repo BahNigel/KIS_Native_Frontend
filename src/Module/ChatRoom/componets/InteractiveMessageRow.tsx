@@ -13,10 +13,13 @@ import { MessageBubble } from './MessageBubble';
 type Props = {
   message: ChatMessage;
   palette: any;
+  currentUserId?: string;
   onReplyToMessage?: (message: ChatMessage) => void;
   onEditMessage?: (message: ChatMessage) => void;
   onPressMessage?: (message: ChatMessage) => void;
   onLongPressMessage?: (message: ChatMessage) => void;
+  onReactMessage?: (message: ChatMessage, emoji: string) => void;
+  onRetryMessage?: (message: ChatMessage) => void;
 
   replySource?: ChatMessage;
   onPressReplySource?: (messageId: string) => void;
@@ -38,10 +41,13 @@ const MAX_PULL_DISTANCE = 80;
 export const InteractiveMessageRow: React.FC<Props> = ({
   message,
   palette,
+  currentUserId,
   onReplyToMessage,
   onEditMessage,
   onPressMessage,
   onLongPressMessage,
+  onReactMessage,
+  onRetryMessage,
   replySource,
   onPressReplySource,
   isHighlighted,
@@ -168,6 +174,9 @@ export const InteractiveMessageRow: React.FC<Props> = ({
         <MessageBubble
           message={message}
           palette={palette}
+          currentUserId={currentUserId}
+          onReact={onReactMessage}
+          onRetry={onRetryMessage}
           replySource={replySource}
           onPressReplySource={handlePressReplySource}
           isHighlighted={isHighlighted}

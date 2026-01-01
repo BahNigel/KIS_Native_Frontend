@@ -28,6 +28,7 @@ import AddContactsPage from '@/Module/AddContacts/AddContactsPage';
 import ChatRoomPage from '@/Module/ChatRoom/ChatRoomPage';
 import { useSocket } from '../../../SocketProvider';
 import { loadMessages } from '@/Module/ChatRoom/Storage/chatStorage';
+import { normalizePhoneKey } from '@/Module/ChatRoom/messagesUtils';
 import { FilterManager, ToggleChip } from '@/components/messaging/Filters';
 import UpdatesTab from '@/screens/tabs/MesssagingSubTabs/UpdatesTab';
 import CallsTab from '@/screens/tabs/MesssagingSubTabs/CallsTab';
@@ -46,9 +47,7 @@ type MessagesScreenProps = {
   onOpenChat: (chat: Chat) => void;
 };
 
-/** Extend quick chips locally with Archived/Blocked without changing base type elsewhere */
-type ExtraQuick = 'Archived' | 'Blocked';
-type LocalQuick = QuickChip | ExtraQuick;
+type LocalQuick = QuickChip;
 
 /**
  * Changes in this file focus on animation smoothness & robustness:
@@ -85,16 +84,35 @@ export default function MessagesScreen({ onOpenChat }: MessagesScreenProps) {
 const [selectCount, setSelectCount] = useState<number | null>(null);
 
 const [conversations, setConversations] = useState<Chat[]>([]);
+const [contactNameByPhone, setContactNameByPhone] = useState<Record<string, string>>({});
 const [conversationMeta, setConversationMeta] = useState<Record<string, { lastMessage?: string; lastAt?: string; unreadCount?: number }>>({});
-const { socket, isConnected, typingByConversation, currentUserId } = useSocket();
+const { socket, isConnected, typingByConversation, currentUserId, presenceByUser } = useSocket();
 
 useEffect(() => {
   (async () => {
-    const convs = await fetchConversationsForCurrentUser(/* SAMPLE_CHATS or [] */);
+    const convs = await fetchConversationsForCurrentUser([], currentUserId ?? undefined);
     console.log("checking if conversation is comming from the backend: ", convs)
     setConversations(convs);
   })();
-}, [onOpenChat]);
+}, [onOpenChat, currentUserId]);
+
+useEffect(() => {
+  const CONTACTS_CACHE_KEY = 'kis.contacts.cache.v1';
+  const loadContacts = async () => {
+    try {
+      const raw = await AsyncStorage.getItem(CONTACTS_CACHE_KEY);
+      if (!raw) return;
+      const list = JSON.parse(raw) as Array<{ name?: string; phone?: string }>;
+      const map: Record<string, string> = {};
+      for (const c of list || []) {
+        const key = normalizePhoneKey(c.phone);
+        if (key && c.name) map[key] = c.name;
+      }
+      setContactNameByPhone(map);
+    } catch {}
+  };
+  loadContacts();
+}, []);
 
 useEffect(() => {
   let active = true;
@@ -416,11 +434,18 @@ const handleMuteSelected = () => {
       return next;
     });
 
-  // pass only base chips to ChatsTab (Archived/Blocked UI-only until wired)
+  // pass all supported chips to ChatsTab
   const activeQuickForChats = useMemo(() => {
     const base = new Set<QuickChip>();
     for (const c of activeQuick)
-      if (c === 'Unread' || c === 'Groups' || c === 'Mentions') base.add(c);
+      if (
+        c === 'Unread' ||
+        c === 'Groups' ||
+        c === 'Mentions' ||
+        c === 'Archived' ||
+        c === 'Blocked'
+      )
+        base.add(c);
     return base;
   }, [activeQuick]);
 
@@ -788,7 +813,9 @@ const handleMuteSelected = () => {
                 activeCustomId={activeCustom}
                 search={query}
                 typingByConversation={typingByConversation}
+                presenceByUser={presenceByUser}
                 currentUserId={currentUserId ?? undefined}
+                contactNameByPhone={contactNameByPhone}
                 conversationMeta={conversationMeta}
                 onScroll={handleChatsScroll}
                 onEndReached={handleChatsEndReached}

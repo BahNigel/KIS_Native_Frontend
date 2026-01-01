@@ -20,6 +20,9 @@ import {
   applyQuickChips,
   applyCustomRules,
   bySearch,
+  participantsToIds,
+  normalizePhoneKey,
+  otherParticipantPhone,
 } from '../messagesUtils';
 import { normalizeConversation } from '../normalizeConversation';
 
@@ -31,8 +34,10 @@ type ChatsTabProps = {
   activeCustomId?: string | null;
   search: string;
   typingByConversation?: Record<string, Record<string, number>>;
+  presenceByUser?: Record<string, { isOnline: boolean; at: number }>;
   currentUserId?: string;
   conversationMeta?: Record<string, { lastMessage?: string; lastAt?: string; unreadCount?: number }>;
+  contactNameByPhone?: Record<string, string>;
 
   onScroll?: (e: NativeSyntheticEvent<NativeScrollEvent>) => void;
   onEndReached?: () => void;
@@ -49,8 +54,10 @@ export function ChatsTab({
   activeCustomId,
   search,
   typingByConversation,
+  presenceByUser,
   currentUserId,
   conversationMeta,
+  contactNameByPhone,
   onScroll,
   onEndReached,
   onOpenChat,
@@ -63,8 +70,8 @@ export function ChatsTab({
    * NORMALIZE RAW BACKEND CONVERSATIONS → SAFE Chat objects
    * ------------------------------------------------------------ */
   const normalizedChats: Chat[] = useMemo(() => {
-    return conversations.map((c) => normalizeConversation(c));
-  }, [conversations]);
+    return conversations.map((c) => normalizeConversation(c, currentUserId));
+  }, [conversations, currentUserId]);
 
   /* ------------------------------------------------------------
    * ACTIVE CUSTOM FILTER RULES
@@ -125,10 +132,19 @@ export function ChatsTab({
         const isSelected = selectedChat.some((c) => c.id === item.id);
 
         const handlePress = () => {
+          const displayName = (() => {
+            if (item.isDirect) {
+              const phone = otherParticipantPhone(item.participants ?? [], currentUserId);
+              const key = normalizePhoneKey(phone);
+              if (key && contactNameByPhone?.[key]) return contactNameByPhone[key];
+            }
+            return item.name;
+          })();
+
           if (selectionMode) {
             toggleSelectChat(item);
           } else {
-            onOpenChat?.(item);
+            onOpenChat?.({ ...item, name: displayName });
           }
         };
 
@@ -162,6 +178,28 @@ export function ChatsTab({
                 ]}
               />
 
+              {item.isDirect && (() => {
+                const ids = participantsToIds(item.participants ?? []);
+                const otherId = ids.find((u) => u && u !== currentUserId);
+                const online = otherId ? presenceByUser?.[otherId]?.isOnline : false;
+                if (!online) return null;
+                return (
+                  <View
+                    style={{
+                      position: 'absolute',
+                      right: 0,
+                      bottom: 0,
+                      width: 12,
+                      height: 12,
+                      borderRadius: 6,
+                      backgroundColor: '#34C759',
+                      borderWidth: 2,
+                      borderColor: palette.card,
+                    }}
+                  />
+                );
+              })()}
+
               {isSelected && (
                 <View
                   style={{
@@ -192,7 +230,14 @@ export function ChatsTab({
             {/* NAME + LAST MESSAGE */}
             <View style={{ flex: 1 }}>
               <Text style={[styles.name, { color: palette.text }]}>
-                {item.name}
+                {(() => {
+                  if (item.isDirect) {
+                    const phone = otherParticipantPhone(item.participants ?? [], currentUserId);
+                    const key = normalizePhoneKey(phone);
+                    if (key && contactNameByPhone?.[key]) return contactNameByPhone[key];
+                  }
+                  return item.name;
+                })()}
               </Text>
 
               <Text

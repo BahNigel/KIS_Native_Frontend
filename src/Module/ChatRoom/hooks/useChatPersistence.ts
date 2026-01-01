@@ -110,6 +110,8 @@ export type UseChatPersistenceResult = {
   replaceMessages: (
     next: ChatMessage[],
   ) => Promise<void>;
+
+  retryMessage: (messageId: string) => Promise<void>;
 };
 
 /* ============================================================================
@@ -342,13 +344,32 @@ export function useChatPersistence(
 
       if (!sendOverNetwork) return;
 
+      const sending = optimistic.map((m) =>
+        m.clientId === clientId
+          ? { ...m, status: 'sending' as MessageStatus }
+          : m,
+      );
+      await persist(sending);
+
       const result = await sendOverNetwork(draft).catch(
         () => ({ ok: false } as SendOverNetworkNack),
       );
 
-      if (!result.ok) return;
+      if (!result.ok) {
+        const failed = sending.map((m) =>
+          m.clientId === clientId
+            ? {
+                ...m,
+                status: STATUS_FAILED,
+                isLocalOnly: true,
+              }
+            : m,
+        );
+        await persist(failed);
+        return;
+      }
 
-      const reconciled = optimistic.map((m) =>
+      const reconciled = sending.map((m) =>
         m.clientId === clientId
           ? {
               ...m,
@@ -472,11 +493,18 @@ export function useChatPersistence(
           continue;
         }
 
+        const sending = next.map((m) =>
+          m.clientId === msg.clientId
+            ? { ...m, status: 'sending' as MessageStatus }
+            : m,
+        );
+        await persist(sending);
+
         const result = await sendOverNetwork(msg).catch(
           () => ({ ok: false } as SendOverNetworkNack),
         );
 
-        next = next.map((m) =>
+        next = sending.map((m) =>
           m.clientId === msg.clientId
             ? {
                 ...m,
@@ -528,5 +556,13 @@ export function useChatPersistence(
     replyToMessage,
     attemptFlushQueue,
     replaceMessages,
+    retryMessage: async (messageId: string) => {
+      const next = messagesRef.current.map((m) =>
+        getIdentityKey(m) === messageId
+          ? { ...m, status: STATUS_QUEUED, isLocalOnly: true }
+          : m,
+      );
+      await persist(next);
+    },
   };
 }

@@ -71,6 +71,10 @@ export type Chat = {
 
   isRequestOutbound?: boolean;
   isRequestInbound?: boolean;
+
+  isArchived?: boolean;
+  isLocked?: boolean;
+  isBlocked?: boolean;
 };
 
 export type CustomFilterRule = {
@@ -136,6 +140,46 @@ export function participantsToStrings(participants?: string[] | ParticipantWire[
   return [];
 }
 
+export function directConversationName(
+  participants: string[] | ParticipantWire[] | undefined,
+  currentUserId: string | undefined,
+): string | null {
+  if (!participants || !currentUserId) return null;
+
+  if (Array.isArray(participants) && participants.length > 0 && typeof participants[0] === 'string') {
+    const list = (participants as string[]).map((s) => String(s));
+    const other = list.find((s) => s && s !== currentUserId);
+    return other ?? null;
+  }
+
+  if (Array.isArray(participants)) {
+    for (const p of participants as ParticipantWire[]) {
+      if (!p) continue;
+      const u = (p as ParticipantWire).user;
+      if (u && typeof u === 'object') {
+        const uid = String((u as UserWire).id ?? '');
+        if (uid && uid === String(currentUserId)) continue;
+        const name =
+          (u as UserWire).display_name ??
+          (u as UserWire).username ??
+          (u as UserWire).phone;
+        if (name) return String(name);
+      }
+
+      if ((p as ParticipantWire).display_name && String((p as ParticipantWire).display_name)) {
+        const name = String((p as ParticipantWire).display_name);
+        return name;
+      }
+
+      if ((p as ParticipantWire).id != null && String((p as ParticipantWire).id) !== String(currentUserId)) {
+        return String((p as ParticipantWire).id);
+      }
+    }
+  }
+
+  return null;
+}
+
 export function participantsToIds(participants?: string[] | ParticipantWire[]): string[] {
   if (!participants) return [];
   if (Array.isArray(participants) && participants.length > 0 && typeof participants[0] === 'string') {
@@ -164,6 +208,33 @@ export function participantsToIds(participants?: string[] | ParticipantWire[]): 
   }
 
   return [];
+}
+
+export function normalizePhoneKey(phone?: string | null): string {
+  if (!phone) return '';
+  return String(phone).replace(/[^0-9+]/g, '');
+}
+
+export function otherParticipantPhone(
+  participants: string[] | ParticipantWire[] | undefined,
+  currentUserId: string | undefined,
+): string | null {
+  if (!participants || !currentUserId) return null;
+
+  if (Array.isArray(participants)) {
+    for (const p of participants as ParticipantWire[]) {
+      if (!p) continue;
+      const u = (p as ParticipantWire).user;
+      if (u && typeof u === 'object') {
+        const uid = String((u as UserWire).id ?? '');
+        if (uid && uid === String(currentUserId)) continue;
+        const phone = (u as UserWire).phone;
+        if (phone) return String(phone);
+      }
+    }
+  }
+
+  return null;
 }
 
 /**
@@ -238,12 +309,14 @@ export function normalizeChatFromServer(raw: any): Chat {
 
 /* ------------------------------ Filter utils ------------------------------ */
 
-export type QuickChip = 'Unread' | 'Groups' | 'Mentions';
+export type QuickChip = 'Unread' | 'Groups' | 'Mentions' | 'Archived' | 'Blocked';
 
 export function applyQuickChips(chat: Chat, chips: Set<QuickChip>) {
   if (chips.has('Unread') && (chat.unreadCount ?? 0) <= 0) return false;
   if (chips.has('Groups') && !chat.isGroup) return false;
   if (chips.has('Mentions') && !chat.hasMention) return false;
+  if (chips.has('Archived') && !chat.isArchived) return false;
+  if (chips.has('Blocked') && !chat.isBlocked) return false;
   return true;
 }
 
