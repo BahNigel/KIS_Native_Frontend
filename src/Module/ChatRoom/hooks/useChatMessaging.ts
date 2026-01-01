@@ -13,6 +13,7 @@ import {
   useChatPersistence,
   type SendOverNetworkFn,
 } from './useChatPersistence';
+import { bulkUpdateMessages } from '../Storage/chatStorage';
 
 import type {
   ChatMessage,
@@ -60,6 +61,7 @@ export function useChatMessaging({
 
   const sendOverNetworkImplRef =
     useRef<SendOverNetworkFn | null>(null);
+  const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const sendOverNetwork: SendOverNetworkFn =
   useCallback(async (message) => {
@@ -116,13 +118,61 @@ export function useChatMessaging({
       conversationId;
   }, [conversationId]);
 
+  const resolveServerId = useCallback(
+    (id: string) => {
+      const msg = messagesRef.current.find(
+        (m) => m.id === id || m.clientId === id,
+      );
+      return msg?.serverId;
+    },
+    [],
+  );
+
+  const mapServerMessage = useCallback(
+    (serverMsg: any): ChatMessage => {
+      const mapAttachments = (list: any[]) =>
+        list.map((a) => ({
+          id: a.id,
+          url: a.url,
+          originalName: a.originalName ?? a.name,
+          mimeType: a.mimeType ?? a.mime,
+          size: a.size,
+          kind: a.kind,
+          width: a.width,
+          height: a.height,
+          durationMs: a.durationMs,
+          thumbUrl: a.thumbUrl,
+        }));
+
+      return {
+        id: serverMsg.id ?? serverMsg._id,
+        clientId: serverMsg.clientId,
+        serverId: serverMsg.id ?? serverMsg._id,
+        conversationId: serverMsg.conversationId,
+        senderId: serverMsg.senderId,
+        senderName: serverMsg.senderName,
+        text: serverMsg.text ?? serverMsg.ciphertext ?? '',
+        kind: (serverMsg.kind as MessageKind) ?? 'text',
+        createdAt: serverMsg.createdAt ?? new Date().toISOString(),
+        attachments: serverMsg.attachments
+          ? mapAttachments(serverMsg.attachments)
+          : [],
+        replyToId: serverMsg.replyToId ?? null,
+        status: 'sent' as MessageStatus,
+        roomId: String(storageRoomId),
+        fromMe: serverMsg.senderId === currentUserId,
+      };
+    },
+    [storageRoomId, currentUserId],
+  );
+
   /* ---------------------------------------------------------------------
    * JOIN / LEAVE CONVERSATION
    * ------------------------------------------------------------------ */
 
   const joinConversation = useCallback(
     (convId?: string | null) => {
-      if (!socket || !isConnected || !convId)
+      if (!socket || !(isConnected || socket.connected) || !convId)
         return;
 
       socket.emit('chat.join', {
@@ -144,10 +194,43 @@ export function useChatMessaging({
   );
 
   useEffect(() => {
-    if (!socket || !isConnected || !conversationId)
+    if (!socket || !(isConnected || socket.connected) || !conversationId)
       return;
 
     joinConversation(conversationId);
+
+    const markRead = async () => {
+      const roomId = String(storageRoomId);
+      const updated = await bulkUpdateMessages(roomId, (m) =>
+        !m.fromMe && m.conversationId === conversationId
+          ? { ...m, status: 'read' }
+          : m,
+      );
+      replaceMessages(updated);
+    };
+    markRead();
+
+    const lastLocal = messagesRef.current
+      .filter((m) => m.conversationId === conversationId)
+      .map((m) => m.createdAt)
+      .filter(Boolean)
+      .sort()
+      .slice(-1)[0];
+
+    socket.timeout(5000).emit(
+      'chat.history',
+      {
+        conversationId: String(conversationId),
+        limit: lastLocal ? 200 : 50,
+        after: lastLocal || undefined,
+      },
+      (err: any, ack?: any) => {
+        if (err || !ack?.ok) return;
+        const messages = Array.isArray(ack?.data?.messages) ? ack.data.messages : [];
+        if (!messages.length) return;
+        replaceMessages(messages.map((m: any) => mapServerMessage(m)));
+      },
+    );
 
     return () => {
       leaveConversation(conversationId);
@@ -158,6 +241,8 @@ export function useChatMessaging({
     conversationId,
     joinConversation,
     leaveConversation,
+    replaceMessages,
+    mapServerMessage,
   ]);
 
   /* ---------------------------------------------------------------------
@@ -178,7 +263,7 @@ export function useChatMessaging({
       );
 
       // Socket not ready → keep message queued locally
-      if (!socket || !isConnected || !chat) {
+      if (!socket || !(isConnected || socket.connected) || !chat) {
         console.log(
           '[sendOverNetworkImpl] socket not ready → queue',
         );
@@ -197,26 +282,47 @@ export function useChatMessaging({
       // clientId is REQUIRED by ChatMessage type
       const clientId = message.clientId;
 
+      const normalizeAttachments = (attachments: any[]) =>
+        attachments.map((a) => ({
+          id: a.id,
+          url: a.url,
+          originalName: a.originalName ?? a.name,
+          mimeType: a.mimeType ?? a.mime,
+          size: a.size,
+          kind: a.kind,
+          width: a.width,
+          height: a.height,
+          durationMs: a.durationMs,
+          thumbUrl: a.thumbUrl,
+        }));
+
       const payload = {
         conversationId: String(convId),
-        senderId: currentUserId,
-        senderName: currentUserName,
-        ciphertext:
-          message.text ??
-          message.styledText?.text ??
-          '',
         kind:
           (message.kind as MessageKind) ??
           'text',
         clientId,
+        text:
+          message.text ??
+          message.styledText?.text ??
+          undefined,
         replyToId: message.replyToId ?? null,
-        attachments: message.attachments ?? [],
-        contacts: message.contacts ?? null,
-        poll: message.poll ?? null,
-        event: message.event ?? null,
+        attachments: message.attachments
+          ? normalizeAttachments(message.attachments)
+          : undefined,
+        contacts: message.contacts ?? undefined,
+        poll: message.poll ?? undefined,
+        event: message.event ?? undefined,
         styledText: message.styledText ?? null,
         sticker: message.sticker ?? null,
-        voice: message.voice ?? null,
+        voice: message.voice
+          ? {
+              ...message.voice,
+              url:
+                (message.voice as any).url ??
+                (message.voice as any).uri,
+            }
+          : null,
       };
 
       console.log("checking message payload", payload);
@@ -230,28 +336,23 @@ export function useChatMessaging({
               payload,
               (
                 err: any,
-                ack?: {
-                  ok?: boolean;
-                  success?: boolean;
-                  serverId?: string;
-                  id?: string;
-                },
+                ack?: any,
               ) => {
                 if (err) {
                   console.warn('[chat.send] error', err);
                   return resolve({ ok: false });
                 }
 
-                const success =
-                  ack?.ok === true ||
-                  ack?.success === true;
+                const success = ack?.ok === true;
 
                 if (!success) {
                   return resolve({ ok: false });
                 }
 
+                const ackPayload =
+                  ack?.data?.ack ?? ack?.ack ?? null;
                 const serverId =
-                  ack?.serverId ?? ack?.id;
+                  ackPayload?.serverId ?? ack?.serverId ?? ack?.id;
 
                 if (!serverId) {
                   console.warn(
@@ -292,7 +393,7 @@ export function useChatMessaging({
    * ------------------------------------------------------------------ */
 
   useEffect(() => {
-    if (!socket || !isConnected) return;
+    if (!socket || !(isConnected || socket.connected)) return;
 
     console.log(
       '[useChatMessaging] socket connected → flush queue',
@@ -333,29 +434,7 @@ export function useChatMessaging({
 
       if (exists) return;
 
-      const msg: ChatMessage = {
-        id: serverMsg.id,
-        clientId: serverMsg.clientId,
-        conversationId:
-          serverMsg.conversationId,
-        senderId: serverMsg.senderId,
-        senderName: serverMsg.senderName,
-        text:
-          serverMsg.ciphertext ?? '',
-        kind:
-          (serverMsg.kind as MessageKind) ??
-          'text',
-        createdAt:
-          serverMsg.createdAt ??
-          new Date().toISOString(),
-        attachments:
-          serverMsg.attachments ?? [],
-        replyToId:
-          serverMsg.replyToId ?? null,
-        status: 'sent' as MessageStatus,
-        roomId: String(storageRoomId),
-        fromMe: false,
-      };
+      const msg = mapServerMessage(serverMsg);
 
       replaceMessages([
         ...messagesRef.current,
@@ -368,13 +447,90 @@ export function useChatMessaging({
       onIncomingMessage,
     );
 
+    const onEdit = (serverMsg: any) => {
+      const activeConv =
+        conversationIdRef.current;
+      if (
+        !activeConv ||
+        String(serverMsg.conversationId) !==
+          String(activeConv)
+      ) {
+        return;
+      }
+
+      const id =
+        serverMsg.id ??
+        serverMsg._id ??
+        serverMsg.messageId;
+
+      const next = messagesRef.current.map(
+        (m) =>
+          m.serverId === id || m.id === id
+            ? {
+                ...m,
+                text:
+                  serverMsg.text ??
+                  m.text,
+                styledText:
+                  serverMsg.styledText ??
+                  m.styledText,
+                isEdited: true,
+                updatedAt:
+                  serverMsg.updatedAt ??
+                  new Date().toISOString(),
+              }
+            : m,
+      );
+
+      replaceMessages(next);
+    };
+
+    const onDelete = (serverMsg: any) => {
+      const activeConv =
+        conversationIdRef.current;
+      if (
+        !activeConv ||
+        String(serverMsg.conversationId) !==
+          String(activeConv)
+      ) {
+        return;
+      }
+
+      const id =
+        serverMsg.id ??
+        serverMsg._id ??
+        serverMsg.messageId;
+
+      const next = messagesRef.current.map(
+        (m) =>
+          m.serverId === id || m.id === id
+            ? {
+                ...m,
+                isDeleted: true,
+                text: '',
+                styledText: undefined,
+                voice: undefined,
+                sticker: undefined,
+                attachments: [],
+              }
+            : m,
+      );
+
+      replaceMessages(next);
+    };
+
+    socket.on('chat.edit', onEdit);
+    socket.on('chat.delete', onDelete);
+
     return () => {
       socket.off(
         'chat.message',
         onIncomingMessage,
       );
+      socket.off('chat.edit', onEdit);
+      socket.off('chat.delete', onDelete);
     };
-  }, [socket, replaceMessages, storageRoomId]);
+  }, [socket, replaceMessages, storageRoomId, mapServerMessage]);
 
   /* ---------------------------------------------------------------------
    * CONVERSATION FAN-OUT EVENTS
@@ -418,10 +574,55 @@ export function useChatMessaging({
     isLoading,
     sendTextMessage,
     sendRichMessage,
-    editMessage,
-    softDeleteMessage,
+    editMessage: async (
+      messageId: string,
+      patch: Partial<ChatMessage>,
+    ) => {
+      await editMessage(messageId, patch);
+
+      const convId =
+        conversationIdRef.current ??
+        String(storageRoomId);
+      if (!socket || !convId) return;
+
+      const serverId = resolveServerId(messageId);
+      if (!serverId) return;
+      socket.emit('chat.edit', {
+        conversationId: String(convId),
+        messageId: serverId,
+        text: patch.text,
+        styledText: patch.styledText,
+      });
+    },
+    softDeleteMessage: async (
+      messageId: string,
+    ) => {
+      await softDeleteMessage(messageId);
+
+      const convId =
+        conversationIdRef.current ??
+        String(storageRoomId);
+      if (!socket || !convId) return;
+
+      const serverId = resolveServerId(messageId);
+      if (!serverId) return;
+      socket.emit('chat.delete', {
+        conversationId: String(convId),
+        messageId: serverId,
+      });
+    },
     replyToMessage,
     attemptFlushQueue,
+    sendTyping: (isTyping: boolean) => {
+      const convId =
+        conversationIdRef.current ??
+        String(storageRoomId);
+      if (!socket || !convId) return;
+      socket.emit('chat.typing', {
+        conversationId: String(convId),
+        isTyping,
+      });
+    },
     socket,
     isSocketConnected: isConnected,
   };

@@ -26,6 +26,8 @@ import { ChatsTab } from '@/Module/ChatRoom/componets/MessageTabs';
 import { KISIcon } from '@/constants/kisIcons';
 import AddContactsPage from '@/Module/AddContacts/AddContactsPage';
 import ChatRoomPage from '@/Module/ChatRoom/ChatRoomPage';
+import { useSocket } from '../../../SocketProvider';
+import { loadMessages } from '@/Module/ChatRoom/Storage/chatStorage';
 import { FilterManager, ToggleChip } from '@/components/messaging/Filters';
 import UpdatesTab from '@/screens/tabs/MesssagingSubTabs/UpdatesTab';
 import CallsTab from '@/screens/tabs/MesssagingSubTabs/CallsTab';
@@ -83,6 +85,8 @@ export default function MessagesScreen({ onOpenChat }: MessagesScreenProps) {
 const [selectCount, setSelectCount] = useState<number | null>(null);
 
 const [conversations, setConversations] = useState<Chat[]>([]);
+const [conversationMeta, setConversationMeta] = useState<Record<string, { lastMessage?: string; lastAt?: string; unreadCount?: number }>>({});
+const { socket, isConnected, typingByConversation, currentUserId } = useSocket();
 
 useEffect(() => {
   (async () => {
@@ -91,6 +95,75 @@ useEffect(() => {
     setConversations(convs);
   })();
 }, [onOpenChat]);
+
+useEffect(() => {
+  let active = true;
+  const loadMeta = async () => {
+    const next: Record<string, { lastMessage?: string; lastAt?: string; unreadCount?: number }> = {};
+    for (const c of conversations) {
+      const convId = String((c as any)?.conversation_id ?? (c as any)?.conversationId ?? (c as any)?.id);
+      if (!convId) continue;
+      const messages = await loadMessages(convId);
+      if (!active) return;
+      if (messages.length) {
+        const last = messages[messages.length - 1];
+        const unread = messages.filter((m) => !m.fromMe && m.status !== 'read').length;
+        next[convId] = {
+          lastMessage: last.text ?? '',
+          lastAt: last.createdAt,
+          unreadCount: unread,
+        };
+      }
+    }
+    if (active) setConversationMeta(next);
+  };
+  loadMeta();
+  return () => { active = false; };
+}, [conversations]);
+
+useEffect(() => {
+  if (!socket || !isConnected) return;
+  const onMessage = (payload: any) => {
+    const convId = String(payload?.conversationId ?? '');
+    if (!convId) return;
+    const lastMessage = payload?.text ?? payload?.ciphertext ?? '';
+    const lastAt = payload?.createdAt ?? new Date().toISOString();
+    setConversationMeta((prev) => {
+      const prevUnread = prev[convId]?.unreadCount ?? 0;
+      const inc = payload?.senderId && payload.senderId !== currentUserId ? 1 : 0;
+      return {
+        ...prev,
+        [convId]: {
+          lastMessage,
+          lastAt,
+          unreadCount: prevUnread + inc,
+        },
+      };
+    });
+  };
+  socket.on('chat.message', onMessage);
+  return () => {
+    socket.off('chat.message', onMessage);
+  };
+}, [socket, isConnected, currentUserId]);
+
+useEffect(() => {
+  if (!socket || !isConnected) return;
+  const convIds = conversations
+    .map((c: any) => c?.conversation_id ?? c?.conversationId ?? c?.id)
+    .filter(Boolean)
+    .map((v: any) => String(v));
+
+  for (const id of convIds) {
+    socket.emit('chat.join', { conversationId: id });
+  }
+
+  return () => {
+    for (const id of convIds) {
+      socket.emit('chat.leave', { conversationId: id });
+    }
+  };
+}, [socket, isConnected, conversations]);
 
 
 useEffect(() => {
@@ -714,6 +787,9 @@ const handleMuteSelected = () => {
                 activeQuick={activeQuickForChats}
                 activeCustomId={activeCustom}
                 search={query}
+                typingByConversation={typingByConversation}
+                currentUserId={currentUserId ?? undefined}
+                conversationMeta={conversationMeta}
                 onScroll={handleChatsScroll}
                 onEndReached={handleChatsEndReached}
                 onOpenChat={onOpenChat} // if you’re still using the chat room, keep this

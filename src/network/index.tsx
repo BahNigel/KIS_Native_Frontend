@@ -6,7 +6,7 @@ import { Platform } from 'react-native';
  * Set USE_EMULATOR = false when testing on a real device connected via Wi-Fi.
  */
 const USE_EMULATOR = true;
-const LAN_IP = '127.0.0.1'; // Change only when using real device on LAN
+const LAN_IP = '192.168.110.62'; // Change only when using real device on LAN
 
 // Django API (HTTP)
 const API_PORT = 8000;
@@ -40,7 +40,7 @@ export const CHAT_UPLOAD_URL = `${CHAT_BASE_URL}/uploads/file`;
 // Backwards-compat: old WEBSOCKET_URL now points to the Nest chat backend
 export const WEBSOCKET_URL = CHAT_WS_URL;
 
-export const NEST_API_BASE_URL = 'http://localhost:4000'; // or from env/config
+export const NEST_API_BASE_URL = CHAT_BASE_URL; // keep in sync with CHAT_BASE_URL
 
 const ROUTES = {
   auth: {

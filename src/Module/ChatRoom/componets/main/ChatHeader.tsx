@@ -35,6 +35,9 @@ type ChatHeaderProps = {
   // NEW: DM request / lock status (for direct chats)
   dmStatusLabel?: string | null;
   dmStatusVariant?: 'pending' | 'locked' | 'rejected' | 'normal';
+
+  // NEW: presence/typing status
+  statusText?: string | null;
 };
 
 export const ChatHeader: React.FC<ChatHeaderProps> = ({
@@ -61,6 +64,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
 
   dmStatusLabel,
   dmStatusVariant = 'normal',
+  statusText,
 }) => {
   const title = chat?.name ?? 'Chat';
 
@@ -74,8 +78,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
       .toUpperCase();
   }, [title]);
 
-  // Fake status like WhatsApp (you can later wire to real presence)
-  const statusText = 'online';
+  const headerStatusText = statusText ?? 'online';
 
   /* ─────────────────────────────────────────
    * 1) Selection mode header
@@ -316,7 +319,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
               ]}
               numberOfLines={1}
             >
-              {statusText}
+              {headerStatusText}
             </Text>
           </View>
         </View>

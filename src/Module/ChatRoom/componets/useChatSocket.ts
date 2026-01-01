@@ -165,7 +165,7 @@ function mapBackendToChatMessage(
     kind: raw.kind,
     status: raw.status as ChatMessage['status'] | undefined,
 
-    text: raw.ciphertext ?? raw.text ?? undefined,
+    text: raw.text ?? raw.ciphertext ?? undefined,
 
     voice: raw.voice,
     styledText: raw.styledText,
@@ -211,10 +211,19 @@ export const useChatSocket = ({
 
       const clientId = payload.clientId;
 
-      socketRef.current.emit('chat.message', {
+      socketRef.current.emit('chat.send', {
         conversationId: roomId,
         clientId,
-        ...payload,
+        kind: payload.kind ?? 'text',
+        text: payload.text ?? payload.styledText?.text,
+        styledText: payload.styledText ?? null,
+        voice: payload.voice ?? null,
+        sticker: payload.sticker ?? null,
+        contacts: payload.contacts ?? null,
+        poll: payload.poll ?? null,
+        event: payload.event ?? null,
+        attachments: payload.attachments ?? [],
+        replyToId: payload.replyToId ?? null,
       });
     },
     [isConnected, roomId],
@@ -224,77 +233,72 @@ export const useChatSocket = ({
   useEffect(() => {
     if (!authToken) return;
 
-    const socket = io(CHAT_WS_URL, {
-      path: CHAT_WS_PATH,
-      transports: ['websocket'],
-      extraHeaders: {
-        Authorization: `Bearer ${authToken}`,
-      },
-      auth: { token: authToken },
-    });
+    let active = true;
 
-    socketRef.current = socket;
+    const connect = async () => {
+      const deviceIdKey = 'device_id';
+      const deviceId = await AsyncStorage.getItem(deviceIdKey);
+      if (!active) return;
 
-    socket.on('connect', () => {
-      setIsConnected(true);
-
-      socket.emit('chat.join', { conversationId: roomId }, () => {
-        socket.emit(
-          'chat.history',
-          { conversationId: roomId, limit: 50 },
-          async (items: BackendMessage[]) => {
-            for (const item of items) {
-              if (item?.sticker?.uri) {
-                cacheStickerFromRemote(item.sticker);
-              }
-            }
-
-            replaceMessages(
-              items.map((m) =>
-                mapBackendToChatMessage(m, currentUserId, roomId),
-              ),
-            );
-          },
-        );
+      const socket = io(CHAT_WS_URL, {
+        path: CHAT_WS_PATH,
+        transports: ['websocket'],
+        extraHeaders: {
+          Authorization: `Bearer ${authToken}`,
+          'x-device-id': deviceId ?? '',
+        },
+        auth: { token: authToken, deviceId: deviceId ?? undefined },
       });
-    });
 
-    socket.on('disconnect', () => {
-      setIsConnected(false);
-    });
+      socketRef.current = socket;
 
-    socket.on('chat.message', (payload: BackendMessage) => {
-      if (payload?.sticker?.uri) {
-        cacheStickerFromRemote(payload.sticker);
-      }
+      socket.on('connect', () => {
+        setIsConnected(true);
 
-      const mapped = mapBackendToChatMessage(
-        payload,
-        currentUserId,
-        roomId,
-      );
+        socket.emit('chat.join', { conversationId: roomId });
+      });
 
-      const current = messagesRef.current || [];
+      socket.on('disconnect', () => {
+        setIsConnected(false);
+      });
 
-      // de-dupe by server id OR clientId
-      if (
-        current.some(
-          (m) =>
-            m.id === mapped.id ||
-            (mapped.clientId && m.clientId === mapped.clientId),
-        )
-      ) {
-        return;
-      }
+      socket.on('chat.message', (payload: BackendMessage) => {
+        if (payload?.sticker?.uri) {
+          cacheStickerFromRemote(payload.sticker);
+        }
 
-      replaceMessages([...current, mapped]);
-    });
+        const mapped = mapBackendToChatMessage(
+          payload,
+          currentUserId,
+          roomId,
+        );
+
+        const current = messagesRef.current || [];
+
+        // de-dupe by server id OR clientId
+        if (
+          current.some(
+            (m) =>
+              m.id === mapped.id ||
+              (mapped.clientId && m.clientId === mapped.clientId),
+          )
+        ) {
+          return;
+        }
+
+        replaceMessages([...current, mapped]);
+      });
+    };
+
+    connect();
 
     return () => {
+      active = false;
+      const socket = socketRef.current;
       try {
-        socket.emit('chat.leave', { conversationId: roomId });
+        socket?.emit('chat.leave', { conversationId: roomId });
       } catch {}
-      socket.disconnect();
+      socket?.disconnect();
       socketRef.current = null;
     };
   }, [authToken, roomId, currentUserId, replaceMessages, messagesRef]);

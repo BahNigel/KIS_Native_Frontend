@@ -136,6 +136,36 @@ export function participantsToStrings(participants?: string[] | ParticipantWire[
   return [];
 }
 
+export function participantsToIds(participants?: string[] | ParticipantWire[]): string[] {
+  if (!participants) return [];
+  if (Array.isArray(participants) && participants.length > 0 && typeof participants[0] === 'string') {
+    return (participants as string[]).map((s) => String(s));
+  }
+
+  if (Array.isArray(participants)) {
+    const out: string[] = [];
+    for (const p of participants as ParticipantWire[]) {
+      if (!p) continue;
+      const u = (p as ParticipantWire).user;
+      if (u && typeof u === 'object') {
+        const id = (u as UserWire).id;
+        if (id) out.push(String(id));
+        continue;
+      }
+      if ((p as ParticipantWire).user != null && (typeof (p as ParticipantWire).user === 'string' || typeof (p as ParticipantWire).user === 'number')) {
+        out.push(String((p as ParticipantWire).user));
+        continue;
+      }
+      if ((p as ParticipantWire).id != null) {
+        out.push(String((p as ParticipantWire).id));
+      }
+    }
+    return out;
+  }
+
+  return [];
+}
+
 /**
  * Try to pick a friendly display name for a participant wire (used in request banners)
  */

@@ -70,6 +70,7 @@ import { useDraftState } from './hooks/useDraftState';
 import { useChatMessaging } from './hooks/useChatMessaging';
 import { useSelectionState } from './hooks/useSelectionState';
 import { useBulkMessageActions } from './hooks/useBulkMessageActions';
+import { useSocket } from '../../../SocketProvider';
 
 /* -------------------------------------------------------------------------- */
 /*                                   TYPES                                    */
@@ -80,6 +81,7 @@ import type {
   ChatRoomPageProps,
   SubRoom,
 } from './chatTypes';
+import { participantsToIds } from './messagesUtils';
 
 /* -------------------------------------------------------------------------- */
 /*                        ATTACHMENTS / RICH PAYLOADS                          */
@@ -144,6 +146,7 @@ export const ChatRoomPage: React.FC<ExtendedChatRoomPageProps> = ({
 
   const { authToken, currentUserId, currentUserName } =
     useChatAuth(chat);
+  const { typingByConversation, presenceByUser } = useSocket();
 
   /* ------------------------------------------------------------------------ */
   /*                         CONVERSATION BOOTSTRAP                            */
@@ -179,6 +182,7 @@ export const ChatRoomPage: React.FC<ExtendedChatRoomPageProps> = ({
     editMessage,
     softDeleteMessage,
     replyToMessage,
+    sendTyping,
   } = useChatMessaging({
     chat,
     storageRoomId,
@@ -193,8 +197,7 @@ export const ChatRoomPage: React.FC<ExtendedChatRoomPageProps> = ({
 
   const [replyTo, setReplyTo] = useState<ChatMessage | null>(null);
   const [editing, setEditing] = useState<ChatMessage | null>(null);
-  const [hasLocallyAcceptedRequest, setHasLocallyAcceptedRequest] =
-    useState(false);
+  const noop = () => {};
 
   const [openStickerEditor, setOpenStickerEditor] = useState(false);
   const [textCardBg, setTextCardBg] = useState<string | null>(null);
@@ -211,6 +214,8 @@ export const ChatRoomPage: React.FC<ExtendedChatRoomPageProps> = ({
   const [subRooms] = useState<SubRoom[]>([]);
   const [messageLocator, setMessageLocator] =
     useState<MessageLocator | null>(null);
+
+  const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   /* ======================================================================== */
   /*                              SELECTION MODE                               */
@@ -249,30 +254,15 @@ export const ChatRoomPage: React.FC<ExtendedChatRoomPageProps> = ({
   /*                                 DM LOCK                                   */
   /* ======================================================================== */
 
-  const { dmRole, dmLockActive, firstMessage } = useMemo(() => {
+  const { dmRole, firstMessage } = useMemo(() => {
     if (!isDirectChat || !conversationId) {
-      return { dmRole: null, dmLockActive: false, firstMessage: null };
+      return { dmRole: null, firstMessage: null };
     }
-
-    const raw =
-      (chat as any)?.requestState ??
-      (chat as any)?.request_state;
-
-    const pending =
-      typeof raw === 'string' &&
-      raw.toLowerCase() === 'pending';
 
     const first =
       messages.find((m) => m.isFirstMessage) ??
       messages[0] ??
       null;
-
-    const hasMine = messages.some(
-      (m) => m.senderId === currentUserId,
-    );
-    const hasOther = messages.some(
-      (m) => m.senderId !== currentUserId,
-    );
 
     let role: 'initiator' | 'recipient' | null = null;
 
@@ -288,30 +278,43 @@ export const ChatRoomPage: React.FC<ExtendedChatRoomPageProps> = ({
           ? 'initiator'
           : 'recipient';
 
-    if (!pending || !role) {
-      return { dmRole: role, dmLockActive: false, firstMessage: first };
+    return { dmRole: role, firstMessage: first };
+  }, [chat, conversationId, isDirectChat, messages, currentUserId]);
+
+  const canSend = draft.trim().length > 0;
+
+  const statusText = useMemo(() => {
+    const convId = conversationId ?? String(storageRoomId);
+    if (!convId) return 'offline';
+    const typingUsers = typingByConversation?.[convId] ?? {};
+    const otherTyping = Object.keys(typingUsers).filter((u) => u !== currentUserId);
+    if (otherTyping.length > 0) return 'typing...';
+
+    const participantIds = participantsToIds(chat?.participants ?? []);
+    const otherIds = participantIds.filter((u) => u && u !== currentUserId);
+    const anyOnline = otherIds.some((u) => presenceByUser?.[u]?.isOnline);
+    return anyOnline ? 'online' : 'offline';
+  }, [typingByConversation, presenceByUser, conversationId, storageRoomId, chat, currentUserId]);
+
+  useEffect(() => {
+    if (!conversationId) return;
+    const isTyping = draft.trim().length > 0;
+    sendTyping(isTyping);
+
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
     }
+    typingTimeoutRef.current = setTimeout(() => {
+      sendTyping(false);
+    }, 2000);
 
-    return {
-      dmRole: role,
-      dmLockActive:
-        role === 'initiator'
-          ? hasMine && !hasOther
-          : !hasMine && !hasLocallyAcceptedRequest,
-      firstMessage: first,
+    return () => {
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
+        typingTimeoutRef.current = null;
+      }
     };
-  }, [
-    chat,
-    conversationId,
-    isDirectChat,
-    messages,
-    currentUserId,
-    hasLocallyAcceptedRequest,
-  ]);
-
-  const canSend =
-    draft.trim().length > 0 &&
-    !(dmLockActive && dmRole === 'initiator');
+  }, [draft, conversationId, sendTyping]);
 
   /* ======================================================================== */
   /*                              HANDLER BINDINGS                             */
@@ -334,7 +337,7 @@ export const ChatRoomPage: React.FC<ExtendedChatRoomPageProps> = ({
       setDraftsByKey,
       setEditing,
       setReplyTo,
-      setHasLocallyAcceptedRequest,
+      setHasLocallyAcceptedRequest: noop,
     });
 
   const handleSendVoice = (p: { uri: string; durationMs: number }) =>
@@ -412,6 +415,7 @@ export const ChatRoomPage: React.FC<ExtendedChatRoomPageProps> = ({
           chat={chat}
           onBack={selectionMode ? exitSelectionMode : onBack}
           palette={palette}
+          statusText={statusText}
           selectionMode={selectionMode}
           selectedCount={selectedIds.length}
           onCancelSelection={exitSelectionMode}
@@ -450,7 +454,7 @@ export const ChatRoomPage: React.FC<ExtendedChatRoomPageProps> = ({
           onSend={handleSend}
           canSend={canSend}
           palette={palette}
-          disabled={!chat || (dmLockActive && dmRole === 'initiator')}
+          disabled={!chat}
           onSendVoice={handleSendVoice}
           onOpenStickerEditor={() => setOpenStickerEditor(true)}
           onChooseTextBackground={setTextCardBg}

@@ -30,6 +30,9 @@ type ChatsTabProps = {
   activeQuick: Set<QuickChip>;
   activeCustomId?: string | null;
   search: string;
+  typingByConversation?: Record<string, Record<string, number>>;
+  currentUserId?: string;
+  conversationMeta?: Record<string, { lastMessage?: string; lastAt?: string; unreadCount?: number }>;
 
   onScroll?: (e: NativeSyntheticEvent<NativeScrollEvent>) => void;
   onEndReached?: () => void;
@@ -45,6 +48,9 @@ export function ChatsTab({
   activeQuick,
   activeCustomId,
   search,
+  typingByConversation,
+  currentUserId,
+  conversationMeta,
   onScroll,
   onEndReached,
   onOpenChat,
@@ -193,17 +199,29 @@ export function ChatsTab({
                 style={{ color: palette.subtext }}
                 numberOfLines={1}
               >
-                {item.lastMessage || ''}
+                {(() => {
+                  const convId = (item as any).conversationId ?? item.id;
+                  const typingUsers = typingByConversation?.[String(convId)] ?? {};
+                  const otherTyping = Object.keys(typingUsers).filter((u) => u !== currentUserId);
+                  if (otherTyping.length > 0) return 'typing...';
+                  return (conversationMeta?.[String(convId)]?.lastMessage ?? item.lastMessage) || '';
+                })()}
               </Text>
             </View>
 
             {/* RIGHT SIDE INFO */}
             <View style={{ alignItems: 'flex-end', gap: 4 }}>
               <Text style={{ color: palette.subtext }}>
-                {item.lastAt || ''}
+                {(() => {
+                  const raw = (conversationMeta?.[String((item as any).conversationId ?? item.id)]?.lastAt ?? item.lastAt) || '';
+                  if (!raw) return '';
+                  const dt = new Date(raw);
+                  if (Number.isNaN(dt.getTime())) return String(raw);
+                  return dt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                })()}
               </Text>
 
-              {item.unreadCount > 0 && !isSelected && (
+              {(conversationMeta?.[String((item as any).conversationId ?? item.id)]?.unreadCount ?? item.unreadCount) > 0 && !isSelected && (
                 <View
                   style={{
                     minWidth: 22,
@@ -222,7 +240,7 @@ export function ChatsTab({
                       fontSize: 12,
                     }}
                   >
-                    {item.unreadCount}
+                    {conversationMeta?.[String((item as any).conversationId ?? item.id)]?.unreadCount ?? item.unreadCount}
                   </Text>
                 </View>
               )}

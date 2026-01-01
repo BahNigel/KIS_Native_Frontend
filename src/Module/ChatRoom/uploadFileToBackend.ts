@@ -49,5 +49,16 @@ export async function uploadFileToBackend(opts: {
   }
 
   const json = await res.json();
-  return json as AttachmentMeta;
+  const attachment = json?.attachment ?? json;
+  return {
+    id: attachment.id ?? attachment.key,
+    url: attachment.url,
+    originalName: attachment.originalName ?? attachment.name ?? file.name,
+    mimeType: attachment.mimeType ?? attachment.mime ?? file.type ?? 'application/octet-stream',
+    size: attachment.size ?? file.size ?? 0,
+    kind: attachment.kind ?? 'other',
+    width: attachment.width,
+    height: attachment.height,
+    durationMs: attachment.durationMs,
+  } as AttachmentMeta;
 }
