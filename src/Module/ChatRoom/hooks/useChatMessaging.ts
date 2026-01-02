@@ -7,6 +7,7 @@ import {
   useState,
 } from 'react';
 import type { MutableRefObject } from 'react';
+import { AppState, DeviceEventEmitter } from 'react-native';
 
 import {
   SendOverNetworkResult,
@@ -62,6 +63,8 @@ export function useChatMessaging({
   const sendOverNetworkImplRef =
     useRef<SendOverNetworkFn | null>(null);
   const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const historySyncRef = useRef<number>(0);
+  const flushInFlightRef = useRef(false);
 
   const sendOverNetwork: SendOverNetworkFn =
   useCallback(async (message) => {
@@ -215,6 +218,52 @@ export function useChatMessaging({
     [socket],
   );
 
+  const requestHistory = useCallback(
+    (input: { after?: string; before?: string; limit?: number }) => {
+      if (!socket || !(isConnected || socket.connected) || !conversationId) return;
+      socket.timeout(5000).emit(
+        'chat.history',
+        {
+          conversationId: String(conversationId),
+          limit: input.limit,
+          after: input.after,
+          before: input.before,
+        },
+        (err: any, ack?: any) => {
+          if (err || !ack?.ok) return;
+          const items = Array.isArray(ack?.data?.messages) ? ack.data.messages : [];
+          if (!items.length) return;
+          replaceMessages(items.map((m: any) => mapServerMessage(m)));
+        },
+      );
+    },
+    [socket, isConnected, conversationId, replaceMessages, mapServerMessage],
+  );
+
+  const syncHistory = useCallback(() => {
+    const now = Date.now();
+    if (now - historySyncRef.current < 3000) return;
+    historySyncRef.current = now;
+
+    const convId = conversationIdRef.current ?? conversationId;
+    if (!convId) return;
+
+    const lastLocal = messagesRef.current
+      .filter((m) => m.conversationId === convId)
+      .map((m) => m.createdAt)
+      .filter(Boolean)
+      .sort()
+      .slice(-1)[0];
+
+    if (lastLocal) {
+      requestHistory({ after: lastLocal, limit: 200 });
+      requestHistory({ before: lastLocal, limit: 50 });
+      return;
+    }
+
+    requestHistory({ limit: 50 });
+  }, [conversationId, requestHistory]);
+
   useEffect(() => {
     if (!socket || !(isConnected || socket.connected) || !conversationId)
       return;
@@ -244,27 +293,7 @@ export function useChatMessaging({
     };
     markRead();
 
-    const lastLocal = messagesRef.current
-      .filter((m) => m.conversationId === conversationId)
-      .map((m) => m.createdAt)
-      .filter(Boolean)
-      .sort()
-      .slice(-1)[0];
-
-    socket.timeout(5000).emit(
-      'chat.history',
-      {
-        conversationId: String(conversationId),
-        limit: lastLocal ? 200 : 50,
-        after: lastLocal || undefined,
-      },
-      (err: any, ack?: any) => {
-        if (err || !ack?.ok) return;
-        const messages = Array.isArray(ack?.data?.messages) ? ack.data.messages : [];
-        if (!messages.length) return;
-        replaceMessages(messages.map((m: any) => mapServerMessage(m)));
-      },
-    );
+    syncHistory();
 
     return () => {
       leaveConversation(conversationId);
@@ -278,6 +307,7 @@ export function useChatMessaging({
     replaceMessages,
     mapServerMessage,
     storageRoomId,
+    syncHistory,
   ]);
 
   /* ---------------------------------------------------------------------
@@ -435,7 +465,38 @@ export function useChatMessaging({
     );
 
     attemptFlushQueue();
+    syncHistory();
+  }, [socket, isConnected, attemptFlushQueue, syncHistory]);
+
+  useEffect(() => {
+    if (!socket || !(isConnected || socket.connected)) return;
+
+    const interval = setInterval(() => {
+      if (flushInFlightRef.current) return;
+      const hasQueued = messagesRef.current.some(
+        (m) => m.status === 'pending' || m.status === 'failed',
+      );
+      if (!hasQueued) return;
+      flushInFlightRef.current = true;
+      attemptFlushQueue()
+        .catch(() => {})
+        .finally(() => {
+          flushInFlightRef.current = false;
+        });
+    }, 8000);
+
+    return () => clearInterval(interval);
   }, [socket, isConnected, attemptFlushQueue]);
+
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state !== 'active') return;
+      if (!socket || !(isConnected || socket.connected)) return;
+      attemptFlushQueue();
+      syncHistory();
+    });
+    return () => sub.remove();
+  }, [socket, isConnected, attemptFlushQueue, syncHistory]);
 
   /* ---------------------------------------------------------------------
    * RECEIVE REALTIME MESSAGES
@@ -467,7 +528,20 @@ export function useChatMessaging({
               serverMsg.clientId,
         );
 
-      if (exists) return;
+      if (exists) {
+        const next = messagesRef.current.map((m) =>
+          m.clientId === serverMsg.clientId
+            ? {
+                ...m,
+                serverId: serverMsg.id ?? serverMsg._id ?? m.serverId,
+                status: 'sent' as MessageStatus,
+                isLocalOnly: false,
+              }
+            : m,
+        );
+        replaceMessages(next);
+        return;
+      }
 
       const msg = mapServerMessage(serverMsg);
 
@@ -641,15 +715,24 @@ export function useChatMessaging({
 
     socket.on(
       'conversation.created',
-      log('conversation.created'),
+      (payload: any) => {
+        log('conversation.created')(payload);
+        DeviceEventEmitter.emit('conversation.refresh');
+      },
     );
     socket.on(
       'conversation.updated',
-      log('conversation.updated'),
+      (payload: any) => {
+        log('conversation.updated')(payload);
+        DeviceEventEmitter.emit('conversation.refresh');
+      },
     );
     socket.on(
       'conversation.last_message',
-      log('conversation.last_message'),
+      (payload: any) => {
+        log('conversation.last_message')(payload);
+        DeviceEventEmitter.emit('conversation.refresh');
+      },
     );
 
     return () => {
@@ -664,6 +747,17 @@ export function useChatMessaging({
   /* ---------------------------------------------------------------------
    * RETURN API
    * ------------------------------------------------------------------ */
+
+  const sendTyping = useCallback((isTyping: boolean) => {
+    const convId =
+      conversationIdRef.current ??
+      String(storageRoomId);
+    if (!socket || !convId) return;
+    socket.emit('chat.typing', {
+      conversationId: String(convId),
+      isTyping,
+    });
+  }, [socket, storageRoomId]);
 
   return {
     messages,
@@ -709,16 +803,7 @@ export function useChatMessaging({
     },
     replyToMessage,
     attemptFlushQueue,
-    sendTyping: (isTyping: boolean) => {
-      const convId =
-        conversationIdRef.current ??
-        String(storageRoomId);
-      if (!socket || !convId) return;
-      socket.emit('chat.typing', {
-        conversationId: String(convId),
-        isTyping,
-      });
-    },
+    sendTyping,
     retryMessage: async (messageId: string) => {
       await retryMessage(messageId);
       await attemptFlushQueue();

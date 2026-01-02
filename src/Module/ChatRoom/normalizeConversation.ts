@@ -102,6 +102,7 @@ export function normalizeConversation(raw: any, currentUserId?: string): Chat {
       )
     : null;
   const isBlocked = Boolean(selfMember?.is_blocked ?? selfMember?.isBlocked);
+  const isMuted = Boolean(selfMember?.is_muted ?? selfMember?.isMuted);
 
   return {
     id,
@@ -131,6 +132,7 @@ export function normalizeConversation(raw: any, currentUserId?: string): Chat {
     isArchived: raw.is_archived ?? raw.isArchived ?? false,
     isLocked: raw.is_locked ?? raw.isLocked ?? false,
     isBlocked,
+    isMuted,
   };
 }
 
@@ -213,6 +215,34 @@ async function refreshConversationsAndHandleEmpty() {
   }
 }
 
+export async function searchConversationsFromServer(
+  query: string,
+  currentUserId?: string,
+): Promise<Chat[]> {
+  const q = query.trim();
+  if (!q) return [];
+
+  try {
+    const url = `${ROUTES.chat.listConversations}?q=${encodeURIComponent(q)}`;
+    const res = await getRequest(url, {
+      errorMessage: 'Unable to search conversations.',
+    });
+
+    const rawList = Array.isArray(res?.data?.results)
+      ? res.data.results
+      : [];
+
+    const normalized = rawList.map((item: any) =>
+      normalizeConversation(item, currentUserId),
+    );
+
+    return dedupeChats(normalized);
+  } catch (e) {
+    console.warn('[searchConversationsFromServer] failed:', e);
+    return [];
+  }
+}
+
 /**
  * De-duplicate conversation objects by ID → last one wins.
  */
@@ -235,9 +265,14 @@ function dedupeChats(chats: Chat[]): Chat[] {
 export async function fetchConversationsForCurrentUser(
   fallback: Chat[] = [],
   currentUserId?: string,
+  forceRefresh?: boolean,
 ): Promise<Chat[]> {
-  // Fire-and-forget background refresh
-  refreshConversationsAndHandleEmpty();
+  if (forceRefresh) {
+    await refreshConversationsAndHandleEmpty();
+  } else {
+    // Fire-and-forget background refresh
+    refreshConversationsAndHandleEmpty();
+  }
 
   const cachedRaw = await getRawConversationsFromCache();
   console.log('[fetchConversationsForCurrentUser] Cached raw list:', cachedRaw);

@@ -6,6 +6,8 @@ import {
   Text,
   ScrollView,
   TextInput,
+  ActivityIndicator,
+  Alert,
 } from 'react-native';
 import AudioRecorderPlayer, {
   PlayBackType,
@@ -27,7 +29,13 @@ type AttachmentPreviewPageProps = {
   kind: PreviewKind | null;
   items: AttachmentFilePayload[];
   onCancel: () => void;
-  onSend: (caption: string) => void;
+  onSend: (
+    caption: string,
+    callbacks?: {
+      onProgress?: (uri: string, progress: number) => void;
+      onStatus?: (uri: string, status: 'uploading' | 'done' | 'failed') => void;
+    },
+  ) => Promise<boolean> | boolean;
 };
 
 const isPdfFile = (item: AttachmentFilePayload) => {
@@ -89,6 +97,9 @@ export const AttachmentPreviewPage: React.FC<AttachmentPreviewPageProps> = ({
   const cardRadius = kisRadius.xl ?? 20;
   const [captionText, setCaptionText] = useState('');
   const [localItems, setLocalItems] = useState<AttachmentFilePayload[]>([]);
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<Record<string, number>>({});
+  const [uploadStatus, setUploadStatus] = useState<Record<string, 'uploading' | 'done' | 'failed'>>({});
 
   // AUDIO PLAYER STATE
   const audioPlayerRef = useRef(new AudioRecorderPlayer());
@@ -103,6 +114,9 @@ export const AttachmentPreviewPage: React.FC<AttachmentPreviewPageProps> = ({
       setLocalItems(items ?? []);
       setPlayingId(null);
       setAudioProgress({});
+      setIsUploading(false);
+      setUploadProgress({});
+      setUploadStatus({});
       try {
         audioPlayerRef.current.stopPlayer();
         audioPlayerRef.current.removePlayBackListener();
@@ -125,6 +139,9 @@ export const AttachmentPreviewPage: React.FC<AttachmentPreviewPageProps> = ({
     setLocalItems([]);
     setPlayingId(null);
     setAudioProgress({});
+    setIsUploading(false);
+    setUploadProgress({});
+    setUploadStatus({});
     try {
       audioPlayerRef.current.stopPlayer();
       audioPlayerRef.current.removePlayBackListener();
@@ -132,17 +149,45 @@ export const AttachmentPreviewPage: React.FC<AttachmentPreviewPageProps> = ({
     onCancel();
   };
 
-  const handleSendPress = () => {
+  const handleSendPress = async () => {
     console.log('[AttachmentPreviewPage] handleSendPress', {
       captionText,
       kind,
       itemsLength: localItems.length,
     });
     const trimmed = captionText.trim();
-    onSend(trimmed);
-    setCaptionText('');
-    setPlayingId(null);
-    setAudioProgress({});
+
+    if (isUploading) return;
+    setIsUploading(true);
+    setUploadProgress({});
+    setUploadStatus({});
+
+    const onProgress = (uri: string, progress: number) => {
+      setUploadProgress((prev) => ({
+        ...prev,
+        [uri]: progress,
+      }));
+    };
+
+    const onStatus = (uri: string, status: 'uploading' | 'done' | 'failed') => {
+      setUploadStatus((prev) => ({
+        ...prev,
+        [uri]: status,
+      }));
+    };
+
+    try {
+      const ok = await onSend(trimmed, { onProgress, onStatus });
+      if (!ok) {
+        Alert.alert('Upload failed', 'Please retry sending your attachments.');
+        return;
+      }
+      setCaptionText('');
+      setPlayingId(null);
+      setAudioProgress({});
+    } finally {
+      setIsUploading(false);
+    }
   };
 
   const handleRemoveItem = (index: number) => {
@@ -332,6 +377,8 @@ export const AttachmentPreviewPage: React.FC<AttachmentPreviewPageProps> = ({
                 kind === 'audio';
               const canRemove = localItems.length > 1;
               const progress = audioProgress[item.uri] ?? 0;
+              const uploadPct = uploadProgress[item.uri] ?? 0;
+              const status = uploadStatus[item.uri];
 
               if (isAudio) {
                 return (
@@ -376,6 +423,20 @@ export const AttachmentPreviewPage: React.FC<AttachmentPreviewPageProps> = ({
                       >
                         {item.name}
                       </Text>
+                      {status && (
+                        <Text
+                          style={{
+                            marginTop: 4,
+                            fontSize: KIS_TOKENS.typography.tiny,
+                            color:
+                              status === 'failed'
+                                ? palette.error ?? palette.primary
+                                : palette.subtext,
+                          }}
+                        >
+                          {status === 'failed' ? 'Upload failed' : 'Uploading...'}
+                        </Text>
+                      )}
                       <View
                         style={{
                           marginTop: 4,
@@ -393,6 +454,28 @@ export const AttachmentPreviewPage: React.FC<AttachmentPreviewPageProps> = ({
                           }}
                         />
                       </View>
+                      {status && (
+                        <View
+                          style={{
+                            marginTop: 6,
+                            height: 4,
+                            borderRadius: 999,
+                            backgroundColor: palette.divider,
+                            overflow: 'hidden',
+                          }}
+                        >
+                          <View
+                            style={{
+                              width: `${uploadPct * 100}%`,
+                              height: '100%',
+                              backgroundColor:
+                                status === 'failed'
+                                  ? palette.error ?? palette.primary
+                                  : palette.primary,
+                            }}
+                          />
+                        </View>
+                      )}
                     </View>
 
                     {canRemove && (
@@ -468,6 +551,42 @@ export const AttachmentPreviewPage: React.FC<AttachmentPreviewPageProps> = ({
                     >
                       {item.type || 'Unknown type'}
                     </Text>
+                    {status && (
+                      <Text
+                        style={{
+                          marginTop: 4,
+                          fontSize: KIS_TOKENS.typography.tiny,
+                          color:
+                            status === 'failed'
+                              ? palette.error ?? palette.primary
+                              : palette.subtext,
+                        }}
+                      >
+                        {status === 'failed' ? 'Upload failed' : 'Uploading...'}
+                      </Text>
+                    )}
+                    {status && (
+                      <View
+                        style={{
+                          marginTop: 6,
+                          height: 4,
+                          borderRadius: 999,
+                          backgroundColor: palette.divider,
+                          overflow: 'hidden',
+                        }}
+                      >
+                        <View
+                          style={{
+                            width: `${uploadPct * 100}%`,
+                            height: '100%',
+                            backgroundColor:
+                              status === 'failed'
+                                ? palette.error ?? palette.primary
+                                : palette.primary,
+                          }}
+                        />
+                      </View>
+                    )}
                   </View>
 
                   {canRemove && (
@@ -557,23 +676,39 @@ export const AttachmentPreviewPage: React.FC<AttachmentPreviewPageProps> = ({
                 );
                 handleSendPress();
               }}
+              disabled={isUploading}
               style={({ pressed }) => ({
                 paddingHorizontal: KIS_TOKENS.spacing.lg,
                 paddingVertical: KIS_TOKENS.spacing.sm,
                 borderRadius: kisRadius.md,
                 backgroundColor: palette.primary,
-                opacity: pressed ? KIS_TOKENS.opacity.pressed : 1,
+                opacity: pressed || isUploading ? KIS_TOKENS.opacity.pressed : 1,
               })}
             >
-              <Text
-                style={{
-                  fontSize: KIS_TOKENS.typography.label,
-                  fontWeight: KIS_TOKENS.typography.weight.bold,
-                  color: palette.onPrimary,
-                }}
-              >
-                Send
-              </Text>
+              {isUploading ? (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <ActivityIndicator size="small" color={palette.onPrimary} />
+                  <Text
+                    style={{
+                      fontSize: KIS_TOKENS.typography.label,
+                      fontWeight: KIS_TOKENS.typography.weight.bold,
+                      color: palette.onPrimary,
+                    }}
+                  >
+                    Uploading...
+                  </Text>
+                </View>
+              ) : (
+                <Text
+                  style={{
+                    fontSize: KIS_TOKENS.typography.label,
+                    fontWeight: KIS_TOKENS.typography.weight.bold,
+                    color: palette.onPrimary,
+                  }}
+                >
+                  Send
+                </Text>
+              )}
             </Pressable>
           </View>
         </Pressable>

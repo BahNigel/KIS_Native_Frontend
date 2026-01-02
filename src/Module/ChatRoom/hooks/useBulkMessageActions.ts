@@ -13,7 +13,7 @@ type UseBulkMessageActionsParams = {
   softDeleteMessage: (id: string) => Promise<void>;
   exitSelectionMode: () => void;
   isSingleSelection: boolean;
-  onReportMessage?: (message: ChatMessage) => void;
+  onReportMessage?: (message: ChatMessage) => Promise<boolean> | boolean;
   onPinMessage?: (message: ChatMessage, pinned: boolean) => void;
   onContinueInSubRoom?: (message: ChatMessage) => void;
 };
@@ -116,10 +116,14 @@ export function useBulkMessageActions({
       },
       {
         text: 'Report',
-        onPress: () => {
+        onPress: async () => {
           const target = selectedMessages[0];
           if (onReportMessage) {
-            onReportMessage(target);
+            const ok = await onReportMessage(target);
+            Alert.alert(
+              ok ? 'Reported' : 'Report failed',
+              ok ? 'Thanks, this message has been reported.' : 'Unable to report this message right now.',
+            );
             exitSelectionMode();
             return;
           }

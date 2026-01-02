@@ -189,17 +189,30 @@ function mergeMessages(
   incoming: ChatMessage[],
 ): ChatMessage[] {
   const map = new Map<string, ChatMessage>();
+  const byClientId = new Map<string, string>();
 
   for (const msg of existing) {
     map.set(getIdentityKey(msg), msg);
+    if (msg.clientId) {
+      byClientId.set(msg.clientId, getIdentityKey(msg));
+    }
   }
 
   for (const msg of incoming) {
     const key = getIdentityKey(msg);
-    const prev = map.get(key);
+    let prev = map.get(key);
+    if (!prev && msg.clientId) {
+      const clientKey = byClientId.get(msg.clientId);
+      if (clientKey) {
+        prev = map.get(clientKey);
+      }
+    }
 
     if (!prev) {
       map.set(key, msg);
+      if (msg.clientId) {
+        byClientId.set(msg.clientId, key);
+      }
       continue;
     }
 
@@ -217,6 +230,9 @@ function mergeMessages(
 
     if (msg.serverId) {
       map.set(key, { ...prev, ...msg });
+      if (msg.clientId) {
+        byClientId.set(msg.clientId, key);
+      }
     }
   }
 
@@ -244,6 +260,7 @@ export function useChatPersistence(
 
   const messagesRef = useRef<ChatMessage[]>([]);
   const roomIdRef = useRef<string>(roomId);
+  const flushInFlightRef = useRef(false);
 
   /* ------------------------------------------------------------------------
    * REF SYNC
@@ -482,46 +499,52 @@ export function useChatPersistence(
   const attemptFlushQueue = useCallback(
     async () => {
       if (!sendOverNetwork) return;
+      if (flushInFlightRef.current) return;
+      flushInFlightRef.current = true;
 
-      let next = [...messagesRef.current];
+      try {
+        let next = [...messagesRef.current];
 
-      for (const msg of next) {
-        if (
-          msg.status !== STATUS_QUEUED &&
-          msg.status !== STATUS_FAILED
-        ) {
-          continue;
+        for (const msg of next) {
+          if (
+            msg.status !== STATUS_QUEUED &&
+            msg.status !== STATUS_FAILED
+          ) {
+            continue;
+          }
+
+          const sending = next.map((m) =>
+            m.clientId === msg.clientId
+              ? { ...m, status: 'sending' as MessageStatus }
+              : m,
+          );
+          await persist(sending);
+
+          const result = await sendOverNetwork(msg).catch(
+            () => ({ ok: false } as SendOverNetworkNack),
+          );
+
+          next = sending.map((m) =>
+            m.clientId === msg.clientId
+              ? {
+                  ...m,
+                  status: result.ok
+                    ? STATUS_SENT
+                    : STATUS_FAILED,
+                  serverId:
+                    result.ok
+                      ? result.serverId
+                      : m.serverId,
+                  isLocalOnly: !result.ok,
+                }
+              : m,
+          );
         }
 
-        const sending = next.map((m) =>
-          m.clientId === msg.clientId
-            ? { ...m, status: 'sending' as MessageStatus }
-            : m,
-        );
-        await persist(sending);
-
-        const result = await sendOverNetwork(msg).catch(
-          () => ({ ok: false } as SendOverNetworkNack),
-        );
-
-        next = sending.map((m) =>
-          m.clientId === msg.clientId
-            ? {
-                ...m,
-                status: result.ok
-                  ? STATUS_SENT
-                  : STATUS_FAILED,
-                serverId:
-                  result.ok
-                    ? result.serverId
-                    : m.serverId,
-                isLocalOnly: !result.ok,
-              }
-            : m,
-        );
+        await persist(next);
+      } finally {
+        flushInFlightRef.current = false;
       }
-
-      await persist(next);
     },
     [persist, sendOverNetwork],
   );

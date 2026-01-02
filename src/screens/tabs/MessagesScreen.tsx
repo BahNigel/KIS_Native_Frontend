@@ -12,6 +12,7 @@ import {
   NativeSyntheticEvent,
   NativeScrollEvent,
   AccessibilityInfo,
+  DeviceEventEmitter,
   useWindowDimensions,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -40,7 +41,7 @@ import {
   type Chat,
   CUSTOM_FILTERS_KEY 
 } from '@/Module/ChatRoom/messagesUtils';
-import { fetchConversationsForCurrentUser } from '@/Module/ChatRoom/normalizeConversation';
+import { fetchConversationsForCurrentUser, searchConversationsFromServer } from '@/Module/ChatRoom/normalizeConversation';
 
 const Tab = createMaterialTopTabNavigator();
 type MessagesScreenProps = {
@@ -89,12 +90,30 @@ const [conversationMeta, setConversationMeta] = useState<Record<string, { lastMe
 const { socket, isConnected, typingByConversation, currentUserId, presenceByUser } = useSocket();
 
 useEffect(() => {
+  let active = true;
   (async () => {
+    const term = query.trim();
+    if (term.length >= 2) {
+      const convs = await searchConversationsFromServer(term, currentUserId ?? undefined);
+      if (active) setConversations(convs);
+      return;
+    }
     const convs = await fetchConversationsForCurrentUser([], currentUserId ?? undefined);
     console.log("checking if conversation is comming from the backend: ", convs)
-    setConversations(convs);
+    if (active) setConversations(convs);
   })();
-}, [onOpenChat, currentUserId]);
+  return () => { active = false; };
+}, [onOpenChat, currentUserId, query]);
+
+useEffect(() => {
+  const sub = DeviceEventEmitter.addListener('conversation.refresh', async () => {
+    const convs = await fetchConversationsForCurrentUser([], currentUserId ?? undefined, true);
+    setConversations(convs);
+  });
+  return () => {
+    sub.remove();
+  };
+}, [currentUserId]);
 
 useEffect(() => {
   const CONTACTS_CACHE_KEY = 'kis.contacts.cache.v1';

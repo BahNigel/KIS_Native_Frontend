@@ -75,6 +75,7 @@ export type Chat = {
   isArchived?: boolean;
   isLocked?: boolean;
   isBlocked?: boolean;
+  isMuted?: boolean;
 };
 
 export type CustomFilterRule = {

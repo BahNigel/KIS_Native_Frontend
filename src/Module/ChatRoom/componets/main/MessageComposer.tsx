@@ -712,12 +712,17 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
         visible={attachmentMenuVisible}
         palette={palette}
         onClose={closeAttachmentMenu}
-        onSendFiles={(files) => {
+        onSendFiles={async (files, callbacks) => {
           console.log(
             '[MessageComposer] onSendFiles from sheet:',
             files,
           );
-          onSendAttachment?.(files);
+          const res = await onSendAttachment?.({
+            ...files,
+            onProgress: callbacks?.onProgress,
+            onStatus: callbacks?.onStatus,
+          });
+          return res !== false;
         }}
         onSendContacts={(contacts) => {
           console.log(

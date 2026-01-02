@@ -11,6 +11,7 @@ import {
 
 import { useKISTheme } from '@/theme/useTheme';
 import { KIS_TOKENS } from '@/theme/constants';
+import { KISIcon } from '@/constants/kisIcons';
 
 import {
   styles,
@@ -229,16 +230,39 @@ export function ChatsTab({
 
             {/* NAME + LAST MESSAGE */}
             <View style={{ flex: 1 }}>
-              <Text style={[styles.name, { color: palette.text }]}>
-                {(() => {
-                  if (item.isDirect) {
-                    const phone = otherParticipantPhone(item.participants ?? [], currentUserId);
-                    const key = normalizePhoneKey(phone);
-                    if (key && contactNameByPhone?.[key]) return contactNameByPhone[key];
-                  }
-                  return item.name;
-                })()}
-              </Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Text style={[styles.name, { color: palette.text }]}>
+                  {(() => {
+                    if (item.isDirect) {
+                      const phone = otherParticipantPhone(item.participants ?? [], currentUserId);
+                      const key = normalizePhoneKey(phone);
+                      if (key && contactNameByPhone?.[key]) return contactNameByPhone[key];
+                    }
+                    return item.name;
+                  })()}
+                </Text>
+                {item.isBlocked && (
+                  <View
+                    style={{
+                      paddingHorizontal: 6,
+                      paddingVertical: 2,
+                      borderRadius: 6,
+                      backgroundColor: palette.error ?? palette.primary,
+                    }}
+                  >
+                    <Text style={{ color: palette.onPrimary ?? '#fff', fontSize: 10 }}>
+                      Blocked
+                    </Text>
+                  </View>
+                )}
+                {item.isMuted && (
+                  <KISIcon
+                    name="volume-mute"
+                    size={14}
+                    color={palette.subtext}
+                  />
+                )}
+              </View>
 
               <Text
                 style={{ color: palette.subtext }}

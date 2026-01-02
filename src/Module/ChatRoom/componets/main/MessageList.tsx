@@ -47,6 +47,8 @@ type MessageListProps = {
     scrollToMessage: (messageId: string) => void;
     highlightMessage: (messageId: string) => void;
   }) => void;
+
+  autoScrollEnabled?: boolean;
 };
 
 /**
@@ -114,6 +116,7 @@ export const MessageList: React.FC<MessageListProps> = ({
   onStartSelection,
   onToggleSelect,
   onMessageLocatorReady,
+  autoScrollEnabled = true,
 }) => {
   const listRef = useRef<FlatList<ChatMessage>>(null);
 
@@ -123,6 +126,7 @@ export const MessageList: React.FC<MessageListProps> = ({
   const highlightTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
+  const suppressAutoScrollRef = useRef(false);
 
   useEffect(() => {
     return () => {
@@ -134,27 +138,42 @@ export const MessageList: React.FC<MessageListProps> = ({
 
   const handleContentSizeChange = () => {
     if (!listRef.current) return;
+    if (!autoScrollEnabled) return;
+    if (suppressAutoScrollRef.current) return;
     listRef.current.scrollToEnd({ animated: true });
   };
 
   const scrollToMessage = useCallback(
     (messageId: string) => {
       if (!listRef.current) return;
-      const index = messages.findIndex((m) => m.id === messageId);
+      const index = messages.findIndex(
+        (m) =>
+          m.id === messageId ||
+          (m as any).serverId === messageId ||
+          (m as any).clientId === messageId,
+      );
       if (index < 0) return;
 
       try {
+        suppressAutoScrollRef.current = true;
         listRef.current.scrollToIndex({
           index,
           animated: true,
           viewPosition: 0.3,
         });
+        setTimeout(() => {
+          suppressAutoScrollRef.current = false;
+        }, 800);
       } catch (e) {
         const approximateItemHeight = 72;
+        suppressAutoScrollRef.current = true;
         listRef.current.scrollToOffset({
           offset: Math.max(0, index * approximateItemHeight),
           animated: true,
         });
+        setTimeout(() => {
+          suppressAutoScrollRef.current = false;
+        }, 800);
       }
     },
     [messages],
@@ -600,10 +619,17 @@ export const MessageList: React.FC<MessageListProps> = ({
 
         const replySource =
           item.replyToId != null
-            ? messages.find((m) => m.id === item.replyToId)
+            ? messages.find(
+                (m) =>
+                  m.id === item.replyToId ||
+                  (m as any).serverId === item.replyToId ||
+                  (m as any).clientId === item.replyToId,
+              )
             : undefined;
 
-        const isHighlighted = item.id === highlightedMessageId;
+        const isHighlighted =
+          item.id === highlightedMessageId ||
+          (item as any).serverId === highlightedMessageId;
         const isSelected = selectedMessageIds.includes(item.id);
 
         const attachments = (item as any).attachments ?? [];

@@ -43,7 +43,13 @@ type AttachmentSheetProps = {
   palette: KISPalette;
   onClose: () => void;
 
-  onSendFiles?: (files: AttachmentFilePayload) => Promise<void> | void;
+  onSendFiles?: (
+    files: AttachmentFilePayload,
+    callbacks?: {
+      onProgress?: (uri: string, progress: number) => void;
+      onStatus?: (uri: string, status: 'uploading' | 'done' | 'failed') => void;
+    },
+  ) => Promise<boolean> | boolean;
 
   onSendContacts?: (contacts: SimpleContact[]) => void;
   onCreatePoll?: (poll: PollDraft) => void;
@@ -99,7 +105,13 @@ export const AttachmentSheet: React.FC<AttachmentSheetProps> = ({
     setPreviewKind(null);
   };
 
-  const handlePreviewSend = async (caption: string) => {
+  const handlePreviewSend = async (
+    caption: string,
+    callbacks?: {
+      onProgress?: (uri: string, progress: number) => void;
+      onStatus?: (uri: string, status: 'uploading' | 'done' | 'failed') => void;
+    },
+  ) => {
     if (!previewKind || !previewItems.length) {
       closePreview();
       return;
@@ -109,14 +121,22 @@ export const AttachmentSheet: React.FC<AttachmentSheetProps> = ({
       ...item,
     }));
 
+    let shouldClose = true;
     try {
       if (onSendFiles) {
-        await onSendFiles(
+        const ok = await onSendFiles(
           {
             caption,
-            files:filesToBeSent
-
-          });
+            files: filesToBeSent,
+            onProgress: callbacks?.onProgress,
+            onStatus: callbacks?.onStatus,
+          },
+          callbacks,
+        );
+        if (!ok) {
+          shouldClose = false;
+          return;
+        }
       } else {
         Alert.alert(
           'Attachments ready',
@@ -130,7 +150,7 @@ export const AttachmentSheet: React.FC<AttachmentSheetProps> = ({
         'Something went wrong while sending your attachments.',
       );
     } finally {
-      closePreview();
+      if (shouldClose) closePreview();
     }
   };
 

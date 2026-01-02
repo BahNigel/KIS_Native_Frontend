@@ -12,7 +12,7 @@ import {
   DarkTheme,
 } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { useColorScheme } from 'react-native';
+import { Platform, useColorScheme } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import SplashScreen from './src/screens/SplashScreen';
@@ -22,8 +22,10 @@ import RegisterScreen from './src/screens/RegisterScreen';
 import DeviceVerificationScreen from './src/screens/DeviceVerificationScreen';
 import { MainTabs } from '@/navigation/AppNavigator';
 import { getRequest } from '@/network/get';
-import ROUTES from '@/network';
+import ROUTES, { NEST_API_BASE_URL } from '@/network';
+import { postRequest } from '@/network/post';
 import { SocketProvider } from './SocketProvider';
+import { initPushHandlers } from './src/push/notifications';
 
 type AuthCtx = {
   isAuth: boolean;
@@ -110,6 +112,51 @@ export default function App() {
 
   useEffect(() => {
     console.log('isAuth ->', isAuth);
+  }, [isAuth]);
+
+  useEffect(() => {
+    initPushHandlers();
+  }, []);
+
+  useEffect(() => {
+    if (!isAuth) return;
+    let active = true;
+
+    const registerPushToken = async () => {
+      try {
+        const token = await AsyncStorage.getItem('push_token');
+        const fallbackToken = await AsyncStorage.getItem('fcm_token');
+        const apnsToken = await AsyncStorage.getItem('apns_token');
+        const deviceId = await AsyncStorage.getItem('device_id');
+        const finalToken = token || fallbackToken;
+
+        if (!active) return;
+
+        if (Platform.OS === 'ios' && apnsToken) {
+          await postRequest(`${NEST_API_BASE_URL}/notifications/tokens/register`, {
+            token: apnsToken,
+            platform: 'ios',
+            deviceId: deviceId ?? undefined,
+          });
+        }
+
+        if (finalToken) {
+          await postRequest(`${NEST_API_BASE_URL}/notifications/tokens/register`, {
+            token: finalToken,
+            platform: Platform.OS === 'ios' ? 'ios' : 'android',
+            deviceId: deviceId ?? undefined,
+          });
+        }
+      } catch (e: any) {
+        console.log('[push-token] register failed:', e?.message);
+      }
+    };
+
+    registerPushToken();
+
+    return () => {
+      active = false;
+    };
   }, [isAuth]);
 
   const ctx = useMemo(

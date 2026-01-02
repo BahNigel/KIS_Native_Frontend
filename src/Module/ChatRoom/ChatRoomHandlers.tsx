@@ -1,6 +1,6 @@
 // src/screens/chat/ChatRoomHandlers.ts
 
-import { Alert } from 'react-native';
+import { Alert, DeviceEventEmitter } from 'react-native';
 import {
   uploadFileToBackend,
   AttachmentMeta,
@@ -32,6 +32,10 @@ type EnsureConversationId = (
 
 type SendRichMessage = (payload: any) => Promise<void>;
 type SendTextMessage = (text: string, meta: any) => Promise<void>;
+
+const notifyConversationRefresh = () => {
+  DeviceEventEmitter.emit('conversation.refresh');
+};
 
 /* =========================================================
    SEND TEXT / EDIT / REPLY
@@ -200,6 +204,7 @@ export const handleSendVoice = async ({
       },
       authToken,
       baseUrl: NEST_API_BASE_URL,
+      conversationId: String(convId),
     });
   } catch {}
 
@@ -251,6 +256,7 @@ export const handleSendSticker = async ({
       },
       authToken,
       baseUrl: NEST_API_BASE_URL,
+      conversationId: String(convId),
     });
   } catch {}
 
@@ -302,16 +308,32 @@ export const handleSendAttachment = async ({
           file,
           authToken,
           baseUrl: NEST_API_BASE_URL,
+          conversationId: String(convId),
+          onProgress: (progress) => {
+            if (file?.uri) {
+              input?.onProgress?.(file.uri, progress);
+            }
+          },
+          onStatus: (status) => {
+            if (file?.uri) {
+              input?.onStatus?.(file.uri, status);
+            }
+          },
         });
       } catch {
+        if (file?.uri) {
+          input?.onStatus?.(file.uri, 'failed');
+        }
         return null;
       }
     }),
   );
 
   const attachments = uploaded.filter(Boolean);
+  const hasFailures = uploaded.some((item) => !item);
 
-  if (!attachments.length && !caption) return;
+  if (hasFailures) return false;
+  if (!attachments.length && !caption) return false;
 
   await sendRichMessage({
     kind: 'text',
@@ -321,6 +343,7 @@ export const handleSendAttachment = async ({
     text: caption || undefined,
     attachments,
   });
+  return true;
 };
 
 /* =========================================================
@@ -453,19 +476,36 @@ export const handleBlockRequest = async (chatId?: string) => {
 
   const url = `${ROUTES.chat.listConversations}${chatId}/block_chat/`;
   await postRequest(url, {});
+  notifyConversationRefresh();
 };
 
-export const handleArchiveRequest = () => {
-  Alert.alert(
-    'Archive chat',
-    'Archiving is not wired to backend yet.',
-  );
+export const handleArchiveRequest = async (conversationId?: string, archived?: boolean) => {
+  if (!conversationId) return;
+  const url = `${ROUTES.chat.listConversations}${conversationId}/archive/`;
+  await postRequest(url, { archived: archived ?? true });
+  await postRequest(`${NEST_API_BASE_URL}/conversations/broadcast`, {
+    conversationId,
+    type: 'archived',
+    payload: { archived: archived ?? true },
+  });
+};
+
+export const handleLockConversation = async (conversationId?: string, locked?: boolean) => {
+  if (!conversationId) return;
+  const url = `${ROUTES.chat.listConversations}${conversationId}/lock/`;
+  await postRequest(url, { locked: locked ?? true });
+  await postRequest(`${NEST_API_BASE_URL}/conversations/broadcast`, {
+    conversationId,
+    type: 'locked',
+    payload: { locked: locked ?? true },
+  });
 };
 
 export const handleAcceptConversationRequest = async (chatId?: string) => {
   if (!chatId) return;
   const url = `${ROUTES.chat.listConversations}${chatId}/accept-request/`;
   await postRequest(url, {});
+  notifyConversationRefresh();
 };
 
 export const handleAddGroupMember = async ({
@@ -545,6 +585,7 @@ export const handleMuteConversation = async ({
     muted,
     untilMs,
   });
+  notifyConversationRefresh();
 };
 
 export const handleReportMessage = async ({
@@ -560,10 +601,11 @@ export const handleReportMessage = async ({
 }) => {
   if (!conversationId || !messageId) return;
   const url = `${NEST_API_BASE_URL}/moderation/report`;
-  await postRequest(url, {
+  const res = await postRequest(url, {
     conversationId,
     messageId,
     reason,
     note,
   });
+  return res?.success === true || res?.ok === true;
 };

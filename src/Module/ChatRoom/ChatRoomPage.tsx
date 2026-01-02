@@ -30,6 +30,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Text,
+  ScrollView,
   TouchableOpacity,
   StyleSheet,
   Pressable,
@@ -75,6 +76,8 @@ import { useChatMessaging } from './hooks/useChatMessaging';
 import { useSelectionState } from './hooks/useSelectionState';
 import { useBulkMessageActions } from './hooks/useBulkMessageActions';
 import { useSocket } from '../../../SocketProvider';
+import { getRequest } from '@/network/get';
+import { NEST_API_BASE_URL } from '@/network';
 
 /* -------------------------------------------------------------------------- */
 /*                                   TYPES                                    */
@@ -115,6 +118,8 @@ export type FilesType = {
 export type AttachmentFilePayload = {
   files?: FilesType[];
   caption?: string;
+  onProgress?: (uri: string, progress: number) => void;
+  onStatus?: (uri: string, status: 'uploading' | 'done' | 'failed') => void;
 };
 
 type ExtendedChatRoomPageProps = ChatRoomPageProps & {
@@ -276,14 +281,14 @@ export const ChatRoomPage: React.FC<ExtendedChatRoomPageProps> = ({
     softDeleteMessage,
     exitSelectionMode,
     isSingleSelection,
-    onReportMessage: (message) => {
+    onReportMessage: async (message) => {
       const convId =
         message.conversationId ?? conversationId ?? chat?.id ?? null;
       const messageId =
         message.serverId ??
         (message.id && message.id.startsWith('client_') ? null : message.id);
-      if (!convId || !messageId) return;
-      Handlers.handleReportMessage({
+      if (!convId || !messageId) return false;
+      return Handlers.handleReportMessage({
         conversationId: String(convId),
         messageId: String(messageId),
         reason: 'user_reported',
@@ -384,6 +389,132 @@ export const ChatRoomPage: React.FC<ExtendedChatRoomPageProps> = ({
 
     return { dmStatusLabel: null, dmStatusVariant: 'normal' as const };
   }, [chat, dmRole, lockOverride, requestStateOverride]);
+
+  /* ======================================================================== */
+  /*                              MESSAGE SEARCH                               */
+  /* ======================================================================== */
+
+  const [searchVisible, setSearchVisible] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [searchBefore, setSearchBefore] = useState<string | null>(null);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [searchHasMore, setSearchHasMore] = useState(true);
+  const searchCacheRef = useRef<Record<string, any[]>>({});
+  const searchResultsRef = useRef<any[]>([]);
+  const [autoScrollEnabled, setAutoScrollEnabled] = useState(true);
+
+  useEffect(() => {
+    searchResultsRef.current = searchResults;
+  }, [searchResults]);
+
+  useEffect(() => {
+    setAutoScrollEnabled(true);
+  }, [conversationId]);
+
+  const buildSearchSnippet = useCallback((text: string, query: string) => {
+    const source = text ?? '';
+    const q = query.trim();
+    if (!source || !q) return { prefix: '', match: '', suffix: source };
+    const lower = source.toLowerCase();
+    const idx = lower.indexOf(q.toLowerCase());
+    if (idx === -1) return { prefix: '', match: '', suffix: source };
+    const start = Math.max(0, idx - 24);
+    const end = Math.min(source.length, idx + q.length + 24);
+    const prefix = source.slice(start, idx);
+    const match = source.slice(idx, idx + q.length);
+    const suffix = source.slice(idx + q.length, end);
+    return {
+      prefix: start > 0 ? `…${prefix}` : prefix,
+      match,
+      suffix: end < source.length ? `${suffix}…` : suffix,
+    };
+  }, []);
+
+  const runSearch = useCallback(
+    async (reset?: boolean) => {
+      const convId = String(conversationId ?? chat?.id ?? '');
+      const q = searchQuery.trim();
+      if (!convId || !q) {
+        setSearchResults([]);
+        setSearchBefore(null);
+        setSearchHasMore(false);
+        return;
+      }
+
+      if (searchLoading) return;
+
+      if (reset) {
+        const cacheKey = `${convId}::${q.toLowerCase()}`;
+        const cached = searchCacheRef.current[cacheKey];
+        if (cached?.length) {
+          setSearchResults(cached);
+        } else {
+          const localMatches = messages
+            .filter((m) => {
+              const text = (m.text ?? m.styledText?.text ?? '').toLowerCase();
+              return text.includes(q.toLowerCase());
+            })
+            .map((m) => ({
+              id: m.serverId ?? m.id,
+              text: m.text ?? m.styledText?.text ?? '',
+              createdAt: m.createdAt,
+            }));
+          if (localMatches.length) {
+            setSearchResults(localMatches);
+          }
+        }
+      }
+
+      setSearchLoading(true);
+
+      const before = reset ? undefined : searchBefore ?? undefined;
+      const url = `${NEST_API_BASE_URL}/messages/search?conversationId=${encodeURIComponent(
+        convId,
+      )}&q=${encodeURIComponent(q)}${before ? `&before=${encodeURIComponent(before)}` : ''}&limit=30`;
+
+      const res = await getRequest(url, {
+        errorMessage: 'Search failed.',
+      });
+
+      const items =
+        (res?.data?.data?.messages as any[]) ??
+        (res?.data?.messages as any[]) ??
+        [];
+
+      const merged = reset ? items : [...searchResultsRef.current, ...items];
+      setSearchResults(merged);
+      const cacheKey = `${convId}::${q.toLowerCase()}`;
+      searchCacheRef.current[cacheKey] = merged;
+
+      const oldest = items?.[0]?.createdAt ?? null;
+      setSearchBefore(oldest);
+      setSearchHasMore(items.length >= 30);
+      setSearchLoading(false);
+    },
+    [conversationId, chat?.id, searchQuery, searchBefore, searchLoading, messages],
+  );
+
+  useEffect(() => {
+    if (!searchVisible) return;
+    const q = searchQuery.trim();
+    if (!q) {
+      if (searchResultsRef.current.length > 0) {
+        setSearchResults([]);
+      }
+      if (searchBefore !== null) {
+        setSearchBefore(null);
+      }
+      if (searchHasMore !== false) {
+        setSearchHasMore(false);
+      }
+      return;
+    }
+    const timer = setTimeout(() => {
+      runSearch(true);
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [searchQuery, searchVisible, runSearch]);
 
   const currentMembership = useMemo(() => {
     const participants = (chat as any)?.participants;
@@ -767,7 +898,8 @@ export const ChatRoomPage: React.FC<ExtendedChatRoomPageProps> = ({
                 <Pressable
                   onPress={() => {
                     setMenuVisible(false);
-                    Handlers.handleArchiveRequest();
+                    const convId = String(conversationId ?? chat?.id ?? '');
+                    Handlers.handleArchiveRequest(convId, !(chat as any)?.isArchived);
                   }}
                   style={({ pressed }) => [
                     localStyles.menuItem,
@@ -775,7 +907,26 @@ export const ChatRoomPage: React.FC<ExtendedChatRoomPageProps> = ({
                   ]}
                 >
                   <Text style={{ color: palette.text, fontSize: 14 }}>
-                    Archive chat
+                    {(chat as any)?.isArchived ? 'Unarchive chat' : 'Archive chat'}
+                  </Text>
+                </Pressable>
+
+                <Pressable
+                  onPress={() => {
+                    setMenuVisible(false);
+                    setSearchVisible(true);
+                    setSearchQuery('');
+                    setSearchResults([]);
+                    setSearchBefore(null);
+                    setSearchHasMore(true);
+                  }}
+                  style={({ pressed }) => [
+                    localStyles.menuItem,
+                    { backgroundColor: pressed ? palette.surface : 'transparent' },
+                  ]}
+                >
+                  <Text style={{ color: palette.text, fontSize: 14 }}>
+                    Search messages
                   </Text>
                 </Pressable>
               </View>
@@ -864,6 +1015,121 @@ export const ChatRoomPage: React.FC<ExtendedChatRoomPageProps> = ({
         </Pressable>
       </Modal>
 
+      <Modal
+        transparent
+        animationType="fade"
+        visible={searchVisible}
+        onRequestClose={() => setSearchVisible(false)}
+      >
+        <Pressable
+          style={[
+            localStyles.modalOverlay,
+            { backgroundColor: 'rgba(0,0,0,0.35)' },
+          ]}
+          onPress={() => setSearchVisible(false)}
+        >
+          <View
+            style={[
+              localStyles.modalCard,
+              { backgroundColor: palette.card ?? palette.surface, width: '90%' },
+            ]}
+            onStartShouldSetResponder={() => true}
+          >
+            <Text style={[localStyles.modalTitle, { color: palette.text }]}>
+              Search messages
+            </Text>
+
+            <TextInput
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              placeholder="Type keywords..."
+              placeholderTextColor={palette.subtext}
+              style={[
+                localStyles.modalInput,
+                { color: palette.text, borderColor: palette.inputBorder },
+              ]}
+              autoCapitalize="none"
+            />
+
+            <Pressable
+              onPress={() => runSearch(true)}
+              style={[
+                localStyles.modalButton,
+                { backgroundColor: palette.primary, borderColor: palette.primary, alignSelf: 'flex-end' },
+              ]}
+            >
+              <Text style={{ color: palette.onPrimary ?? '#fff' }}>
+                Search
+              </Text>
+            </Pressable>
+
+            <ScrollView style={{ marginTop: 12, maxHeight: 260 }}>
+              {searchResults.map((item) => {
+                const id = item?.id ?? item?._id;
+                const text = item?.text ?? item?.previewText ?? '';
+                const snippet = buildSearchSnippet(text, searchQuery);
+                const at = item?.createdAt ?? '';
+                return (
+                  <Pressable
+                    key={String(id)}
+                    onPress={() => {
+                      setSearchVisible(false);
+                      if (id) {
+                        messageLocator?.scrollToMessage(String(id));
+                        messageLocator?.highlightMessage(String(id));
+                        setAutoScrollEnabled(false);
+                      }
+                    }}
+                    style={({ pressed }) => [
+                      {
+                        paddingVertical: 8,
+                        borderBottomWidth: 1,
+                        borderBottomColor: palette.inputBorder,
+                        opacity: pressed ? 0.7 : 1,
+                      },
+                    ]}
+                  >
+                    <Text numberOfLines={2} style={{ color: palette.text }}>
+                      {snippet.prefix}
+                      {snippet.match ? (
+                        <Text style={{ color: palette.primary, fontWeight: '700' }}>
+                          {snippet.match}
+                        </Text>
+                      ) : null}
+                      {snippet.suffix || (!snippet.match ? (text || '[no text]') : '')}
+                    </Text>
+                    {at ? (
+                      <Text style={{ color: palette.subtext, fontSize: 12 }}>
+                        {new Date(at).toLocaleString()}
+                      </Text>
+                    ) : null}
+                  </Pressable>
+                );
+              })}
+              {!searchResults.length && searchQuery.trim().length > 0 && (
+                <Text style={{ color: palette.subtext, marginTop: 8 }}>
+                  No results yet.
+                </Text>
+              )}
+            </ScrollView>
+
+            {searchHasMore && searchResults.length > 0 && (
+              <Pressable
+                onPress={() => runSearch(false)}
+                style={[
+                  localStyles.modalButton,
+                  { borderColor: palette.inputBorder, alignSelf: 'center' },
+                ]}
+              >
+                <Text style={{ color: palette.text }}>
+                  {searchLoading ? 'Loading...' : 'Load more'}
+                </Text>
+              </Pressable>
+            )}
+          </View>
+        </Pressable>
+      </Modal>
+
       <KeyboardAvoidingView
         style={styles.keyboardWrapper}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -882,6 +1148,7 @@ export const ChatRoomPage: React.FC<ExtendedChatRoomPageProps> = ({
           onReactMessage={handleReactMessage}
           onRetryMessage={retryMessage}
           onMessageLocatorReady={setMessageLocator}
+          autoScrollEnabled={autoScrollEnabled}
         />
 
         <MessageComposer
