@@ -14,17 +14,16 @@ const API_PORT = 8000;
 // KIS Chat backend (NestJS + Fastify)
 const CHAT_PORT = 4000;
 
-const API_BASE = 'http://localhost:8000/api/v1';
-export const BG_REMOVAL_START_URL = `${API_BASE}/remove-background/`;
-export const BG_REMOVAL_STATUS_URL = (jobId: string) => `${API_BASE}/gbJobs/${jobId}/`;
-
-
 const emulatorHost = Platform.OS === 'android' ? '10.0.2.2' : '127.0.0.1';
 const host = USE_EMULATOR ? emulatorHost : LAN_IP;
 console.log('KIS host =', host);
 
 // Django API base
 export const API_BASE_URL = `http://${host}:${API_PORT}`;
+
+export const BG_REMOVAL_START_URL = `${API_BASE_URL}/api/v1/remove-background/`;
+export const BG_REMOVAL_STATUS_URL = (jobId: string) =>
+  `${API_BASE_URL}/api/v1/gbJobs/${jobId}/`;
 
 // Chat backend base (Nest)
 export const CHAT_BASE_URL = `http://${host}:${CHAT_PORT}`;

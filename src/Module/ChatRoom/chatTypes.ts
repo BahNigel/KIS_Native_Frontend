@@ -155,6 +155,7 @@ export type EventMessage = {
   location?: string;
   startsAt: string;
   endsAt?: string;
+  reminderMinutes?: number;
 };
 
 /* ============================================================================
@@ -212,6 +213,12 @@ export type ChatMessage = {
    * Assigned ONLY after successful persistence on backend.
    */
   serverId?: string;
+
+  /**
+   * Monotonic per-conversation sequence (from backend).
+   * Use for strict ordering when available.
+   */
+  seq?: number;
 
   createdAt: string;
   updatedAt?: string;

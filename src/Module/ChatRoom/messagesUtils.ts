@@ -145,11 +145,14 @@ export function directConversationName(
   participants: string[] | ParticipantWire[] | undefined,
   currentUserId: string | undefined,
 ): string | null {
-  if (!participants || !currentUserId) return null;
+  if (!participants) return null;
+  const hasCurrentUser = !!currentUserId;
 
   if (Array.isArray(participants) && participants.length > 0 && typeof participants[0] === 'string') {
     const list = (participants as string[]).map((s) => String(s));
-    const other = list.find((s) => s && s !== currentUserId);
+    const other = hasCurrentUser
+      ? list.find((s) => s && s !== currentUserId)
+      : list.find((s) => s);
     return other ?? null;
   }
 
@@ -159,7 +162,7 @@ export function directConversationName(
       const u = (p as ParticipantWire).user;
       if (u && typeof u === 'object') {
         const uid = String((u as UserWire).id ?? '');
-        if (uid && uid === String(currentUserId)) continue;
+        if (hasCurrentUser && uid && uid === String(currentUserId)) continue;
         const name =
           (u as UserWire).display_name ??
           (u as UserWire).username ??
@@ -172,7 +175,7 @@ export function directConversationName(
         return name;
       }
 
-      if ((p as ParticipantWire).id != null && String((p as ParticipantWire).id) !== String(currentUserId)) {
+      if ((p as ParticipantWire).id != null && (!hasCurrentUser || String((p as ParticipantWire).id) !== String(currentUserId))) {
         return String((p as ParticipantWire).id);
       }
     }

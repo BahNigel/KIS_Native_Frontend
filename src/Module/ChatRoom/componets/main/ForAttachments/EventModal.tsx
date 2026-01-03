@@ -13,10 +13,11 @@ import { KISPalette, KIS_TOKENS, kisRadius } from '@/theme/constants';
 
 export type EventDraft = {
   title: string;
-  date: string;
-  time: string;
   location: string;
   description: string;
+  startsAt: string;
+  endsAt: string;
+  reminderMinutes?: number;
 };
 
 type EventModalProps = {
@@ -33,22 +34,68 @@ export const EventModal: React.FC<EventModalProps> = ({
   onCreateEvent,
 }) => {
   const [title, setTitle] = useState('');
-  const [date, setDate] = useState(''); // you can later replace with DatePicker
-  const [time, setTime] = useState('');
+  const [startDate, setStartDate] = useState('');
+  const [startTime, setStartTime] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [endTime, setEndTime] = useState('');
   const [location, setLocation] = useState('');
   const [description, setDescription] = useState('');
+  const [reminderMinutes, setReminderMinutes] = useState<number>(10);
+  const [attempted, setAttempted] = useState(false);
+
+  const reminderOptions = [
+    { label: 'None', value: 0 },
+    { label: '5 min before', value: 5 },
+    { label: '10 min before', value: 10 },
+    { label: '30 min before', value: 30 },
+    { label: '1 hour before', value: 60 },
+    { label: '1 day before', value: 1440 },
+  ];
+
+  const isValidDate = (value: string) =>
+    /^\d{4}-\d{2}-\d{2}$/.test(value) &&
+    !Number.isNaN(new Date(`${value}T00:00:00`).getTime());
+
+  const isValidTime = (value: string) => {
+    if (!/^\d{2}:\d{2}$/.test(value)) return false;
+    const [h, m] = value.split(':').map((v) => Number(v));
+    return h >= 0 && h < 24 && m >= 0 && m < 60;
+  };
+
+  const buildIso = (d: string, t: string) =>
+    new Date(`${d}T${t}:00`).toISOString();
+
+  const startValid = isValidDate(startDate) && isValidTime(startTime);
+  const endValid = isValidDate(endDate) && isValidTime(endTime);
+  const titleValid = !!title.trim();
+  const locationValid = !!location.trim();
+  const descriptionValid = !!description.trim();
+  const startIso = startValid ? buildIso(startDate, startTime) : '';
+  const endIso = endValid ? buildIso(endDate, endTime) : '';
+  const endAfterStart =
+    startValid &&
+    endValid &&
+    new Date(endIso).getTime() > new Date(startIso).getTime();
+
+  const canSave =
+    titleValid &&
+    locationValid &&
+    descriptionValid &&
+    startValid &&
+    endValid &&
+    endAfterStart;
 
   const handleCreate = () => {
-    if (!title.trim()) {
-      return;
-    }
+    setAttempted(true);
+    if (!canSave) return;
 
     const event: EventDraft = {
       title: title.trim(),
-      date: date.trim(),
-      time: time.trim(),
       location: location.trim(),
       description: description.trim(),
+      startsAt: startIso,
+      endsAt: endIso,
+      reminderMinutes: reminderMinutes > 0 ? reminderMinutes : undefined,
     };
 
     if (onCreateEvent) {
@@ -58,10 +105,14 @@ export const EventModal: React.FC<EventModalProps> = ({
     onClose();
 
     setTitle('');
-    setDate('');
-    setTime('');
+    setStartDate('');
+    setStartTime('');
+    setEndDate('');
+    setEndTime('');
     setLocation('');
     setDescription('');
+    setReminderMinutes(10);
+    setAttempted(false);
   };
 
   const inputStyle = {
@@ -114,23 +165,71 @@ export const EventModal: React.FC<EventModalProps> = ({
               style={inputStyle}
             />
 
-            <Text style={{ color: palette.subtext }}>Date</Text>
+            <Text style={{ color: palette.subtext }}>Start date</Text>
             <TextInput
-              value={date}
-              onChangeText={setDate}
+              value={startDate}
+              onChangeText={setStartDate}
               placeholder="YYYY-MM-DD"
               placeholderTextColor={palette.subtext}
               style={inputStyle}
             />
 
-            <Text style={{ color: palette.subtext }}>Time</Text>
+            {attempted && !isValidDate(startDate) && (
+              <Text style={{ color: palette.error ?? '#ff6b6b', marginBottom: 8 }}>
+                Enter a valid start date (YYYY-MM-DD).
+              </Text>
+            )}
+
+            <Text style={{ color: palette.subtext }}>Start time</Text>
             <TextInput
-              value={time}
-              onChangeText={setTime}
+              value={startTime}
+              onChangeText={setStartTime}
               placeholder="HH:MM"
               placeholderTextColor={palette.subtext}
               style={inputStyle}
             />
+
+            {attempted && !isValidTime(startTime) && (
+              <Text style={{ color: palette.error ?? '#ff6b6b', marginBottom: 8 }}>
+                Enter a valid start time (HH:MM).
+              </Text>
+            )}
+
+            <Text style={{ color: palette.subtext }}>End date</Text>
+            <TextInput
+              value={endDate}
+              onChangeText={setEndDate}
+              placeholder="YYYY-MM-DD"
+              placeholderTextColor={palette.subtext}
+              style={inputStyle}
+            />
+
+            {attempted && !isValidDate(endDate) && (
+              <Text style={{ color: palette.error ?? '#ff6b6b', marginBottom: 8 }}>
+                Enter a valid end date (YYYY-MM-DD).
+              </Text>
+            )}
+
+            <Text style={{ color: palette.subtext }}>End time</Text>
+            <TextInput
+              value={endTime}
+              onChangeText={setEndTime}
+              placeholder="HH:MM"
+              placeholderTextColor={palette.subtext}
+              style={inputStyle}
+            />
+
+            {attempted && !isValidTime(endTime) && (
+              <Text style={{ color: palette.error ?? '#ff6b6b', marginBottom: 8 }}>
+                Enter a valid end time (HH:MM).
+              </Text>
+            )}
+
+            {attempted && !endAfterStart && startValid && endValid && (
+              <Text style={{ color: palette.error ?? '#ff6b6b', marginBottom: 8 }}>
+                End time must be after start time.
+              </Text>
+            )}
 
             <Text style={{ color: palette.subtext }}>Location</Text>
             <TextInput
@@ -141,11 +240,17 @@ export const EventModal: React.FC<EventModalProps> = ({
               style={inputStyle}
             />
 
+            {attempted && !locationValid && (
+              <Text style={{ color: palette.error ?? '#ff6b6b', marginBottom: 8 }}>
+                Location is required.
+              </Text>
+            )}
+
             <Text style={{ color: palette.subtext }}>Description</Text>
             <TextInput
               value={description}
               onChangeText={setDescription}
-              placeholder="Optional details..."
+              placeholder="Details and agenda"
               placeholderTextColor={palette.subtext}
               multiline
               style={[
@@ -153,6 +258,56 @@ export const EventModal: React.FC<EventModalProps> = ({
                 { height: 80, textAlignVertical: 'top' as const },
               ]}
             />
+
+            {attempted && !descriptionValid && (
+              <Text style={{ color: palette.error ?? '#ff6b6b', marginBottom: 8 }}>
+                Description is required.
+              </Text>
+            )}
+
+            <Text style={{ color: palette.subtext, marginBottom: 6 }}>
+              Reminder
+            </Text>
+            <View
+              style={{
+                flexDirection: 'row',
+                flexWrap: 'wrap',
+                gap: KIS_TOKENS.spacing.xs,
+                marginBottom: KIS_TOKENS.spacing.md,
+              }}
+            >
+              {reminderOptions.map((opt) => {
+                const active = reminderMinutes === opt.value;
+                return (
+                  <Pressable
+                    key={opt.label}
+                    onPress={() => setReminderMinutes(opt.value)}
+                    style={{
+                      paddingHorizontal: 10,
+                      paddingVertical: 6,
+                      borderRadius: 14,
+                      backgroundColor: active
+                        ? palette.primarySoft ?? palette.primary
+                        : palette.card,
+                      borderWidth: 1,
+                      borderColor: active
+                        ? palette.primary ?? palette.inputBorder
+                        : palette.inputBorder,
+                    }}
+                  >
+                    <Text
+                      style={{
+                        fontSize: 12,
+                        color: active ? palette.primary : palette.text,
+                        fontWeight: active ? '700' : '500',
+                      }}
+                    >
+                      {opt.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
           </ScrollView>
 
           {/* Actions */}
@@ -167,8 +322,13 @@ export const EventModal: React.FC<EventModalProps> = ({
             <Pressable onPress={onClose}>
               <Text style={{ color: palette.subtext }}>Cancel</Text>
             </Pressable>
-            <Pressable onPress={handleCreate}>
-              <Text style={{ color: palette.primary, fontWeight: '700' }}>
+            <Pressable onPress={handleCreate} disabled={!canSave}>
+              <Text
+                style={{
+                  color: canSave ? palette.primary : palette.subtext,
+                  fontWeight: '700',
+                }}
+              >
                 Save
               </Text>
             </Pressable>

@@ -13,6 +13,7 @@ import {
   NativeScrollEvent,
   AccessibilityInfo,
   DeviceEventEmitter,
+  AppState,
   useWindowDimensions,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -28,7 +29,7 @@ import { KISIcon } from '@/constants/kisIcons';
 import AddContactsPage from '@/Module/AddContacts/AddContactsPage';
 import ChatRoomPage from '@/Module/ChatRoom/ChatRoomPage';
 import { useSocket } from '../../../SocketProvider';
-import { loadMessages } from '@/Module/ChatRoom/Storage/chatStorage';
+import { loadMessages, upsertMessage } from '@/Module/ChatRoom/Storage/chatStorage';
 import { normalizePhoneKey } from '@/Module/ChatRoom/messagesUtils';
 import { FilterManager, ToggleChip } from '@/components/messaging/Filters';
 import UpdatesTab from '@/screens/tabs/MesssagingSubTabs/UpdatesTab';
@@ -42,6 +43,7 @@ import {
   CUSTOM_FILTERS_KEY 
 } from '@/Module/ChatRoom/messagesUtils';
 import { fetchConversationsForCurrentUser, searchConversationsFromServer } from '@/Module/ChatRoom/normalizeConversation';
+import { mapBackendToChatMessage } from '@/Module/ChatRoom/componets/chatMapping';
 
 const Tab = createMaterialTopTabNavigator();
 type MessagesScreenProps = {
@@ -89,6 +91,11 @@ const [contactNameByPhone, setContactNameByPhone] = useState<Record<string, stri
 const [conversationMeta, setConversationMeta] = useState<Record<string, { lastMessage?: string; lastAt?: string; unreadCount?: number }>>({});
 const { socket, isConnected, typingByConversation, currentUserId, presenceByUser } = useSocket();
 
+const refreshConversations = useCallback(async (force?: boolean) => {
+  const convs = await fetchConversationsForCurrentUser([], currentUserId ?? undefined, !!force);
+  setConversations(convs);
+}, [currentUserId]);
+
 useEffect(() => {
   let active = true;
   (async () => {
@@ -107,13 +114,41 @@ useEffect(() => {
 
 useEffect(() => {
   const sub = DeviceEventEmitter.addListener('conversation.refresh', async () => {
-    const convs = await fetchConversationsForCurrentUser([], currentUserId ?? undefined, true);
-    setConversations(convs);
+    await refreshConversations(true);
   });
   return () => {
     sub.remove();
   };
-}, [currentUserId]);
+}, [refreshConversations]);
+
+useEffect(() => {
+  const sub = AppState.addEventListener('change', (state) => {
+    if (state !== 'active') return;
+    refreshConversations(true);
+  });
+  return () => sub.remove();
+}, [refreshConversations]);
+
+useEffect(() => {
+  const sub = DeviceEventEmitter.addListener('conversation.read', (payload: any) => {
+    const convId = String(payload?.conversationId ?? '');
+    const readCount = typeof payload?.readCount === 'number' ? payload.readCount : 0;
+    if (!convId || readCount <= 0) return;
+    setConversationMeta((prev) => {
+      const prevUnread = prev[convId]?.unreadCount ?? 0;
+      return {
+        ...prev,
+        [convId]: {
+          ...prev[convId],
+          unreadCount: Math.max(prevUnread - readCount, 0),
+        },
+      };
+    });
+  });
+  return () => {
+    sub.remove();
+  };
+}, []);
 
 useEffect(() => {
   const CONTACTS_CACHE_KEY = 'kis.contacts.cache.v1';
@@ -161,13 +196,16 @@ useEffect(() => {
 useEffect(() => {
   if (!socket || !isConnected) return;
   const onMessage = (payload: any) => {
-    const convId = String(payload?.conversationId ?? '');
+    const convId = String(payload?.conversationId ?? payload?.conversation_id ?? '');
     if (!convId) return;
     const lastMessage = payload?.text ?? payload?.ciphertext ?? '';
     const lastAt = payload?.createdAt ?? new Date().toISOString();
+    const senderId =
+      payload?.senderId != null ? String(payload.senderId) : '';
+    const inc = senderId && senderId !== String(currentUserId) ? 1 : 0;
+
     setConversationMeta((prev) => {
       const prevUnread = prev[convId]?.unreadCount ?? 0;
-      const inc = payload?.senderId && payload.senderId !== currentUserId ? 1 : 0;
       return {
         ...prev,
         [convId]: {
@@ -177,6 +215,15 @@ useEffect(() => {
         },
       };
     });
+
+    try {
+      const mapped = mapBackendToChatMessage(
+        payload,
+        String(currentUserId ?? ''),
+        convId,
+      );
+      upsertMessage(convId, mapped).catch(() => {});
+    } catch {}
   };
   socket.on('chat.message', onMessage);
   return () => {

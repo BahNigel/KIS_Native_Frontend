@@ -194,6 +194,7 @@ export const ChatRoomPage: React.FC<ExtendedChatRoomPageProps> = ({
     sendTyping,
     sendReaction,
     retryMessage,
+    markMessagesRead,
   } = useChatMessaging({
     chat,
     storageRoomId,
@@ -226,6 +227,7 @@ export const ChatRoomPage: React.FC<ExtendedChatRoomPageProps> = ({
   const [subRooms, setSubRooms] = useState<SubRoom[]>([]);
   const [messageLocator, setMessageLocator] =
     useState<MessageLocator | null>(null);
+  const initialUnreadJumpRef = useRef<string | null>(null);
 
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [lockOverride, setLockOverride] = useState<boolean | null>(null);
@@ -403,6 +405,8 @@ export const ChatRoomPage: React.FC<ExtendedChatRoomPageProps> = ({
   const searchCacheRef = useRef<Record<string, any[]>>({});
   const searchResultsRef = useRef<any[]>([]);
   const [autoScrollEnabled, setAutoScrollEnabled] = useState(true);
+  const unreadCount = typeof chat?.unreadCount === 'number' ? chat.unreadCount : 0;
+  const startAtBottom = unreadCount <= 2;
 
   useEffect(() => {
     searchResultsRef.current = searchResults;
@@ -411,6 +415,33 @@ export const ChatRoomPage: React.FC<ExtendedChatRoomPageProps> = ({
   useEffect(() => {
     setAutoScrollEnabled(true);
   }, [conversationId]);
+
+  useEffect(() => {
+    initialUnreadJumpRef.current = null;
+  }, [conversationId]);
+
+  useEffect(() => {
+    if (startAtBottom) return;
+    if (!messageLocator || !conversationId) return;
+    if (initialUnreadJumpRef.current === conversationId) return;
+    const firstUnread = messages.find(
+      (m) => !m.fromMe && m.status !== 'read',
+    );
+    if (!firstUnread) return;
+    const targetId =
+      firstUnread.serverId ?? firstUnread.id ?? (firstUnread as any).clientId;
+    if (!targetId) return;
+    initialUnreadJumpRef.current = conversationId;
+    messageLocator.scrollToMessage(String(targetId));
+  }, [startAtBottom, messageLocator, conversationId, messages]);
+
+  const handleVisibleMessageIds = useCallback(
+    (ids: string[]) => {
+      if (!ids.length) return;
+      markMessagesRead(ids);
+    },
+    [markMessagesRead],
+  );
 
   const buildSearchSnippet = useCallback((text: string, query: string) => {
     const source = text ?? '';
@@ -1149,6 +1180,8 @@ export const ChatRoomPage: React.FC<ExtendedChatRoomPageProps> = ({
           onRetryMessage={retryMessage}
           onMessageLocatorReady={setMessageLocator}
           autoScrollEnabled={autoScrollEnabled}
+          startAtBottom={startAtBottom}
+          onVisibleMessageIds={handleVisibleMessageIds}
         />
 
         <MessageComposer

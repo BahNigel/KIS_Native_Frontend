@@ -136,6 +136,7 @@ type BackendMessage = {
 
   clientId?: string | null;
   serverId?: string | null;
+  seq?: number;
 };
 
 function mapBackendToChatMessage(
@@ -143,7 +144,8 @@ function mapBackendToChatMessage(
   currentUserId: string,
   roomId: string,
 ): ChatMessage {
-  const fromMe = raw.senderId === currentUserId;
+  const senderId = raw.senderId != null ? String(raw.senderId) : '';
+  const fromMe = senderId !== '' && senderId === String(currentUserId);
 
   const createdAt =
     typeof raw.createdAt === 'string'
@@ -153,12 +155,13 @@ function mapBackendToChatMessage(
   return {
     id: raw.id,
     clientId: raw.clientId ?? undefined,
+    seq: typeof raw.seq === 'number' ? raw.seq : undefined,
 
     conversationId: raw.conversationId,
     roomId: roomId || raw.conversationId,
 
     createdAt,
-    senderId: raw.senderId,
+    senderId,
     senderName: raw.senderName ?? undefined,
     fromMe,
 
@@ -263,6 +266,14 @@ export const useChatSocket = ({
       });
 
       socket.on('chat.message', (payload: BackendMessage) => {
+        const payloadConv = payload?.conversationId ?? payload?.roomId;
+        if (
+          payloadConv != null &&
+          String(payloadConv) !== String(roomId)
+        ) {
+          return;
+        }
+
         if (payload?.sticker?.uri) {
           cacheStickerFromRemote(payload.sticker);
         }

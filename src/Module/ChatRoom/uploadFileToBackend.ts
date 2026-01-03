@@ -1,6 +1,4 @@
 // src/screens/chat/uploadFileToBackend.ts
-import { Platform } from 'react-native';
-
 export type AttachmentKind =
   | 'image'
   | 'video'
@@ -33,7 +31,7 @@ export async function uploadFileToBackend(opts: {
 
   const form = new FormData();
   form.append('file', {
-    uri: Platform.OS === 'android' ? file.uri : file.uri.replace('file://', ''),
+    uri: file.uri,
     name: file.name || 'file',
     type: file.type || 'application/octet-stream',
   } as any);

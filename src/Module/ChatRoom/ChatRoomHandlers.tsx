@@ -375,7 +375,11 @@ export const handleSendContacts = async ({
     fromMe: true,
     senderId: currentUserId,
     conversationId: convId,
-    contacts,
+    contacts: contacts.map((c, idx) => ({
+      id: String(c?.id ?? c?.phone ?? `contact_${idx + 1}`),
+      name: String(c?.name ?? c?.phone ?? 'Contact'),
+      phone: String(c?.phone ?? ''),
+    })),
   });
 };
 
@@ -402,7 +406,13 @@ export const handleCreatePoll = async ({
     fromMe: true,
     senderId: currentUserId,
     conversationId: convId,
-    poll,
+    poll: {
+      question: poll.question,
+      options: poll.options.map((opt, idx) => ({
+        id: `opt_${idx + 1}`,
+        text: opt,
+      })),
+    },
   });
 };
 

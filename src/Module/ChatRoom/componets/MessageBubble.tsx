@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, Pressable, Image, Dimensions, Modal } from 'react-native';
+import { View, Text, Pressable, Image, Dimensions, Modal, Linking } from 'react-native';
 
 import { chatRoomStyles as styles } from '../chatRoomStyles';
 
@@ -380,15 +380,40 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
       }
     : null;
 
-  const textColor = isMe ? palette.text ?? '#fff' : palette.text;
-  const metaColor = isMe
-    ? palette.onPrimaryMuted ?? '#e0e0e0'
-    : palette.subtext;
+  const outgoingBubbleColor = palette.outgoingBubble ?? palette.primary ?? '#4F46E5';
+  const parseHex = (hex?: string) => {
+    if (!hex || typeof hex !== 'string') return null;
+    const cleaned = hex.replace('#', '').trim();
+    if (cleaned.length === 3) {
+      const r = parseInt(cleaned[0] + cleaned[0], 16);
+      const g = parseInt(cleaned[1] + cleaned[1], 16);
+      const b = parseInt(cleaned[2] + cleaned[2], 16);
+      return { r, g, b };
+    }
+    if (cleaned.length === 6) {
+      const r = parseInt(cleaned.slice(0, 2), 16);
+      const g = parseInt(cleaned.slice(2, 4), 16);
+      const b = parseInt(cleaned.slice(4, 6), 16);
+      return { r, g, b };
+    }
+    return null;
+  };
+  const readableTextForBg = (hex: string) => {
+    const rgb = parseHex(hex);
+    if (!rgb) return '#ffffff';
+    const yiq = (rgb.r * 299 + rgb.g * 587 + rgb.b * 114) / 1000;
+    return yiq >= 160 ? '#111111' : '#ffffff';
+  };
+  const outgoingTextColor = readableTextForBg(outgoingBubbleColor);
+  const outgoingMetaColor = outgoingTextColor === '#111111' ? '#2b2b2b' : '#e0e0e0';
+
+  const textColor = isMe ? outgoingTextColor : palette.text;
+  const metaColor = isMe ? outgoingMetaColor : palette.subtext;
 
   const statusSymbol = statusToSymbol(status);
   const statusColor =
     status === 'read'
-      ? palette.readStatus ?? '#34B7F1'
+      ? palette.readStatus ?? palette.primary ?? '#34B7F1'
       : metaColor;
   const showRetry = status === 'failed';
 
@@ -756,11 +781,11 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
     if (!contacts || !contacts.length) return null;
 
     const headerColor = isMe
-      ? palette.onPrimary ?? '#ffffff'
+      ? outgoingTextColor
       : palette.primary ?? palette.text;
 
     const phoneColor = isMe
-      ? palette.onPrimaryMuted ?? '#e0e0e0'
+      ? outgoingMetaColor
       : palette.subtext;
 
     return (
@@ -838,7 +863,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
     if (!poll) return null;
 
     const questionColor = isMe
-      ? palette.onPrimary ?? '#ffffff'
+      ? outgoingTextColor
       : palette.text;
 
     const optionBg = isMe
@@ -846,11 +871,11 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
       : palette.pollOptionBgIncoming ?? '#00000008';
 
     const optionTextColor = isMe
-      ? palette.onPrimary ?? '#ffffff'
+      ? outgoingTextColor
       : palette.text;
 
     const metaTextColor = isMe
-      ? palette.onPrimaryMuted ?? '#e0e0e0'
+      ? outgoingMetaColor
       : palette.subtext;
 
     const totalVotes = poll.options.reduce(
@@ -995,29 +1020,63 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
     if (!eventData) return null;
 
     const titleColor = isMe
-      ? palette.onPrimary ?? '#ffffff'
+      ? outgoingTextColor
       : palette.text;
 
     const metaTextColor = isMe
-      ? palette.onPrimaryMuted ?? '#e0e0e0'
+      ? outgoingMetaColor
       : palette.subtext;
 
-    const starts = new Date(eventData.startsAt);
-    const ends = eventData.endsAt ? new Date(eventData.endsAt) : null;
+    const startsRaw =
+      eventData.startsAt ??
+      ((eventData as any).date && (eventData as any).time
+        ? `${(eventData as any).date}T${(eventData as any).time}:00`
+        : undefined);
+    const endsRaw =
+      eventData.endsAt ??
+      ((eventData as any).endDate && (eventData as any).endTime
+        ? `${(eventData as any).endDate}T${(eventData as any).endTime}:00`
+        : undefined);
 
-    const dateLabel = starts.toLocaleDateString(undefined, {
-      weekday: 'short',
-      month: 'short',
-      day: 'numeric',
-    });
+    const starts = startsRaw ? new Date(startsRaw) : new Date(NaN);
+    const ends = endsRaw ? new Date(endsRaw) : null;
+    const reminderMinutes = eventData.reminderMinutes;
 
-    const timeLabelLocal = starts.toLocaleTimeString(undefined, {
-      hour: '2-digit',
-      minute: '2-digit',
-    });
+    const formatGcalDate = (dt: Date) =>
+      dt.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, 'Z');
+
+    const buildGoogleCalendarUrl = () => {
+      if (Number.isNaN(starts.getTime())) return null;
+      const endTime = ends && !Number.isNaN(ends.getTime())
+        ? ends
+        : new Date(starts.getTime() + 60 * 60 * 1000);
+      const dates = `${formatGcalDate(starts)}/${formatGcalDate(endTime)}`;
+      const text = encodeURIComponent(eventData.title ?? 'Event');
+      const details = encodeURIComponent(eventData.description ?? '');
+      const location = encodeURIComponent(eventData.location ?? '');
+      return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${text}&dates=${dates}&details=${details}&location=${location}`;
+    };
+
+    const hasStart = !Number.isNaN(starts.getTime());
+
+    const dateLabel = hasStart
+      ? starts.toLocaleDateString(undefined, {
+          weekday: 'short',
+          month: 'short',
+          day: 'numeric',
+        })
+      : 'Date TBD';
+
+    const timeLabelLocal = hasStart
+      ? starts.toLocaleTimeString(undefined, {
+          hour: '2-digit',
+          minute: '2-digit',
+        })
+      : 'Time TBD';
 
     const endTimeLabel =
       ends &&
+      !Number.isNaN(ends.getTime()) &&
       ends.toLocaleTimeString(undefined, {
         hour: '2-digit',
         minute: '2-digit',
@@ -1098,6 +1157,48 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
           >
             {eventData.description}
           </Text>
+        )}
+
+        {typeof reminderMinutes === 'number' && reminderMinutes > 0 && (
+          <Text
+            style={{
+              fontSize: 11,
+              color: metaTextColor,
+              marginTop: 4,
+            }}
+          >
+            Reminder: {reminderMinutes} min before
+          </Text>
+        )}
+
+        {buildGoogleCalendarUrl() && (
+          <Pressable
+            onPress={() => {
+              const url = buildGoogleCalendarUrl();
+              if (url) {
+                Linking.openURL(url).catch(() => {});
+              }
+            }}
+            style={{
+              alignSelf: 'flex-start',
+              marginTop: 8,
+              paddingHorizontal: 10,
+              paddingVertical: 6,
+              borderRadius: 12,
+              borderWidth: 1,
+              borderColor: titleColor,
+            }}
+          >
+            <Text
+              style={{
+                fontSize: 11,
+                color: titleColor,
+                fontWeight: '600',
+              }}
+            >
+              Add to Google Calendar
+            </Text>
+          </Pressable>
         )}
       </View>
     );

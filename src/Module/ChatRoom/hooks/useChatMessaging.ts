@@ -65,6 +65,7 @@ export function useChatMessaging({
   const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const historySyncRef = useRef<number>(0);
   const flushInFlightRef = useRef(false);
+  const historyLoadRef = useRef(false);
 
   const sendOverNetwork: SendOverNetworkFn =
   useCallback(async (message) => {
@@ -155,40 +156,122 @@ export function useChatMessaging({
   const mapServerMessage = useCallback(
     (serverMsg: any): ChatMessage => {
       const mapAttachments = (list: any[]) =>
-        list.map((a) => ({
-          id: a.id,
-          url: a.url,
-          originalName: a.originalName ?? a.name,
-          mimeType: a.mimeType ?? a.mime,
-          size: a.size,
-          kind: a.kind,
-          width: a.width,
-          height: a.height,
-          durationMs: a.durationMs,
-          thumbUrl: a.thumbUrl,
-        }));
+        list.map((raw) => {
+          const a = raw?.attachment ?? raw ?? {};
+          return {
+            id: a.id ?? a.key,
+            url: a.url ?? a.uri,
+            originalName: a.originalName ?? a.name ?? a.filename,
+            mimeType: a.mimeType ?? a.mime ?? a.contentType,
+            size: a.size ?? a.sizeBytes,
+            kind: a.kind,
+            width: a.width,
+            height: a.height,
+            durationMs: a.durationMs,
+            thumbUrl: a.thumbUrl,
+          };
+        });
+
+      const senderId =
+        serverMsg.senderId != null ? String(serverMsg.senderId) : '';
+
+      const normalizedConversationId =
+        serverMsg.conversationId ??
+        serverMsg.conversation_id ??
+        conversationId ??
+        String(storageRoomId);
+
+      const styledText =
+        serverMsg.styledText ?? serverMsg.styled_text ?? null;
+
+      const contacts =
+        Array.isArray(serverMsg.contacts)
+          ? serverMsg.contacts.map((c: any, idx: number) => ({
+              id: String(c?.id ?? c?.phone ?? `contact_${idx + 1}`),
+              name: String(c?.name ?? c?.display_name ?? c?.phone ?? 'Contact'),
+              phone: String(c?.phone ?? c?.phoneNumber ?? ''),
+            }))
+          : undefined;
+
+      const poll =
+        serverMsg.poll && typeof serverMsg.poll === 'object'
+          ? {
+              id: serverMsg.poll.id ?? undefined,
+              question: String(serverMsg.poll.question ?? ''),
+              allowMultiple: !!serverMsg.poll.allowMultiple,
+              expiresAt: serverMsg.poll.expiresAt ?? null,
+              options: Array.isArray(serverMsg.poll.options)
+                ? serverMsg.poll.options.map((opt: any, idx: number) => ({
+                    id: String(opt?.id ?? `opt_${idx + 1}`),
+                    text: String(opt?.text ?? opt?.label ?? ''),
+                    votes:
+                      typeof opt?.votes === 'number' ? opt.votes : undefined,
+                  }))
+                : [],
+            }
+          : undefined;
+
+      const rawEvent =
+        serverMsg.event ?? serverMsg.event_data ?? serverMsg.eventData ?? null;
+      const event =
+        rawEvent && typeof rawEvent === 'object'
+          ? {
+              id: rawEvent.id ?? undefined,
+              title: String(rawEvent.title ?? ''),
+              description:
+                rawEvent.description != null
+                  ? String(rawEvent.description)
+                  : undefined,
+              location:
+                rawEvent.location != null
+                  ? String(rawEvent.location)
+                  : undefined,
+              startsAt:
+                rawEvent.startsAt ??
+                (rawEvent.date && rawEvent.time
+                  ? `${rawEvent.date}T${rawEvent.time}:00`
+                  : undefined),
+              endsAt:
+                rawEvent.endsAt ??
+                (rawEvent.endDate && rawEvent.endTime
+                  ? `${rawEvent.endDate}T${rawEvent.endTime}:00`
+                  : undefined),
+              reminderMinutes:
+                typeof rawEvent.reminderMinutes === 'number'
+                  ? rawEvent.reminderMinutes
+                  : undefined,
+            }
+          : undefined;
 
       return {
         id: serverMsg.id ?? serverMsg._id,
         clientId: serverMsg.clientId,
         serverId: serverMsg.id ?? serverMsg._id,
-        conversationId: serverMsg.conversationId,
-        senderId: serverMsg.senderId,
+        seq: typeof serverMsg.seq === 'number' ? serverMsg.seq : undefined,
+        conversationId: normalizedConversationId,
+        senderId,
         senderName: serverMsg.senderName,
         text: serverMsg.text ?? serverMsg.ciphertext ?? '',
         kind: (serverMsg.kind as MessageKind) ?? 'text',
-        createdAt: serverMsg.createdAt ?? new Date().toISOString(),
+        createdAt:
+          serverMsg.createdAt ??
+          serverMsg.created_at ??
+          new Date().toISOString(),
         attachments: serverMsg.attachments
           ? mapAttachments(serverMsg.attachments)
           : [],
         replyToId: serverMsg.replyToId ?? null,
         status: 'sent' as MessageStatus,
         roomId: String(storageRoomId),
-        fromMe: serverMsg.senderId === currentUserId,
+        fromMe: senderId !== '' && senderId === String(currentUserId),
         reactions: normalizeReactions(serverMsg.reactions),
+        styledText: styledText ?? undefined,
+        contacts,
+        poll,
+        event,
       };
     },
-    [storageRoomId, currentUserId, normalizeReactions],
+    [storageRoomId, currentUserId, normalizeReactions, conversationId],
   );
 
   /* ---------------------------------------------------------------------
@@ -240,6 +323,51 @@ export function useChatMessaging({
     [socket, isConnected, conversationId, replaceMessages, mapServerMessage],
   );
 
+  const requestHistoryBatch = useCallback(
+    (input: { before?: string; limit?: number }) =>
+      new Promise<any[]>((resolve) => {
+        if (!socket || !(isConnected || socket.connected) || !conversationId) {
+          resolve([]);
+          return;
+        }
+        socket.timeout(5000).emit(
+          'chat.history',
+          {
+            conversationId: String(conversationId),
+            limit: input.limit,
+            before: input.before,
+          },
+          (err: any, ack?: any) => {
+            if (err || !ack?.ok) return resolve([]);
+            const items = Array.isArray(ack?.data?.messages) ? ack.data.messages : [];
+            resolve(items);
+          },
+        );
+      }),
+    [socket, isConnected, conversationId],
+  );
+
+  const loadFullHistory = useCallback(async () => {
+    if (historyLoadRef.current) return;
+    historyLoadRef.current = true;
+
+    try {
+      let before: string | undefined;
+      let rounds = 0;
+      while (rounds < 20) {
+        const items = await requestHistoryBatch({ before, limit: 200 });
+        if (!items.length) break;
+        replaceMessages(items.map((m: any) => mapServerMessage(m)));
+        const oldest = items[0]?.createdAt ?? items[0]?.created_at;
+        if (!oldest || oldest === before) break;
+        before = oldest;
+        rounds += 1;
+      }
+    } finally {
+      historyLoadRef.current = false;
+    }
+  }, [requestHistoryBatch, replaceMessages, mapServerMessage]);
+
   const syncHistory = useCallback(() => {
     const now = Date.now();
     if (now - historySyncRef.current < 3000) return;
@@ -248,12 +376,25 @@ export function useChatMessaging({
     const convId = conversationIdRef.current ?? conversationId;
     if (!convId) return;
 
-    const lastLocal = messagesRef.current
+    const byCreatedAt = (a: string, b: string) =>
+      Date.parse(a) - Date.parse(b);
+
+    const validServerMessages = messagesRef.current
       .filter((m) => m.conversationId === convId)
+      .filter((m) => m.serverId && !m.isLocalOnly)
       .map((m) => m.createdAt)
-      .filter(Boolean)
-      .sort()
-      .slice(-1)[0];
+      .filter((value) => typeof value === 'string' && !Number.isNaN(Date.parse(value)));
+
+    const lastLocal =
+      (validServerMessages.length
+        ? validServerMessages.sort(byCreatedAt).slice(-1)[0]
+        : undefined) ??
+      messagesRef.current
+        .filter((m) => m.conversationId === convId)
+        .map((m) => m.createdAt)
+        .filter((value) => typeof value === 'string' && !Number.isNaN(Date.parse(value)))
+        .sort(byCreatedAt)
+        .slice(-1)[0];
 
     if (lastLocal) {
       requestHistory({ after: lastLocal, limit: 200 });
@@ -264,17 +405,24 @@ export function useChatMessaging({
     requestHistory({ limit: 50 });
   }, [conversationId, requestHistory]);
 
-  useEffect(() => {
-    if (!socket || !(isConnected || socket.connected) || !conversationId)
-      return;
-
-    joinConversation(conversationId);
-
-    const markRead = async () => {
+  const markMessagesRead = useCallback(
+    async (messageIds: string[]) => {
+      if (!socket || !conversationId || !messageIds.length) return;
       const roomId = String(storageRoomId);
-      const unread = messagesRef.current.filter(
-        (m) => !m.fromMe && m.conversationId === conversationId && m.status !== 'read',
-      );
+      const idSet = new Set(messageIds.map((id) => String(id)));
+      const unread = messagesRef.current.filter((m) => {
+        const msgId = (m as any).serverId ?? m.id ?? (m as any).clientId;
+        return (
+          !m.fromMe &&
+          m.conversationId === conversationId &&
+          m.status !== 'read' &&
+          msgId != null &&
+          idSet.has(String(msgId))
+        );
+      });
+
+      if (!unread.length) return;
+
       for (const msg of unread) {
         if (!msg.serverId) continue;
         socket.emit('chat.receipt', {
@@ -284,16 +432,36 @@ export function useChatMessaging({
         });
       }
 
-      const updated = await bulkUpdateMessages(roomId, (m) =>
-        !m.fromMe && m.conversationId === conversationId
-          ? { ...m, status: 'read' }
-          : m,
-      );
+      const updated = await bulkUpdateMessages(roomId, (m) => {
+        const msgId = (m as any).serverId ?? m.id ?? (m as any).clientId;
+        if (
+          m.fromMe ||
+          m.conversationId !== conversationId ||
+          m.status === 'read' ||
+          msgId == null ||
+          !idSet.has(String(msgId))
+        ) {
+          return m;
+        }
+        return { ...m, status: 'read' };
+      });
       replaceMessages(updated);
-    };
-    markRead();
+      DeviceEventEmitter.emit('conversation.read', {
+        conversationId,
+        readCount: unread.length,
+      });
+    },
+    [socket, conversationId, storageRoomId, replaceMessages],
+  );
+
+  useEffect(() => {
+    if (!socket || !(isConnected || socket.connected) || !conversationId)
+      return;
+
+    joinConversation(conversationId);
 
     syncHistory();
+    loadFullHistory();
 
     return () => {
       leaveConversation(conversationId);
@@ -308,6 +476,7 @@ export function useChatMessaging({
     mapServerMessage,
     storageRoomId,
     syncHistory,
+    loadFullHistory,
   ]);
 
   /* ---------------------------------------------------------------------
@@ -361,6 +530,39 @@ export function useChatMessaging({
           thumbUrl: a.thumbUrl,
         }));
 
+      const normalizeContacts = (list: any[] | undefined) =>
+        Array.isArray(list)
+          ? list.map((c, idx) => ({
+              id: String(c?.id ?? c?.phone ?? `contact_${idx + 1}`),
+              name: String(c?.name ?? c?.display_name ?? c?.phone ?? 'Contact'),
+              phone: String(c?.phone ?? c?.phoneNumber ?? ''),
+            }))
+          : undefined;
+
+      const normalizePoll = (input: any) => {
+        if (!input || typeof input !== 'object') return undefined;
+        const options = Array.isArray(input.options)
+          ? input.options.map((opt: any, idx: number) => {
+              if (typeof opt === 'string') {
+                return { id: `opt_${idx + 1}`, text: opt };
+              }
+              return {
+                id: String(opt?.id ?? `opt_${idx + 1}`),
+                text: String(opt?.text ?? opt?.label ?? ''),
+                votes:
+                  typeof opt?.votes === 'number' ? opt.votes : undefined,
+              };
+            })
+          : [];
+        return {
+          id: input.id ?? undefined,
+          question: String(input.question ?? ''),
+          options,
+          allowMultiple: !!input.allowMultiple,
+          expiresAt: input.expiresAt ?? null,
+        };
+      };
+
       const payload = {
         conversationId: String(convId),
         kind:
@@ -375,8 +577,8 @@ export function useChatMessaging({
         attachments: message.attachments
           ? normalizeAttachments(message.attachments)
           : undefined,
-        contacts: message.contacts ?? undefined,
-        poll: message.poll ?? undefined,
+        contacts: normalizeContacts(message.contacts),
+        poll: normalizePoll(message.poll),
         event: message.event ?? undefined,
         styledText: message.styledText ?? null,
         sticker: message.sticker ?? null,
@@ -430,6 +632,8 @@ export function useChatMessaging({
                 resolve({
                   ok: true,
                   serverId,
+                  createdAt: ackPayload?.createdAt,
+                  seq: typeof ackPayload?.seq === 'number' ? ackPayload.seq : undefined,
                 });
               },
             );
@@ -544,6 +748,16 @@ export function useChatMessaging({
       }
 
       const msg = mapServerMessage(serverMsg);
+
+      if (!msg.fromMe && msg.serverId) {
+        try {
+          socket.emit('chat.receipt', {
+            conversationId: String(msg.conversationId),
+            messageId: msg.serverId,
+            type: 'delivered',
+          });
+        } catch {}
+      }
 
       replaceMessages([
         ...messagesRef.current,
@@ -820,6 +1034,7 @@ export function useChatMessaging({
         emoji,
       });
     },
+    markMessagesRead,
     socket,
     isSocketConnected: isConnected,
   };

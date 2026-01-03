@@ -43,6 +43,8 @@ import {
 export type SendOverNetworkAck = {
   ok: true;
   serverId: string;
+  createdAt?: string;
+  seq?: number;
 };
 
 /**
@@ -155,14 +157,42 @@ const getIdentityKey = (msg: ChatMessage): string => {
 function sortMessages(
   list: ChatMessage[],
 ): ChatMessage[] {
+  const getTimestampMs = (msg: ChatMessage): number => {
+    if (typeof msg.createdAt === 'number') return msg.createdAt;
+    if (typeof msg.createdAt !== 'string') return 0;
+    const parsed = Date.parse(msg.createdAt);
+    return Number.isNaN(parsed) ? 0 : parsed;
+  };
+
   return [...list].sort((a, b) => {
-    if (a.createdAt !== b.createdAt) {
-      return a.createdAt.localeCompare(b.createdAt);
+    const aSeq = typeof a.seq === 'number' ? a.seq : undefined;
+    const bSeq = typeof b.seq === 'number' ? b.seq : undefined;
+
+    if (aSeq !== undefined && bSeq !== undefined && aSeq !== bSeq) {
+      return aSeq - bSeq;
     }
+
+    const aTs = getTimestampMs(a);
+    const bTs = getTimestampMs(b);
+    if (aTs !== bTs) {
+      return aTs - bTs;
+    }
+
     return getIdentityKey(a).localeCompare(
       getIdentityKey(b),
     );
   });
+}
+
+function normalizeSender(
+  msg: ChatMessage,
+  currentUserId: string,
+): ChatMessage {
+  if (msg.senderId == null) return msg;
+  const senderId = String(msg.senderId);
+  const fromMe =
+    senderId !== '' && senderId === String(currentUserId);
+  return { ...msg, senderId, fromMe };
 }
 
 function withStatus(
@@ -288,7 +318,16 @@ export function useChatPersistence(
       try {
         const loaded = await loadMessages(roomId);
         if (!mounted) return;
-        setMessages(sortMessages(loaded ?? []));
+        const filtered = (loaded ?? []).filter((m) => {
+          const convId = m.conversationId ?? m.roomId ?? '';
+          return String(convId) === String(roomId);
+        });
+        const normalized = filtered.map((m) =>
+          normalizeSender(m, currentUserId),
+        );
+        const sorted = sortMessages(normalized);
+        setMessages(sorted);
+        await saveMessages(roomId, sorted);
       } catch (err) {
         console.warn('[useChatPersistence] load error', err);
         setMessages([]);
@@ -391,6 +430,8 @@ export function useChatPersistence(
           ? {
               ...m,
               serverId: result.serverId,
+              seq: typeof result.seq === 'number' ? result.seq : m.seq,
+              createdAt: result.createdAt ?? m.createdAt,
               status: STATUS_SENT,
               isLocalOnly: false,
             }
@@ -528,17 +569,25 @@ export function useChatPersistence(
             m.clientId === msg.clientId
               ? {
                   ...m,
-                  status: result.ok
-                    ? STATUS_SENT
-                    : STATUS_FAILED,
-                  serverId:
-                    result.ok
-                      ? result.serverId
-                      : m.serverId,
-                  isLocalOnly: !result.ok,
-                }
-              : m,
-          );
+                status: result.ok
+                  ? STATUS_SENT
+                  : STATUS_FAILED,
+                serverId:
+                  result.ok
+                    ? result.serverId
+                    : m.serverId,
+                seq:
+                  result.ok && typeof result.seq === 'number'
+                    ? result.seq
+                    : m.seq,
+                createdAt:
+                  result.ok && result.createdAt
+                    ? result.createdAt
+                    : m.createdAt,
+                isLocalOnly: !result.ok,
+              }
+            : m,
+        );
         }
 
         await persist(next);
@@ -555,9 +604,13 @@ export function useChatPersistence(
 
   const replaceMessages = useCallback(
     async (next: ChatMessage[]) => {
+      const filtered = next.filter((m) => {
+        const convId = m.conversationId ?? m.roomId;
+        return String(convId ?? '') === String(roomIdRef.current);
+      });
       const merged = mergeMessages(
         messagesRef.current,
-        next,
+        filtered,
       );
 
       await persist(merged);

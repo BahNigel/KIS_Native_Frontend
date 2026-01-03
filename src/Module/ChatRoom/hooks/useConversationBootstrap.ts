@@ -58,7 +58,7 @@ export function useConversationBootstrap(
     }
   }, [chat, conversationId, getInitialConversationId]);
 
-  const storageRoomId = chat?.id ?? 'local-room';
+  const storageRoomId = conversationId ?? chat?.id ?? 'local-room';
 
   /**
    * Ensure we have a real conversationId.

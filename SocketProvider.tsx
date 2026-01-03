@@ -104,10 +104,11 @@ export const SocketProvider: React.FC<{
           cached?.access_token ||
           null;
       }
-      const uid =
-        cached?.user?.id ||
-        cached?.user?.pk ||
-        null;
+      const extractUid = (data: any) => {
+        if (!data) return null;
+        return data?.user?.id || data?.user?.pk || null;
+      };
+      const uid = Array.isArray(cached) ? extractUid(cached[0]) : extractUid(cached);
       if (uid) setCurrentUserId(String(uid));
       const deviceIdKey = 'device_id';
       let deviceId =

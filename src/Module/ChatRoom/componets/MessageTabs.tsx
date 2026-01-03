@@ -88,13 +88,37 @@ export function ChatsTab({
    * FINAL FILTERED DATA
    * ------------------------------------------------------------ */
   const data = useMemo(() => {
-    return normalizedChats.filter(
+    const filtered = normalizedChats.filter(
       (c: Chat) =>
         applyQuickChips(c, activeQuick) &&
         applyCustomRules(c, customRules) &&
         bySearch(c, search)
     );
-  }, [normalizedChats, activeQuick, customRules, search]);
+
+    const getLastAt = (item: Chat) => {
+      const convId = String((item as any).conversationId ?? item.id);
+      const meta = conversationMeta?.[convId];
+      const metaAt = meta?.lastAt ?? '';
+      const itemAt = item.lastAt ?? '';
+      const metaTs = Date.parse(metaAt || '');
+      const itemTs = Date.parse(itemAt || '');
+      if (!Number.isNaN(metaTs) && (Number.isNaN(itemTs) || metaTs >= itemTs)) {
+        return metaAt;
+      }
+      return itemAt;
+    };
+
+    return filtered.sort((a, b) => {
+      const aAt = getLastAt(a);
+      const bAt = getLastAt(b);
+      const aTs = Date.parse(aAt || '');
+      const bTs = Date.parse(bAt || '');
+      if (!Number.isNaN(aTs) && !Number.isNaN(bTs)) return bTs - aTs;
+      if (!Number.isNaN(aTs)) return -1;
+      if (!Number.isNaN(bTs)) return 1;
+      return String(a.id).localeCompare(String(b.id));
+    });
+  }, [normalizedChats, activeQuick, customRules, search, conversationMeta]);
 
   /* ------------------------------------------------------------
    * CHAT SELECTION HANDLING
@@ -131,6 +155,23 @@ export function ChatsTab({
       }
       renderItem={({ item }) => {
         const isSelected = selectedChat.some((c) => c.id === item.id);
+        const convId = String((item as any).conversationId ?? item.id);
+        const meta = conversationMeta?.[convId];
+        const metaAt = meta?.lastAt ?? '';
+        const itemAt = item.lastAt ?? '';
+        const metaTs = Date.parse(metaAt || '');
+        const itemTs = Date.parse(itemAt || '');
+        const useMeta =
+          metaAt &&
+          (!Number.isNaN(metaTs) &&
+            (Number.isNaN(itemTs) || metaTs >= itemTs));
+        const displayLastMessage = useMeta
+          ? meta?.lastMessage ?? ''
+          : item.lastMessage ?? '';
+        const displayLastAt = useMeta ? metaAt : itemAt;
+        const displayUnread = useMeta
+          ? meta?.unreadCount ?? 0
+          : item.unreadCount ?? 0;
 
         const handlePress = () => {
           const displayName = (() => {
@@ -269,11 +310,10 @@ export function ChatsTab({
                 numberOfLines={1}
               >
                 {(() => {
-                  const convId = (item as any).conversationId ?? item.id;
                   const typingUsers = typingByConversation?.[String(convId)] ?? {};
                   const otherTyping = Object.keys(typingUsers).filter((u) => u !== currentUserId);
                   if (otherTyping.length > 0) return 'typing...';
-                  return (conversationMeta?.[String(convId)]?.lastMessage ?? item.lastMessage) || '';
+                  return displayLastMessage || '';
                 })()}
               </Text>
             </View>
@@ -282,7 +322,7 @@ export function ChatsTab({
             <View style={{ alignItems: 'flex-end', gap: 4 }}>
               <Text style={{ color: palette.subtext }}>
                 {(() => {
-                  const raw = (conversationMeta?.[String((item as any).conversationId ?? item.id)]?.lastAt ?? item.lastAt) || '';
+                  const raw = displayLastAt || '';
                   if (!raw) return '';
                   const dt = new Date(raw);
                   if (Number.isNaN(dt.getTime())) return String(raw);
@@ -290,7 +330,7 @@ export function ChatsTab({
                 })()}
               </Text>
 
-              {(conversationMeta?.[String((item as any).conversationId ?? item.id)]?.unreadCount ?? item.unreadCount) > 0 && !isSelected && (
+              {displayUnread > 0 && !isSelected && (
                 <View
                   style={{
                     minWidth: 22,
@@ -309,7 +349,7 @@ export function ChatsTab({
                       fontSize: 12,
                     }}
                   >
-                    {conversationMeta?.[String((item as any).conversationId ?? item.id)]?.unreadCount ?? item.unreadCount}
+                    {displayUnread}
                   </Text>
                 </View>
               )}

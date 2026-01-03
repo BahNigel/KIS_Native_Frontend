@@ -11,6 +11,8 @@ import {
   Image,
   Pressable,
   Linking,
+  NativeSyntheticEvent,
+  NativeScrollEvent,
 } from 'react-native';
 
 import Pdf from 'react-native-pdf';
@@ -49,6 +51,8 @@ type MessageListProps = {
   }) => void;
 
   autoScrollEnabled?: boolean;
+  startAtBottom?: boolean;
+  onVisibleMessageIds?: (messageIds: string[]) => void;
 };
 
 /**
@@ -117,6 +121,8 @@ export const MessageList: React.FC<MessageListProps> = ({
   onToggleSelect,
   onMessageLocatorReady,
   autoScrollEnabled = true,
+  startAtBottom = true,
+  onVisibleMessageIds,
 }) => {
   const listRef = useRef<FlatList<ChatMessage>>(null);
 
@@ -127,6 +133,32 @@ export const MessageList: React.FC<MessageListProps> = ({
     null,
   );
   const suppressAutoScrollRef = useRef(false);
+  const isAtBottomRef = useRef(startAtBottom);
+  const lastStartAtBottomRef = useRef<boolean | null>(startAtBottom);
+  const viewabilityConfigRef = useRef({
+    viewAreaCoveragePercentThreshold: 60,
+    minimumViewTime: 150,
+  });
+  const onViewableItemsChangedRef = useRef(
+    ({ viewableItems }: { viewableItems: Array<{ item: ChatMessage }> }) => {
+      if (!onVisibleMessageIds) return;
+      const ids = viewableItems
+        .map((entry) => {
+          const item: any = entry.item;
+          return (
+            item?.serverId ??
+            item?.id ??
+            item?.clientId ??
+            null
+          );
+        })
+        .filter(Boolean)
+        .map((id) => String(id));
+      if (ids.length) {
+        onVisibleMessageIds(ids);
+      }
+    },
+  );
 
   useEffect(() => {
     return () => {
@@ -136,12 +168,55 @@ export const MessageList: React.FC<MessageListProps> = ({
     };
   }, []);
 
+  useEffect(() => {
+    if (lastStartAtBottomRef.current === startAtBottom) return;
+    lastStartAtBottomRef.current = startAtBottom;
+    isAtBottomRef.current = !!startAtBottom;
+  }, [startAtBottom]);
+
+  useEffect(() => {
+    onViewableItemsChangedRef.current = ({
+      viewableItems,
+    }: {
+      viewableItems: Array<{ item: ChatMessage }>;
+    }) => {
+      if (!onVisibleMessageIds) return;
+      const ids = viewableItems
+        .map((entry) => {
+          const item: any = entry.item;
+          return (
+            item?.serverId ??
+            item?.id ??
+            item?.clientId ??
+            null
+          );
+        })
+        .filter(Boolean)
+        .map((id) => String(id));
+      if (ids.length) {
+        onVisibleMessageIds(ids);
+      }
+    };
+  }, [onVisibleMessageIds]);
+
   const handleContentSizeChange = () => {
     if (!listRef.current) return;
     if (!autoScrollEnabled) return;
     if (suppressAutoScrollRef.current) return;
+    if (!isAtBottomRef.current) return;
     listRef.current.scrollToEnd({ animated: true });
   };
+
+  const handleScroll = useCallback(
+    (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+      const { contentOffset, contentSize, layoutMeasurement } = e.nativeEvent;
+      const padding = 48;
+      const atBottom =
+        layoutMeasurement.height + contentOffset.y >= contentSize.height - padding;
+      isAtBottomRef.current = atBottom;
+    },
+    [],
+  );
 
   const scrollToMessage = useCallback(
     (messageId: string) => {
@@ -156,6 +231,7 @@ export const MessageList: React.FC<MessageListProps> = ({
 
       try {
         suppressAutoScrollRef.current = true;
+        isAtBottomRef.current = false;
         listRef.current.scrollToIndex({
           index,
           animated: true,
@@ -167,6 +243,7 @@ export const MessageList: React.FC<MessageListProps> = ({
       } catch (e) {
         const approximateItemHeight = 72;
         suppressAutoScrollRef.current = true;
+        isAtBottomRef.current = false;
         listRef.current.scrollToOffset({
           offset: Math.max(0, index * approximateItemHeight),
           animated: true,
@@ -606,6 +683,10 @@ export const MessageList: React.FC<MessageListProps> = ({
       style={styles.messagesList}
       contentContainerStyle={styles.messagesListContent}
       onContentSizeChange={handleContentSizeChange}
+      onScroll={handleScroll}
+      scrollEventThrottle={16}
+      onViewableItemsChanged={onViewableItemsChangedRef.current}
+      viewabilityConfig={viewabilityConfigRef.current}
       onScrollToIndexFailed={(info) => {
         const approximateItemHeight = 72;
         listRef.current?.scrollToOffset({
