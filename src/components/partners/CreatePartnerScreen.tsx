@@ -9,12 +9,17 @@ import {
   KeyboardAvoidingView,
   Platform,
   Alert,
+  Image,
+  Pressable,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { launchImageLibrary } from 'react-native-image-picker';
 
 import { useKISTheme } from '../../theme/useTheme';
 import KISButton from '../../constants/KISButton';
 import { postRequest } from '@/network/post';
-import ROUTES from '@/network';
+import ROUTES, { CHAT_BASE_URL } from '@/network';
+import { uploadFileToBackend } from '@/Module/ChatRoom/uploadFileToBackend';
 
 type Props = {
   onClose: () => void;
@@ -27,7 +32,51 @@ export default function PartnerCreateSlide({ onClose }: Props) {
   const [slug, setSlug] = useState('');
   const [description, setDescription] = useState('');
   const [avatarUrl, setAvatarUrl] = useState('');
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+
+  const handlePickAvatar = async () => {
+    if (isUploading) return;
+    const picked = await launchImageLibrary({
+      mediaType: 'photo',
+      selectionLimit: 1,
+      quality: 0.9,
+    });
+    if (picked.didCancel) return;
+    const asset = picked.assets?.[0];
+    if (!asset?.uri) {
+      Alert.alert('No image selected', 'Please pick a valid image.');
+      return;
+    }
+
+    const token = await AsyncStorage.getItem('access_token');
+    if (!token) {
+      Alert.alert('Not signed in', 'Please log in again.');
+      return;
+    }
+
+    try {
+      setIsUploading(true);
+      setAvatarPreview(asset.uri);
+      const file = {
+        uri: asset.uri,
+        name: asset.fileName ?? 'partner-avatar.jpg',
+        type: asset.type ?? 'image/jpeg',
+        size: asset.fileSize ?? undefined,
+      };
+      const uploaded = await uploadFileToBackend({
+        file,
+        authToken: token,
+        baseUrl: CHAT_BASE_URL,
+      });
+      setAvatarUrl(uploaded.url);
+    } catch (err: any) {
+      Alert.alert('Upload failed', err?.message || 'Unable to upload image.');
+    } finally {
+      setIsUploading(false);
+    }
+  };
 
   const handleSubmit = async () => {
     if (!name.trim() || !slug.trim()) {
@@ -124,15 +173,31 @@ export default function PartnerCreateSlide({ onClose }: Props) {
         </View>
 
         <View style={styles.field}>
-          <Text style={[styles.label, { color: palette.subtext }]}>Avatar URL</Text>
-          <TextInput
-            value={avatarUrl}
-            onChangeText={setAvatarUrl}
-            autoCapitalize="none"
-            placeholder="https://example.com/logo.png"
-            placeholderTextColor={palette.subtext}
-            style={[styles.input, { backgroundColor: palette.card, borderColor: palette.inputBorder, color: palette.text }]}
-          />
+          <Text style={[styles.label, { color: palette.subtext }]}>Partner image</Text>
+          <Pressable
+            onPress={handlePickAvatar}
+            style={({ pressed }) => [
+              styles.avatarPicker,
+              {
+                backgroundColor: palette.card,
+                borderColor: palette.inputBorder,
+                opacity: pressed ? 0.8 : 1,
+              },
+            ]}
+          >
+            {avatarPreview ? (
+              <Image source={{ uri: avatarPreview }} style={styles.avatarPreview} />
+            ) : (
+              <Text style={{ color: palette.subtext }}>
+                Tap to pick an image
+              </Text>
+            )}
+          </Pressable>
+          {isUploading ? (
+            <Text style={{ color: palette.subtext, marginTop: 6 }}>
+              Uploading image…
+            </Text>
+          ) : null}
         </View>
 
         <View style={{ marginTop: 24 }}>
@@ -178,6 +243,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 10,
     fontSize: 16,
+  },
+  avatarPicker: {
+    borderWidth: 1,
+    borderRadius: 12,
+    minHeight: 120,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  avatarPreview: {
+    width: '100%',
+    height: 120,
+    resizeMode: 'cover',
   },
   textarea: {
     minHeight: 100,

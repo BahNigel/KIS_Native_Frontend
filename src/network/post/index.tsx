@@ -33,6 +33,7 @@ export const postRequest = async (
     // if (!(await isOnline())) throw new Error('No internet connection.');
 
     const token = await AsyncStorage.getItem('access_token');
+    const deviceId = await AsyncStorage.getItem('device_id');
 
     // 🔑 Robust FormData detection for React Native
     const isFormData =
@@ -50,6 +51,7 @@ export const postRequest = async (
       baseHeaders['Content-Type'] = 'application/json';
     }
     if (token) baseHeaders.Authorization = `Bearer ${token}`;
+    if (deviceId) baseHeaders['X-Device-Id'] = deviceId;
 
     const headers = { ...baseHeaders, ...(options.headers ?? {}) };
 

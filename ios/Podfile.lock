@@ -145,6 +145,36 @@ PODS:
     - SocketRocket
     - Yoga
   - PromisesObjC (2.4.0)
+  - QuickCrypto (1.0.6):
+    - boost
+    - DoubleConversion
+    - fast_float
+    - fmt
+    - glog
+    - hermes-engine
+    - NitroModules
+    - RCT-Folly
+    - RCT-Folly/Fabric
+    - RCTRequired
+    - RCTTypeSafety
+    - React-callinvoker
+    - React-Core
+    - React-debug
+    - React-Fabric
+    - React-featureflags
+    - React-graphics
+    - React-ImageManager
+    - React-jsi
+    - React-NativeModulesApple
+    - React-RCTFabric
+    - React-renderercss
+    - React-rendererdebug
+    - React-utils
+    - ReactCodegen
+    - ReactCommon/turbomodule/bridging
+    - ReactCommon/turbomodule/core
+    - SocketRocket
+    - Yoga
   - RCT-Folly (2024.11.18.00):
     - boost
     - DoubleConversion
@@ -2007,6 +2037,8 @@ PODS:
     - React-Core
   - react-native-geolocation-service (5.3.1):
     - React
+  - react-native-get-random-values (1.11.0):
+    - React-Core
   - react-native-image-editor (4.3.0):
     - boost
     - DoubleConversion
@@ -3393,6 +3425,7 @@ DEPENDENCIES:
   - NitroModules (from `../node_modules/react-native-nitro-modules`)
   - NitroSound (from `../node_modules/react-native-nitro-sound`)
   - PromisesObjC
+  - QuickCrypto (from `../node_modules/react-native-quick-crypto`)
   - RCT-Folly (from `../node_modules/react-native/third-party-podspecs/RCT-Folly.podspec`)
   - RCTDeprecation (from `../node_modules/react-native/ReactApple/Libraries/RCTFoundation/RCTDeprecation`)
   - RCTRequired (from `../node_modules/react-native/Libraries/Required`)
@@ -3432,6 +3465,7 @@ DEPENDENCIES:
   - react-native-document-picker (from `../node_modules/react-native-document-picker`)
   - react-native-encrypted-storage (from `../node_modules/react-native-encrypted-storage`)
   - react-native-geolocation-service (from `../node_modules/react-native-geolocation-service`)
+  - react-native-get-random-values (from `../node_modules/react-native-get-random-values`)
   - "react-native-image-editor (from `../node_modules/@react-native-community/image-editor`)"
   - react-native-image-picker (from `../node_modules/react-native-image-picker`)
   - react-native-image-resizer (from `../node_modules/react-native-image-resizer`)
@@ -3528,6 +3562,8 @@ EXTERNAL SOURCES:
     :path: "../node_modules/react-native-nitro-modules"
   NitroSound:
     :path: "../node_modules/react-native-nitro-sound"
+  QuickCrypto:
+    :path: "../node_modules/react-native-quick-crypto"
   RCT-Folly:
     :podspec: "../node_modules/react-native/third-party-podspecs/RCT-Folly.podspec"
   RCTDeprecation:
@@ -3604,6 +3640,8 @@ EXTERNAL SOURCES:
     :path: "../node_modules/react-native-encrypted-storage"
   react-native-geolocation-service:
     :path: "../node_modules/react-native-geolocation-service"
+  react-native-get-random-values:
+    :path: "../node_modules/react-native-get-random-values"
   react-native-image-editor:
     :path: "../node_modules/@react-native-community/image-editor"
   react-native-image-picker:
@@ -3742,6 +3780,7 @@ SPEC CHECKSUMS:
   NitroModules: f01eb8e452bd988b73ba5a596666f38e5f817c38
   NitroSound: d668ffd15885fa4aa89eaa6a52c0e7f9b9aea3fc
   PromisesObjC: f5707f49cb48b9636751c5b2e7d227e43fba9f47
+  QuickCrypto: 48e65353522aefaf4419eb918ce022683fed7d29
   RCT-Folly: 846fda9475e61ec7bcbf8a3fe81edfcaeb090669
   RCTDeprecation: f17e2ebc07876ca9ab8eb6e4b0a4e4647497ae3a
   RCTRequired: e2c574c1b45231f7efb0834936bd609d75072b63
@@ -3780,6 +3819,7 @@ SPEC CHECKSUMS:
   react-native-document-picker: dcf5e57f3bcae61bf8384a1c6f90896f81e17941
   react-native-encrypted-storage: 569d114e329b1c2c2d9f8c84bcdbe4478dda2258
   react-native-geolocation-service: 32b2c2a3b91e70ce2a8d0c684801aaeb0a07e0ec
+  react-native-get-random-values: d16467cf726c618e9c7a8c3c39c31faa2244bbba
   react-native-image-editor: 2d7c254cc514d94b6580ff0a603a8e9d19fd1871
   react-native-image-picker: 0314366753615115fa55c3cc937ac44cb7e75702
   react-native-image-resizer: 17b2d73c030975b6543395c7e7368bc8774c5efa

@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { KISIcon } from '@/constants/kisIcons';
+import Skeleton from '@/components/common/Skeleton';
 import { getRequest } from '@/network/get';
 import { NEST_API_BASE_URL } from '@/network';
 import { useSocket } from '../../../../SocketProvider';
@@ -26,7 +27,11 @@ type CallHistoryItem = {
   participants?: { userId: string; status: string }[];
 };
 
-export default function CallsTab() {
+type CallsTabProps = {
+  searchTerm?: string;
+};
+
+export default function CallsTab({ searchTerm = '' }: CallsTabProps) {
   const { palette } = useKISTheme();
   const { currentUserId } = useSocket();
   const [loading, setLoading] = useState(true);
@@ -60,7 +65,19 @@ export default function CallsTab() {
     loadConversations();
   }, [currentUserId]);
 
-  const rows = useMemo(() => calls, [calls]);
+  const rows = useMemo(() => {
+    if (!searchTerm.trim()) return calls;
+    const q = searchTerm.trim().toLowerCase();
+    return calls.filter((item) => {
+      const name =
+        conversationNameById[item.conversationId] ??
+        `Conversation ${item.conversationId?.slice?.(0, 6) ?? ''}`;
+      return (
+        name.toLowerCase().includes(q) ||
+        String(item.status ?? '').toLowerCase().includes(q)
+      );
+    });
+  }, [calls, conversationNameById, searchTerm]);
 
   const renderItem = ({ item }: { item: CallHistoryItem }) => {
     const name =
@@ -116,8 +133,22 @@ export default function CallsTab() {
       </View>
 
       {loading ? (
-        <View style={styles.center}>
-          <ActivityIndicator color={palette.primary} />
+        <View style={{ gap: 12 }}>
+          {Array.from({ length: 5 }).map((_, idx) => (
+            <View
+              key={`call-skel-${idx}`}
+              style={[
+                styles.row,
+                { borderColor: palette.inputBorder, backgroundColor: palette.card },
+              ]}
+            >
+              <Skeleton width={40} height={40} radius={20} />
+              <View style={{ flex: 1 }}>
+                <Skeleton width="50%" height={12} radius={6} />
+                <Skeleton width="30%" height={10} radius={6} style={{ marginTop: 6 }} />
+              </View>
+            </View>
+          ))}
         </View>
       ) : rows.length === 0 ? (
         <View style={styles.center}>

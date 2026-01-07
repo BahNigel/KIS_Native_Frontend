@@ -241,6 +241,8 @@ export type ChatMessage = {
    * Plain text payload.
    */
   text?: string;
+  ciphertext?: string;
+  encryptionMeta?: Record<string, any>;
 
   voice?: {
     uri: string;

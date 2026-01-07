@@ -4,13 +4,17 @@ import React, { useMemo } from 'react';
 import { View, Text, Pressable, Image } from 'react-native';
 
 import type { Chat } from '../../messagesUtils';
+import { directConversationAvatar } from '../../messagesUtils';
 import { chatRoomStyles as styles } from '../../chatRoomStyles';
 import { KISIcon } from '@/constants/kisIcons';
+import ImagePlaceholder from '@/components/common/ImagePlaceholder';
 
 type ChatHeaderProps = {
   chat: Chat | null;
   onBack: () => void;
   palette: any;
+  onOpenInfo?: () => void;
+  currentUserId?: string;
 
   // Selection mode support
   selectionMode?: boolean;
@@ -44,6 +48,8 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
   chat,
   onBack,
   palette,
+  onOpenInfo,
+  currentUserId,
 
   selectionMode = false,
   selectedCount = 0,
@@ -67,6 +73,11 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
   statusText,
 }) => {
   const title = chat?.name ?? 'Chat';
+  const headerAvatar =
+    chat?.avatarUrl ||
+    (chat?.isDirect
+      ? directConversationAvatar(chat?.participants ?? [], currentUserId)
+      : null);
 
   const initials = useMemo(() => {
     if (!title) return '?';
@@ -273,33 +284,21 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
         </Pressable>
 
         {/* Avatar + name + status */}
-        <View style={styles.headerCenter}>
-          {chat?.avatarUrl ? (
+        <Pressable
+          onPress={onOpenInfo}
+          disabled={!onOpenInfo}
+          style={({ pressed }) => [
+            styles.headerCenter,
+            { opacity: pressed && onOpenInfo ? 0.75 : 1 },
+          ]}
+        >
+          {headerAvatar ? (
             <Image
-              source={{ uri: chat.avatarUrl }}
+              source={{ uri: headerAvatar }}
               style={styles.headerAvatar}
             />
           ) : (
-            <View
-              style={[
-                styles.headerAvatar,
-                {
-                  backgroundColor:
-                    palette.avatarBg ??
-                    palette.primarySoft ??
-                    palette.surface,
-                },
-              ]}
-            >
-              <Text
-                style={{
-                  color: palette.onAvatar ?? palette.text,
-                  fontWeight: '600',
-                }}
-              >
-                {initials}
-              </Text>
-            </View>
+            <ImagePlaceholder size={36} radius={18} style={styles.headerAvatar} />
           )}
 
           <View style={{ marginLeft: 10 }}>
@@ -322,7 +321,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
               {headerStatusText}
             </Text>
           </View>
-        </View>
+        </Pressable>
 
         {/* WhatsApp-like actions: camera, mic, menu */}
         <View style={styles.headerActions}>

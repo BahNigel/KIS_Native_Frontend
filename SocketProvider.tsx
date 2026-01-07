@@ -11,8 +11,10 @@ import React, {
 import { io, Socket } from 'socket.io-client';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from './App';
-import { CHAT_WS_URL, CHAT_WS_PATH } from '@/network';
+import ROUTES, { CHAT_WS_URL, CHAT_WS_PATH } from '@/network';
 import { getCache } from '@/network/cache';
+import { getRequest } from '@/network/get';
+import { ensureDeviceId, initE2EE } from '@/security/e2ee';
 
 /* ============================================================================
  * TYPES
@@ -109,19 +111,30 @@ export const SocketProvider: React.FC<{
         return data?.user?.id || data?.user?.pk || null;
       };
       const uid = Array.isArray(cached) ? extractUid(cached[0]) : extractUid(cached);
-      if (uid) setCurrentUserId(String(uid));
-      const deviceIdKey = 'device_id';
-      let deviceId =
-        await AsyncStorage.getItem(deviceIdKey);
-      if (!deviceId) {
-        deviceId = `dev_${Date.now()}_${Math.random()
-          .toString(36)
-          .slice(2)}`;
-        await AsyncStorage.setItem(
-          deviceIdKey,
-          deviceId,
-        );
+      let resolvedUserId = uid ? String(uid) : null;
+      if (!resolvedUserId && token) {
+        try {
+          const storedPhone = await AsyncStorage.getItem('user_phone');
+          const qs = storedPhone ? `?phone=${encodeURIComponent(storedPhone)}` : '';
+          const res = await getRequest(`${ROUTES.auth.checkLogin}${qs}`, {
+            errorMessage: 'Status check failed.',
+            cacheType: 'AUTH_CACHE',
+          });
+          const u = res?.data?.user ?? res?.data ?? {};
+          const fetchedId = u?.id || u?.pk || null;
+          if (fetchedId) resolvedUserId = String(fetchedId);
+        } catch (err: any) {
+          console.warn('[E2EE] unable to fetch user id', err?.message ?? err);
+        }
       }
+
+      if (resolvedUserId) setCurrentUserId(resolvedUserId);
+      if (resolvedUserId) {
+        initE2EE(resolvedUserId).catch((err) => {
+          console.warn('[E2EE] init failed', err?.message ?? err);
+        });
+      }
+      const deviceId = await ensureDeviceId();
 
       if (!mountedRef.current) return;
       if (!isAuth || !token) return;

@@ -1,6 +1,6 @@
 // src/utils/normalizeConversation.ts
 
-import { Chat, directConversationName } from './messagesUtils';
+import { Chat, directConversationAvatar, directConversationName } from './messagesUtils';
 import ROUTES from '@/network';
 import { getRequest } from '@/network/get';
 import { clearCacheByKey, getCache, setCache } from '@/network/cache';
@@ -88,9 +88,13 @@ export function normalizeConversation(raw: any, currentUserId?: string): Chat {
   const name =
     raw.title || raw.name || raw.description || 'Unnamed Conversation';
 
-  const isDirect = (raw.type ?? raw.kind) === 'direct';
+  const resolvedType = raw.type ?? raw.kind;
+  const isDirect = resolvedType === 'direct';
   const directName = isDirect
     ? directConversationName(raw.participants ?? [], currentUserId)
+    : null;
+  const directAvatar = isDirect
+    ? directConversationAvatar(raw.participants ?? [], currentUserId)
     : null;
   const participantRecords = Array.isArray(raw.participants) ? raw.participants : [];
   const selfMember = currentUserId
@@ -107,6 +111,7 @@ export function normalizeConversation(raw: any, currentUserId?: string): Chat {
   return {
     id,
     name: directName || name,
+    avatarUrl: raw.avatar_url ?? raw.avatarUrl ?? directAvatar ?? undefined,
 
     lastMessage: raw.last_message_preview ?? raw.lastMessage ?? '',
     lastAt: raw.last_message_at ?? raw.lastAt ?? '',
@@ -116,12 +121,22 @@ export function normalizeConversation(raw: any, currentUserId?: string): Chat {
 
     participants: raw.participants ?? [],
 
-    kind: raw.type ?? raw.kind,
-    isGroup: (raw.type ?? raw.kind) === 'group',
-    isGroupChat: (raw.type ?? raw.kind) === 'group',
-    isCommunityChat: (raw.type ?? raw.kind) === 'community',
+    kind: resolvedType,
+    isGroup: resolvedType === 'group',
+    isGroupChat: resolvedType === 'group',
+    isCommunityChat:
+      resolvedType === 'community' ||
+      resolvedType === 'post' ||
+      Boolean(raw.is_community_group ?? raw.isCommunityGroup) ||
+      Boolean(raw.community_id ?? raw.communityId),
     isContactChat: (raw.type ?? raw.kind) === 'direct',
     isDirect,
+
+    communityId:
+      raw.community_id ??
+      raw.communityId ??
+      (raw.group && (raw.group.community_id ?? raw.group.communityId)) ??
+      undefined,
 
     requestState: raw.request_state ?? raw.requestState ?? 'none',
     requestInitiatorId:
@@ -262,19 +277,23 @@ function dedupeChats(chats: Chat[]): Chat[] {
  * Always return conversations from cache (fallback if empty).
  * Backend refresh runs in background AND handles empty backend → clear cache.
  */
+const lastRefreshByUser: Record<string, number> = {};
+
 export async function fetchConversationsForCurrentUser(
   fallback: Chat[] = [],
   currentUserId?: string,
   forceRefresh?: boolean,
 ): Promise<Chat[]> {
+  const userKey = currentUserId ? String(currentUserId) : 'anon';
   if (forceRefresh) {
+    lastRefreshByUser[userKey] = Date.now();
     await refreshConversationsAndHandleEmpty();
-  } else {
-    // Fire-and-forget background refresh
-    refreshConversationsAndHandleEmpty();
   }
 
   const cachedRaw = await getRawConversationsFromCache();
+  if (!cachedRaw.length) {
+    await refreshConversationsAndHandleEmpty();
+  }
   console.log('[fetchConversationsForCurrentUser] Cached raw list:', cachedRaw);
 
   const baseList = cachedRaw.length ? cachedRaw : fallback;

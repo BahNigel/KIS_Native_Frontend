@@ -23,8 +23,8 @@ export const KIS_COLORS = {
     text: '#EDEDED',
     subtext: '#B5B2BD',
     inputBg: '#1A1720',
-    inputBorder: '#2E2B36',
-    divider: '#2A2731',
+    inputBorder: '#746f81ff',
+    divider: '#362b47ff',
 
     // 🆕 New
     chrome: '#0B0A10',          // outer app chrome/background
@@ -44,7 +44,7 @@ export const KIS_COLORS = {
 
     // 🆕 New
     chrome: '#F5F5FA',
-    bar: '#DFDFDFFF',
+    bar: '#E7E4F0',
     shadow: 'rgba(0,0,0,0.35)',
   },
 
@@ -139,7 +139,7 @@ export const createPalette = (tone: KISTone): KISPalette => {
   const base = tone === 'dark' ? c.dark : c.light;
 
   // sensible elevated default when not provided by swatches
-  const elevated = tone === 'dark' ? '#211E28' : '#FFFFFF';
+  const elevated = tone === 'dark' ? '#3c3847ff' : '#e6e6e9ff';
 
   // soft tint derived from brand primary (alpha works well across themes)
   const primarySoft =
@@ -201,8 +201,8 @@ export const createPalette = (tone: KISTone): KISPalette => {
 
   const readStatus =
     tone === 'dark'
-      ? '#53BDEB'
-      : '#34B7F1';
+      ? '#8B7CFB'
+      : c.brand.purple;
 
   const onPrimary = '#FFFFFF';
   const onPrimaryMuted =

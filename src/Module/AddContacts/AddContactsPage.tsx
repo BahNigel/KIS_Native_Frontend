@@ -26,6 +26,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { useKISTheme } from '../../theme/useTheme';
 import { KISIcon } from '@/constants/kisIcons';
+import ImagePlaceholder from '@/components/common/ImagePlaceholder';
+import Skeleton from '@/components/common/Skeleton';
 import { KIS_TOKENS } from '../../theme/constants';
 import {
   KISContact,
@@ -39,6 +41,7 @@ import { ContactRow } from './components/ContactRow';
 import { AddContactForm } from './components/AddContactForm';
 import { NewGroupForm } from './components/NewGroupForm';
 import { NewCommunityForm } from './components/NewCommunityForm';
+import { NewChannelForm } from './components/NewChannelForm';
 import { addContactsStyles as styles } from './addContactsStyles';
 import type { Chat } from '@/Module/ChatRoom/messagesUtils';
 import {
@@ -51,6 +54,8 @@ import { getCache, setCache } from '@/network/cache';
 export type AddContactsPageProps = {
   onClose: () => void;
   onOpenChat: (chat: Chat) => void;
+  initialMode?: Mode;
+  initialGroupContext?: { communityId?: string | null; communityName?: string | null } | null;
 };
 
 const CONTACTS_CACHE_KEY = 'kis.contacts.cache.v1';
@@ -148,7 +153,14 @@ const sendWhatsAppInvite = async (contact: KISContact) => {
   }
 };
 
-type Mode = 'list' | 'addContact' | 'addGroup' | 'addCommunity';
+type Mode =
+  | 'list'
+  | 'addContact'
+  | 'addGroup'
+  | 'addCommunity'
+  | 'addChannel'
+  | 'selectGroupMembers'
+  | 'selectCommunityMembers';
 
 /**
  * Resolve participant backend user id from conversation participant object.
@@ -291,6 +303,8 @@ const findExistingDirectConversationForContact = async (
 export const AddContactsPage: React.FC<AddContactsPageProps> = ({
   onClose,
   onOpenChat,
+  initialMode,
+  initialGroupContext,
 }) => {
   const { palette } = useKISTheme();
   const insets = useSafeAreaInsets();
@@ -302,10 +316,37 @@ export const AddContactsPage: React.FC<AddContactsPageProps> = ({
   const [error, setError] = useState<string | null>(null);
 
   const [searchTerm, setSearchTerm] = useState('');
+  const [selectedGroupMemberIds, setSelectedGroupMemberIds] = useState<Set<string>>(new Set());
+  const [selectedCommunityMemberIds, setSelectedCommunityMemberIds] = useState<Set<string>>(new Set());
+  const [preferredChannelId, setPreferredChannelId] = useState<string | null>(null);
+  const [groupDraft, setGroupDraft] = useState({
+    name: '',
+    slug: '',
+    description: '',
+    channelId: null as string | null,
+  });
+  const [groupContext, setGroupContext] = useState<{ communityId?: string | null; communityName?: string | null } | null>(
+    initialGroupContext ?? null,
+  );
 
   // 'list' = entry page, 'addContact' / 'addGroup' / 'addCommunity' = slide-in second page
   const [mode, setMode] = useState<Mode>('list');
   const slideX = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (!initialMode) return;
+    setMode(initialMode);
+  }, [initialMode]);
+
+  useEffect(() => {
+    if (!initialGroupContext) return;
+    setGroupContext(initialGroupContext);
+  }, [initialGroupContext]);
+
+  useEffect(() => {
+    if (!preferredChannelId) return;
+    setGroupDraft((prev) => ({ ...prev, channelId: preferredChannelId }));
+  }, [preferredChannelId]);
 
   // Animate between pages
   useEffect(() => {
@@ -397,7 +438,27 @@ export const AddContactsPage: React.FC<AddContactsPageProps> = ({
     setMode('addCommunity');
   };
 
+  const onOpenAddChannel = () => {
+    setMode('addChannel');
+  };
+
+  const onOpenSelectGroupMembers = () => {
+    setMode('selectGroupMembers');
+  };
+
+  const onOpenSelectCommunityMembers = () => {
+    setMode('selectCommunityMembers');
+  };
+
   const onCloseDetailPage = () => {
+    if (mode === 'selectGroupMembers') {
+      setMode('addGroup');
+      return;
+    }
+    if (mode === 'selectCommunityMembers') {
+      setMode('addCommunity');
+      return;
+    }
     setMode('list');
   };
 
@@ -454,11 +515,18 @@ export const AddContactsPage: React.FC<AddContactsPageProps> = ({
    */
   const handleGroupCreated = async (group: any) => {
     try {
+      const conversationId =
+        group?.conversation_id ??
+        group?.conversationId ??
+        group?.conversation?.id ??
+        group?.conversation;
       const rawConversation = group?.conversation ?? group;
       const baseChat = normalizeConversation(rawConversation);
 
       const chat: Chat = {
         ...baseChat,
+        id: conversationId ? String(conversationId) : baseChat.id,
+        conversationId: conversationId ? String(conversationId) : baseChat.conversationId,
         // Ensure group flags are set for UI
         isGroup: true,
         isGroupChat: true,
@@ -466,6 +534,8 @@ export const AddContactsPage: React.FC<AddContactsPageProps> = ({
         groupId: group?.id ?? baseChat.groupId,
       } as Chat;
 
+      setSelectedGroupMemberIds(new Set());
+      setGroupDraft({ name: '', slug: '', description: '', channelId: null });
       onClose();
 
       setTimeout(() => {
@@ -485,11 +555,20 @@ export const AddContactsPage: React.FC<AddContactsPageProps> = ({
    */
   const handleCommunityCreated = async (community: any) => {
     try {
+      const conversationId =
+        community?.main_conversation_id ??
+        community?.mainConversationId ??
+        community?.conversation_id ??
+        community?.conversationId ??
+        community?.conversation?.id ??
+        community?.conversation;
       const rawConversation = community?.conversation ?? community;
       const baseChat = normalizeConversation(rawConversation);
 
       const chat: Chat = {
         ...baseChat,
+        id: conversationId ? String(conversationId) : baseChat.id,
+        conversationId: conversationId ? String(conversationId) : baseChat.conversationId,
         isGroup: false,
         isGroupChat: false,
         isCommunityChat: true,
@@ -497,6 +576,7 @@ export const AddContactsPage: React.FC<AddContactsPageProps> = ({
         communityId: community?.id ?? baseChat.communityId,
       } as Chat;
 
+      setSelectedCommunityMemberIds(new Set());
       onClose();
 
       setTimeout(() => {
@@ -509,6 +589,41 @@ export const AddContactsPage: React.FC<AddContactsPageProps> = ({
         'Community was created, but we could not open the conversation. Please try again from the chat list.',
       );
     }
+  };
+
+  const handleChannelCreated = (channel: any) => {
+    const channelId = channel?.id ? String(channel.id) : null;
+    if (channelId) {
+      setPreferredChannelId(channelId);
+    }
+    setMode('addGroup');
+  };
+
+  const kisContactsForSelection = useMemo(
+    () => contacts.filter((c) => c.isRegistered && c.userId),
+    [contacts],
+  );
+
+  const toggleGroupMember = (contact: KISContact) => {
+    if (!contact.userId) return;
+    const id = String(contact.userId);
+    setSelectedGroupMemberIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleCommunityMember = (contact: KISContact) => {
+    if (!contact.userId) return;
+    const id = String(contact.userId);
+    setSelectedCommunityMemberIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   };
 
   // 🔍 Filter contacts by search term
@@ -640,7 +755,11 @@ export const AddContactsPage: React.FC<AddContactsPageProps> = ({
       ? 'New contact'
       : mode === 'addGroup'
       ? 'New group'
-      : 'New community';
+      : mode === 'addCommunity'
+      ? 'New community'
+      : mode === 'addChannel'
+      ? 'New channel'
+      : 'Select members';
 
   return (
     <View
@@ -789,6 +908,25 @@ export const AddContactsPage: React.FC<AddContactsPageProps> = ({
                 Loading contacts…
               </Text>
             ) : null}
+            {loading && !refreshing ? (
+              <View style={{ marginTop: 12, gap: 10 }}>
+                {Array.from({ length: 6 }).map((_, idx) => (
+                  <View
+                    key={`contact-skel-${idx}`}
+                    style={[
+                      styles.contactRow,
+                      { borderColor: palette.inputBorder, backgroundColor: palette.card },
+                    ]}
+                  >
+                    <Skeleton width={44} height={44} radius={22} />
+                    <View style={{ flex: 1 }}>
+                      <Skeleton width="55%" height={12} radius={6} />
+                      <Skeleton width="35%" height={10} radius={6} style={{ marginTop: 6 }} />
+                    </View>
+                  </View>
+                ))}
+              </View>
+            ) : null}
 
             {/* No results for search */}
             {noSearchResults && !loading && !error && (
@@ -878,15 +1016,114 @@ export const AddContactsPage: React.FC<AddContactsPageProps> = ({
               contentContainerStyle={{ paddingBottom: 32 }}
               keyboardShouldPersistTaps="handled"
             >
-              {mode === 'addGroup' ? (
+              {mode === 'selectGroupMembers' || mode === 'selectCommunityMembers' ? (
+                <View style={{ marginTop: 8 }}>
+                  <Text style={{ color: palette.text, fontSize: 16, fontWeight: '600' }}>
+                    Choose members from KIS contacts
+                  </Text>
+                  <Text style={{ color: palette.subtext, fontSize: 12, marginTop: 4 }}>
+                    Only contacts registered on KIS are shown here.
+                  </Text>
+
+                  <View style={{ marginTop: 16 }}>
+                    {kisContactsForSelection.length === 0 ? (
+                      <Text style={{ color: palette.subtext, fontSize: 12 }}>
+                        No KIS contacts found yet.
+                      </Text>
+                    ) : (
+                      kisContactsForSelection.map((c) => {
+                        const userId = c.userId ? String(c.userId) : '';
+                        const isGroup = mode === 'selectGroupMembers';
+                        const selectedIds = isGroup
+                          ? selectedGroupMemberIds
+                          : selectedCommunityMemberIds;
+                        const selected = userId && selectedIds.has(userId);
+                        return (
+                          <Pressable
+                            key={c.id}
+                            onPress={() =>
+                              isGroup ? toggleGroupMember(c) : toggleCommunityMember(c)
+                            }
+                            style={({ pressed }) => [
+                              styles.contactRow,
+                              {
+                                backgroundColor: selected ? palette.surface : palette.card,
+                                borderColor: palette.inputBorder,
+                                opacity: pressed ? KIS_TOKENS.opacity.pressed : 1,
+                              },
+                            ]}
+                          >
+                            <ImagePlaceholder size={44} radius={22} style={styles.avatar} />
+                            <View style={{ flex: 1 }}>
+                              <Text style={{ color: palette.text, fontSize: 15 }}>
+                                {c.name}
+                              </Text>
+                              <Text style={{ color: palette.subtext, fontSize: 13 }} numberOfLines={1}>
+                                {c.phone}
+                              </Text>
+                            </View>
+                            {selected && (
+                              <KISIcon name="check" size={16} color={palette.primary} />
+                            )}
+                          </Pressable>
+                        );
+                      })
+                    )}
+                  </View>
+
+                  <Pressable
+                    onPress={() =>
+                      setMode(mode === 'selectGroupMembers' ? 'addGroup' : 'addCommunity')
+                    }
+                    style={({ pressed }) => [
+                      styles.saveButton,
+                      {
+                        backgroundColor: palette.primary,
+                        opacity: pressed ? KIS_TOKENS.opacity.pressed : 1,
+                      },
+                    ]}
+                  >
+                    <Text style={[styles.saveButtonText, { color: palette.bg }]}>Done</Text>
+                  </Pressable>
+                </View>
+              ) : mode === 'addGroup' ? (
                 <NewGroupForm
                   palette={palette}
                   onSuccess={handleGroupCreated}
+                  selectedMemberIds={Array.from(selectedGroupMemberIds)}
+                  onSelectMembers={onOpenSelectGroupMembers}
+                  communityId={groupContext?.communityId ?? null}
+                  communityName={groupContext?.communityName ?? null}
+                  initialChannelId={preferredChannelId}
+                  onCreateChannel={onOpenAddChannel}
+                  name={groupDraft.name}
+                  slug={groupDraft.slug}
+                  description={groupDraft.description}
+                  selectedChannelId={groupDraft.channelId}
+                  onChangeName={(value) =>
+                    setGroupDraft((prev) => ({ ...prev, name: value }))
+                  }
+                  onChangeSlug={(value) =>
+                    setGroupDraft((prev) => ({ ...prev, slug: value }))
+                  }
+                  onChangeDescription={(value) =>
+                    setGroupDraft((prev) => ({ ...prev, description: value }))
+                  }
+                  onChangeChannelId={(value) =>
+                    setGroupDraft((prev) => ({ ...prev, channelId: value }))
+                  }
                 />
               ) : mode === 'addCommunity' ? (
                 <NewCommunityForm
                   palette={palette}
                   onSuccess={handleCommunityCreated}
+                  selectedMemberIds={Array.from(selectedCommunityMemberIds)}
+                  onSelectMembers={onOpenSelectCommunityMembers}
+                />
+              ) : mode === 'addChannel' ? (
+                <NewChannelForm
+                  palette={palette}
+                  onSuccess={handleChannelCreated}
                 />
               ) : (
                 <AddContactForm

@@ -3,8 +3,10 @@ import React, { useMemo } from 'react';
 import { Animated, Text, View } from 'react-native';
 import styles from './partnersStyles';
 import { useKISTheme } from '../../theme/useTheme';
-import { Partner, PartnerGroup } from './partnersTypes';
+import { Partner, PartnerCommunity, PartnerGroup } from './partnersTypes';
 import ChatRoomPage from '@/Module/ChatRoom/ChatRoomPage';
+import PartnerFeedPage from './PartnerFeedPage';
+import CommunityFeedPage from '@/Module/Community/CommunityFeedPage';
 
 type Props = {
   width: number;
@@ -12,7 +14,10 @@ type Props = {
   isMessagesExpanded: boolean;
   toggleMessagesPane: () => void;
   selectedGroupId: string | null;
+  selectedFeed: 'general' | null;
   groupsForPartner: PartnerGroup[];
+  selectedCommunityFeedId: string | null;
+  communitiesForPartner: PartnerCommunity[];
   selectedPartner?: Partner;
 };
 
@@ -22,7 +27,10 @@ export default function PartnersMessagesPane({
   isMessagesExpanded, // kept for future, even if not used directly now
   toggleMessagesPane,
   selectedGroupId,
+  selectedFeed,
   groupsForPartner,
+  selectedCommunityFeedId,
+  communitiesForPartner,
   selectedPartner,
 }: Props) {
   const { palette } = useKISTheme();
@@ -35,15 +43,21 @@ export default function PartnersMessagesPane({
     [selectedGroupId, groupsForPartner],
   );
 
-  const selectedGroupName =
-    selectedGroup?.name ?? 'Select a group';
+  const selectedCommunity = useMemo(
+    () =>
+      selectedCommunityFeedId
+        ? communitiesForPartner.find((c) => c.id === selectedCommunityFeedId) || null
+        : null,
+    [selectedCommunityFeedId, communitiesForPartner],
+  );
 
   // ✅ Build a minimal "chat" object for ChatRoomPage
   const chatForGroup = useMemo(
     () =>
       selectedGroup
         ? ({
-            id: selectedGroup.id,
+            id: selectedGroup.conversation_id ?? selectedGroup.id,
+            conversationId: selectedGroup.conversation_id ?? selectedGroup.id,
             title: selectedGroup.name,
             name: selectedGroup.name,
             partnerId: selectedPartner?.id,
@@ -65,15 +79,20 @@ export default function PartnersMessagesPane({
         },
       ]}
     >
-      {selectedGroupId && chatForGroup ? (
-        // ✅ Use ChatRoomPage (with its own header) as the content of the sliding pane
+      {selectedFeed && selectedPartner ? (
+        <PartnerFeedPage partner={selectedPartner} onBack={toggleMessagesPane} />
+      ) : selectedCommunity ? (
+        <CommunityFeedPage
+          community={{ id: selectedCommunity.id, name: selectedCommunity.name }}
+          onBack={toggleMessagesPane}
+        />
+      ) : selectedGroupId && chatForGroup ? (
         <ChatRoomPage
           chat={chatForGroup}
-          onBack={toggleMessagesPane} // back = close pane in Partners section
-          allChats={[]}               // you can pass real chats later
+          onBack={toggleMessagesPane}
+          allChats={[]}
         />
       ) : (
-        // Placeholder when no group is selected
         <View style={[styles.messagesBody, { paddingHorizontal: 10 }]}>
           <Text
             style={[
@@ -81,7 +100,7 @@ export default function PartnersMessagesPane({
               { color: palette.text },
             ]}
           >
-            No group selected
+            No destination selected
           </Text>
           <Text
             style={[
@@ -89,7 +108,7 @@ export default function PartnersMessagesPane({
               { color: palette.subtext },
             ]}
           >
-            Choose a group on the center panel to open its room here.
+            Choose the partner feed or a group to open it here.
           </Text>
         </View>
       )}

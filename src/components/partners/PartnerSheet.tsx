@@ -1,9 +1,10 @@
 // src/screens/tabs/PartnerSheet.tsx
 import React from 'react';
-import { Animated, Pressable, Text, View } from 'react-native';
+import { Alert, Animated, Pressable, Text, View } from 'react-native';
 import styles from './partnersStyles';
 import { useKISTheme } from '../../theme/useTheme';
 import { Partner } from './partnersTypes';
+import KISButton from '@/constants/KISButton';
 
 type Props = {
   isOpen: boolean;
@@ -12,6 +13,8 @@ type Props = {
   overlayOpacity: Animated.AnimatedInterpolation<string | number>;
   sheetPanHandlers: any;
   selectedPartner?: Partner;
+  communitiesCount: number;
+  groupsCount: number;
   animatePartnerSheet: (open: boolean) => void;
 };
 
@@ -22,6 +25,8 @@ export default function PartnerSheet({
   overlayOpacity,
   sheetPanHandlers,
   selectedPartner,
+  communitiesCount,
+  groupsCount,
   animatePartnerSheet,
 }: Props) {
   const { palette } = useKISTheme();
@@ -67,7 +72,7 @@ export default function PartnerSheet({
             { color: palette.text },
           ]}
         >
-          {selectedPartner?.name} info
+          {(selectedPartner?.name ?? 'Partner')} info
         </Text>
         <Text
           style={[
@@ -94,7 +99,7 @@ export default function PartnerSheet({
               { color: palette.subtext },
             ]}
           >
-            Tagline: {selectedPartner?.tagline}
+            Tagline: {selectedPartner?.tagline || 'No description yet.'}
           </Text>
           <Text
             style={[
@@ -102,11 +107,42 @@ export default function PartnerSheet({
               { color: palette.subtext },
             ]}
           >
-            Example fields:
-            {'\n'}• Partner type (church, ministry, business)
-            {'\n'}• Visibility (public / invite-only)
-            {'\n'}• Your role (member, admin, steward)
+            Groups: {groupsCount}
+            {'\n'}Communities: {communitiesCount}
+            {'\n'}Feed: General updates and announcements
           </Text>
+        </View>
+
+        <View style={styles.sheetSection}>
+          <Text
+            style={[
+              styles.sheetSectionTitle,
+              { color: palette.text },
+            ]}
+          >
+            Team accounts
+          </Text>
+          <Text
+            style={[
+              styles.sheetSectionText,
+              { color: palette.subtext },
+            ]}
+          >
+            {selectedPartner?.admins?.length || 0} admins linked to this partner.
+          </Text>
+          <View style={{ marginTop: 10, flexDirection: 'row', gap: 8 }}>
+            <KISButton
+              title="Manage team"
+              size="sm"
+              variant="outline"
+              onPress={() => Alert.alert('Partner', 'Team management is coming next.')}
+            />
+            <KISButton
+              title="Add admin"
+              size="sm"
+              onPress={() => Alert.alert('Partner', 'Admin invite flow is coming next.')}
+            />
+          </View>
         </View>
 
         <View style={styles.sheetSection}>

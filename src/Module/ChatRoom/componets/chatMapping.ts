@@ -32,7 +32,10 @@ export const mapBackendToChatMessage = (
       ? createdAtRaw
       : new Date(createdAtRaw).toISOString();
 
-  const text = payload.text ?? payload.ciphertext ?? '';
+  const rawText = payload.text ?? '';
+  const ciphertext = payload.ciphertext ?? undefined;
+  const hasEncryptedMeta = !!(payload.encryptionMeta ?? payload.encryption_meta);
+  const text = rawText || (ciphertext || hasEncryptedMeta ? 'Encrypted message' : '');
 
   const styledText = payload.styledText ?? payload.styled_text ?? undefined;
 
@@ -108,6 +111,8 @@ export const mapBackendToChatMessage = (
     kind: payload.kind ?? 'text',
     status: 'sent',
     text,
+    ciphertext,
+    encryptionMeta: payload.encryptionMeta ?? payload.encryption_meta ?? undefined,
     replyToId: payload.replyToId,
     attachments: payload.attachments
       ? mapAttachments(payload.attachments)

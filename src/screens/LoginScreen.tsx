@@ -9,6 +9,7 @@ import {
   Alert,
   ActivityIndicator,
   Platform,
+  Modal,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -19,6 +20,7 @@ import KISTextInput from '../constants/KISTextInput';
 import { postRequest } from '@/network/post/index';
 import ROUTES from '@/network';
 import { useAuth } from '../../App';
+import { ensureDeviceId } from '@/security/e2ee';
 
 const CM_REGION = 'CM';
 const CM_NATIONAL_MAX = 9; // Cameroon national digits length
@@ -31,6 +33,12 @@ export default function LoginScreen({ navigation }: any) {
   const [password, setPassword] = useState('');
   const [remember, setRemember] = useState(true);
   const [loading, setLoading] = useState(false);
+  const [forgotVisible, setForgotVisible] = useState(false);
+  const [forgotStep, setForgotStep] = useState<'request' | 'reset'>('request');
+  const [forgotPhone, setForgotPhone] = useState('');
+  const [forgotCode, setForgotCode] = useState('');
+  const [forgotPassword, setForgotPassword] = useState('');
+  const [forgotLoading, setForgotLoading] = useState(false);
 
   // Accept either national digits or +E.164. If national, enforce 0–9 digits (CM).
   const onChangePhone = useCallback((value: string) => {
@@ -82,10 +90,13 @@ export default function LoginScreen({ navigation }: any) {
       setLoading(true);
 
       // Always send country: "CM", keep phone as typed (either 9 digits or +E.164)
+      const deviceId = await ensureDeviceId();
       const payload = {
         phone: phone.trim(),
         password,
         country: CM_REGION,
+        device_id: deviceId,
+        device_platform: Platform.OS,
       };
 
       const res = await postRequest(ROUTES.auth.login, payload, {
@@ -109,6 +120,62 @@ export default function LoginScreen({ navigation }: any) {
       Alert.alert('Error', e?.message ?? 'Unexpected error while logging in.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const forgotPhoneValid = useMemo(() => {
+    if (!forgotPhone) return false;
+    if (forgotPhone.startsWith('+')) {
+      return forgotPhone.replace(/[^\d]/g, '').length >= 11;
+    }
+    return /^\d{9}$/.test(forgotPhone);
+  }, [forgotPhone]);
+
+  const requestResetCode = async () => {
+    try {
+      if (!forgotPhoneValid || forgotLoading) return;
+      setForgotLoading(true);
+      const payload = { phone: forgotPhone.trim(), channel: 'sms' };
+      const res = await postRequest(ROUTES.auth.forgotPassword, payload, {
+        errorMessage: 'Unable to send reset code.',
+      });
+      if (!res?.success) {
+        const msg = res?.message || res?.data?.detail || 'Failed to send code.';
+        return Alert.alert('Reset failed', msg);
+      }
+      setForgotStep('reset');
+    } catch (e: any) {
+      Alert.alert('Error', e?.message ?? 'Failed to send reset code.');
+    } finally {
+      setForgotLoading(false);
+    }
+  };
+
+  const resetPassword = async () => {
+    try {
+      if (!forgotPhoneValid || !forgotCode || !forgotPassword || forgotLoading) return;
+      setForgotLoading(true);
+      const payload = {
+        phone: forgotPhone.trim(),
+        code: forgotCode.trim(),
+        new_password: forgotPassword,
+      };
+      const res = await postRequest(ROUTES.auth.resetPassword, payload, {
+        errorMessage: 'Unable to reset password.',
+      });
+      if (!res?.success) {
+        const msg = res?.message || res?.data?.detail || 'Reset failed.';
+        return Alert.alert('Reset failed', msg);
+      }
+      Alert.alert('Success', 'Password reset. Please log in.');
+      setForgotVisible(false);
+      setForgotStep('request');
+      setForgotCode('');
+      setForgotPassword('');
+    } catch (e: any) {
+      Alert.alert('Error', e?.message ?? 'Failed to reset password.');
+    } finally {
+      setForgotLoading(false);
     }
   };
 
@@ -150,7 +217,7 @@ export default function LoginScreen({ navigation }: any) {
           <Switch value={remember} onValueChange={setRemember} />
           <Text style={{ color: palette.subtext, marginLeft: 10 }}>Remember me</Text>
         </View>
-        <Pressable onPress={() => Alert.alert('Forgot password', 'Coming soon.')}>
+        <Pressable onPress={() => setForgotVisible(true)}>
           <Text style={{ color: palette.subtext, textDecorationLine: 'underline' }}>Forgot password?</Text>
         </Pressable>
       </View>
@@ -169,6 +236,53 @@ export default function LoginScreen({ navigation }: any) {
       </View>
 
       <Text style={{ color: palette.subtext, textAlign: 'center', marginTop: 24 }}>2FA enabled</Text>
+
+      <Modal visible={forgotVisible} transparent animationType="fade" onRequestClose={() => setForgotVisible(false)}>
+        <View style={styles.modalBackdrop}>
+          <View style={[styles.modalCard, { backgroundColor: palette.card }]}>
+            <Text style={[styles.modalTitle, { color: palette.text }]}>Reset password</Text>
+            <KISTextInput
+              label="Phone (CM)"
+              placeholder="e.g. 676139881 or +237676139881"
+              autoCapitalize="none"
+              keyboardType="phone-pad"
+              value={forgotPhone}
+              onChangeText={setForgotPhone}
+              errorText={forgotPhone.length > 0 && !forgotPhoneValid ? 'Enter a valid CM number (9 digits) or +237…' : undefined}
+            />
+            {forgotStep === 'reset' ? (
+              <>
+                <KISTextInput
+                  label="Code"
+                  placeholder="6-digit code"
+                  keyboardType="number-pad"
+                  value={forgotCode}
+                  onChangeText={setForgotCode}
+                />
+                <KISTextInput
+                  label="New password"
+                  placeholder="New password"
+                  secureTextEntry
+                  value={forgotPassword}
+                  onChangeText={setForgotPassword}
+                />
+              </>
+            ) : null}
+            <View style={styles.modalRow}>
+              <KISButton
+                title={forgotLoading ? undefined : forgotStep === 'request' ? 'Send code' : 'Reset'}
+                onPress={forgotStep === 'request' ? requestResetCode : resetPassword}
+                disabled={forgotLoading || !forgotPhoneValid || (forgotStep === 'reset' && (!forgotCode || !forgotPassword))}
+              >
+                {forgotLoading ? <ActivityIndicator /> : null}
+              </KISButton>
+              <Pressable onPress={() => setForgotVisible(false)}>
+                <Text style={{ color: palette.subtext }}>Cancel</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -194,4 +308,22 @@ const styles = StyleSheet.create({
   },
   countryLabel: { fontSize: 14, fontWeight: '600' },
   countryValue: { fontSize: 14, fontWeight: '700' },
+  modalBackdrop: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    padding: 16,
+  },
+  modalCard: {
+    width: '100%',
+    maxWidth: 360,
+    borderRadius: 16,
+    padding: 16,
+  },
+  modalTitle: { fontSize: 18, fontWeight: '700', marginBottom: 8 },
+  modalRow: {
+    marginTop: 12,
+    gap: 12,
+  },
 });

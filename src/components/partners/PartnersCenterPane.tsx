@@ -19,6 +19,8 @@ type Props = {
   expandedCommunities: Record<string, boolean>;
   onToggleCommunity: (communityId: string) => void;
   onGroupPress: (groupId: string) => void;
+  onFeedPress: () => void;
+  onCommunityFeedPress: (communityId: string) => void;
   onPartnerHeaderPress: () => void;
 };
 
@@ -31,6 +33,8 @@ export default function PartnersCenterPane({
   expandedCommunities,
   onToggleCommunity,
   onGroupPress,
+  onFeedPress,
+  onCommunityFeedPress,
   onPartnerHeaderPress,
 }: Props) {
   const { palette } = useKISTheme();
@@ -146,6 +150,49 @@ export default function PartnersCenterPane({
           </View>
         ) : null}
 
+        {/* General feed */}
+        <View style={styles.sectionHeaderRow}>
+          <Text
+            style={[
+              styles.sectionHeaderText,
+              { color: palette.text },
+            ]}
+          >
+            General feed
+          </Text>
+        </View>
+
+        <Pressable
+          onPress={onFeedPress}
+          style={({ pressed }) => [
+            styles.groupRow,
+            { opacity: pressed ? 0.8 : 1 },
+          ]}
+        >
+          <View style={styles.groupHash}>
+            <Text
+              style={{
+                color: palette.subtext,
+                fontSize: 15,
+                fontWeight: '700',
+              }}
+            >
+              📰
+            </Text>
+          </View>
+          <Text
+            style={{
+              flex: 1,
+              color: palette.text,
+              fontSize: 14,
+              fontWeight: '600',
+            }}
+            numberOfLines={1}
+          >
+            {selectedPartner?.name} feed
+          </Text>
+        </Pressable>
+
         {/* Standalone groups */}
         <View style={styles.sectionHeaderRow}>
           <Text
@@ -247,10 +294,8 @@ export default function PartnersCenterPane({
             {communitiesForPartner.map((community) => {
               const isExpanded = expandedCommunities[community.id] ?? true;
               const communityGroups = groupsForPartner.filter(
-                (g) => g.communityId === community.id
+                (g) => g.community === community.id
               );
-
-              if (!communityGroups.length) return null;
 
               return (
                 <View
@@ -306,18 +351,14 @@ export default function PartnersCenterPane({
                   </Pressable>
 
                   {isExpanded &&
-                    communityGroups.map((group) => {
-                      const isSelected = group.id === selectedGroupId;
-                      return (
+                    (
+                      <>
                         <Pressable
-                          key={group.id}
-                          onPress={() => onGroupPress(group.id)}
+                          onPress={() => onCommunityFeedPress(community.id)}
                           style={({ pressed }) => [
                             styles.communityGroupRow,
                             {
-                              backgroundColor: isSelected
-                                ? palette.primarySoft
-                                : 'transparent',
+                              backgroundColor: 'transparent',
                               opacity: pressed ? 0.8 : 1,
                             },
                           ]}
@@ -330,25 +371,66 @@ export default function PartnersCenterPane({
                                 fontWeight: '700',
                               }}
                             >
-                              #
+                              📰
                             </Text>
                           </View>
                           <Text
                             style={{
                               flex: 1,
-                              color: isSelected
-                                ? palette.primaryStrong
-                                : palette.text,
+                              color: palette.text,
                               fontSize: 14,
-                              fontWeight: isSelected ? '700' : '400',
+                              fontWeight: '600',
                             }}
                             numberOfLines={1}
                           >
-                            {group.name.replace(/^#\s*/i, '')}
+                            Feed
                           </Text>
                         </Pressable>
-                      );
-                    })}
+                        {communityGroups.map((group) => {
+                          const isSelected = group.id === selectedGroupId;
+                          return (
+                            <Pressable
+                              key={group.id}
+                              onPress={() => onGroupPress(group.id)}
+                              style={({ pressed }) => [
+                                styles.communityGroupRow,
+                                {
+                                  backgroundColor: isSelected
+                                    ? palette.primarySoft
+                                    : 'transparent',
+                                  opacity: pressed ? 0.8 : 1,
+                                },
+                              ]}
+                            >
+                              <View style={styles.groupHash}>
+                                <Text
+                                  style={{
+                                    color: palette.subtext,
+                                    fontSize: 15,
+                                    fontWeight: '700',
+                                  }}
+                                >
+                                  #
+                                </Text>
+                              </View>
+                              <Text
+                                style={{
+                                  flex: 1,
+                                  color: isSelected
+                                    ? palette.primaryStrong
+                                    : palette.text,
+                                  fontSize: 14,
+                                  fontWeight: isSelected ? '700' : '400',
+                                }}
+                                numberOfLines={1}
+                              >
+                                {group.name.replace(/^#\s*/i, '')}
+                              </Text>
+                            </Pressable>
+                          );
+                        })}
+                      </>
+                    )}
                 </View>
               );
             })}

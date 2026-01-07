@@ -26,6 +26,8 @@ type NewCommunityFormProps = {
     error?: string;
   };
   onSuccess: (community: any) => void;
+  selectedMemberIds: string[];
+  onSelectMembers: () => void;
 };
 
 const slugify = (value: string): string =>
@@ -38,11 +40,14 @@ const slugify = (value: string): string =>
 export const NewCommunityForm: React.FC<NewCommunityFormProps> = ({
   palette,
   onSuccess,
+  selectedMemberIds,
+  onSelectMembers,
 }) => {
   const [name, setName] = useState('');
   const [slug, setSlug] = useState('');
   const [description, setDescription] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const memberCountLabel = `${selectedMemberIds.length} selected`;
 
   const handleSubmit = async () => {
     const trimmedName = name.trim();
@@ -63,15 +68,23 @@ export const NewCommunityForm: React.FC<NewCommunityFormProps> = ({
         partner: null,
       };
 
-      // 👉 Make sure ROUTES.community.createCommunity is defined
       const createdCommunity = await postRequest(
-        ROUTES.community.createCommunity,
+        ROUTES.community.create,
         payload,
         { errorMessage: 'Unable to create community.' },
       );
-      console.log("checking kis community: ", createdCommunity)
+      if (!createdCommunity?.success || !createdCommunity.data) {
+        throw new Error(createdCommunity?.message || 'Unable to create community.');
+      }
 
-      onSuccess(createdCommunity.data);
+      const communityData = createdCommunity.data;
+      const communityId = communityData?.id;
+      if (communityId && selectedMemberIds.length > 0) {
+        const userIds = selectedMemberIds;
+        await postRequest(ROUTES.community.addMembers(communityId), { userIds });
+      }
+
+      onSuccess(communityData);
     } catch (e: any) {
       console.warn('Error creating community:', e);
       Alert.alert(
@@ -203,6 +216,43 @@ export const NewCommunityForm: React.FC<NewCommunityFormProps> = ({
             }}
             multiline
           />
+        </View>
+      </View>
+
+      {/* Members */}
+      <View style={{ marginBottom: 16 }}>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 }}>
+          <Text style={{ color: palette.subtext, fontSize: 13 }}>Members</Text>
+          <Text style={{ color: palette.subtext, fontSize: 12 }}>{memberCountLabel}</Text>
+        </View>
+        <View
+          style={{
+            borderRadius: 12,
+            borderWidth: 1,
+            borderColor: palette.inputBorder,
+            backgroundColor: palette.card,
+            padding: 10,
+          }}
+        >
+          <Pressable
+            onPress={onSelectMembers}
+            style={({ pressed }) => ({
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              paddingVertical: 10,
+              paddingHorizontal: 12,
+              borderRadius: 10,
+              borderWidth: 1,
+              borderColor: palette.inputBorder,
+              backgroundColor: pressed ? palette.surface : 'transparent',
+            })}
+          >
+            <Text style={{ color: palette.text, fontSize: 13 }}>
+              Add or edit members
+            </Text>
+            <KISIcon name="chevron-right" size={16} color={palette.subtext} />
+          </Pressable>
         </View>
       </View>
 

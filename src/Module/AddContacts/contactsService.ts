@@ -13,6 +13,7 @@ export type KISDeviceContact = {
 
 export type KISContact = KISDeviceContact & {
   isRegistered: boolean;
+  userId?: string;
 };
 
 /**
@@ -135,10 +136,12 @@ export async function markRegisteredOnBackend(
         }
 
         const registered = !!res.data?.registered;
+        const userId = res.data?.userId ? String(res.data.userId) : undefined;
 
         return {
           ...contact,
           isRegistered: registered,
+          userId,
         };
       } catch (e) {
         console.warn(

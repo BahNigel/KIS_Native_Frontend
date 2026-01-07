@@ -3,10 +3,10 @@ import React from 'react';
 import { FlatList, Pressable, Text, View } from 'react-native';
 import styles from './partnersStyles';
 import { useKISTheme } from '../../theme/useTheme';
-import { LEFT_RAIL_WIDTH } from './partnersTypes';
-import { MOCK_PARTNERS } from './partnersMockData';
+import { LEFT_RAIL_WIDTH, Partner } from './partnersTypes';
 
 type Props = {
+  partners: Partner[];
   selectedPartnerId: string;
   onSelectPartner: (id: string) => void;
   onAddPartnerPress: () => void;
@@ -14,13 +14,14 @@ type Props = {
 };
 
 export default function PartnersLeftRail({
+  partners,
   selectedPartnerId,
   onSelectPartner,
   onAddPartnerPress,
   onLogout,
 }: Props) {
   const { palette } = useKISTheme();
-  const selectedPartner = MOCK_PARTNERS.find((p) => p.id === selectedPartnerId) ?? MOCK_PARTNERS[0];
+  const selectedPartner = partners.find((p) => p.id === selectedPartnerId) ?? partners[0];
 
   return (
     <View
@@ -57,11 +58,12 @@ export default function PartnersLeftRail({
       </Pressable>
 
       <FlatList
-        data={MOCK_PARTNERS}
+        data={partners}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.partnerList}
         renderItem={({ item }) => {
           const isActive = item.id === selectedPartner?.id;
+          const initials = item.initials || item.name?.slice(0, 2).toUpperCase();
           return (
             <Pressable
               onPress={() => onSelectPartner(item.id)}
@@ -81,11 +83,16 @@ export default function PartnersLeftRail({
                   fontWeight: '700',
                 }}
               >
-                {item.initials}
+                {initials}
               </Text>
             </Pressable>
           );
         }}
+        ListEmptyComponent={
+          <Text style={{ color: palette.subtext, fontSize: 12 }}>
+            No partners yet
+          </Text>
+        }
       />
 
       <Pressable onPress={onLogout} style={styles.logoutButton}>

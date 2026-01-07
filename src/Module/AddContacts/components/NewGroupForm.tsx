@@ -1,6 +1,6 @@
 // src/screens/chat/components/NewGroupForm.tsx
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -14,6 +14,7 @@ import { KIS_TOKENS } from '../../../theme/constants';
 import { KISIcon } from '@/constants/kisIcons';
 import ROUTES from '@/network';
 import { postRequest } from '@/network/post';
+import { getRequest } from '@/network/get';
 
 type NewGroupFormProps = {
   palette: {
@@ -26,6 +27,20 @@ type NewGroupFormProps = {
     error?: string;
   };
   onSuccess: (group: any) => void;
+  selectedMemberIds: string[];
+  onSelectMembers: () => void;
+  communityId?: string | null;
+  communityName?: string | null;
+  initialChannelId?: string | null;
+  onCreateChannel?: () => void;
+  name: string;
+  slug: string;
+  description: string;
+  selectedChannelId: string | null;
+  onChangeName: (value: string) => void;
+  onChangeSlug: (value: string) => void;
+  onChangeDescription: (value: string) => void;
+  onChangeChannelId: (value: string | null) => void;
 };
 
 const slugify = (value: string): string =>
@@ -38,11 +53,47 @@ const slugify = (value: string): string =>
 export const NewGroupForm: React.FC<NewGroupFormProps> = ({
   palette,
   onSuccess,
+  selectedMemberIds,
+  onSelectMembers,
+  communityId,
+  communityName,
+  initialChannelId,
+  onCreateChannel,
+  name,
+  slug,
+  description,
+  selectedChannelId,
+  onChangeName,
+  onChangeSlug,
+  onChangeDescription,
+  onChangeChannelId,
 }) => {
-  const [name, setName] = useState('');
-  const [slug, setSlug] = useState('');
-  const [description, setDescription] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [channels, setChannels] = useState<Array<{ id: string; name?: string }>>([]);
+  const [channelsLoading, setChannelsLoading] = useState(false);
+
+  const memberCountLabel = `${selectedMemberIds.length} selected`;
+
+  useEffect(() => {
+    const loadChannels = async () => {
+      setChannelsLoading(true);
+      try {
+        const res = await getRequest(ROUTES.channels.getAllChannels, {
+          errorMessage: 'Failed to load channels',
+        });
+        const list = res?.data ?? res ?? [];
+        if (Array.isArray(list)) setChannels(list);
+      } finally {
+        setChannelsLoading(false);
+      }
+    };
+    loadChannels();
+  }, []);
+
+  useEffect(() => {
+    if (!initialChannelId) return;
+    onChangeChannelId(String(initialChannelId));
+  }, [initialChannelId, onChangeChannelId]);
 
   const handleSubmit = async () => {
     const trimmedName = name.trim();
@@ -56,24 +107,39 @@ export const NewGroupForm: React.FC<NewGroupFormProps> = ({
     try {
       setSubmitting(true);
 
+      if (!communityId && !selectedChannelId) {
+        Alert.alert('Select a channel', 'Please select a channel for this group.');
+        return;
+      }
+
       const payload = {
         name: trimmedName,
         slug: finalSlug,
         // For now: no partner / community selection in the UI
         partner: null,
-        community: null,
+        community: communityId ?? null,
+        channel: communityId ? null : selectedChannelId,
         description: description.trim() || undefined,
       };
 
       const createdGroup = await postRequest(
-        ROUTES.groups.createGroup,
+        ROUTES.groups.create,
         payload,
         { errorMessage: 'Unable to create group.' },
       );
 
-      console.log("cheking created group data: ", createdGroup)
+      if (!createdGroup?.success || !createdGroup.data) {
+        throw new Error(createdGroup?.message || 'Unable to create group.');
+      }
 
-      onSuccess(createdGroup.data);
+      const groupData = createdGroup.data;
+      const groupId = groupData?.id;
+      if (groupId && selectedMemberIds.length > 0) {
+        const userIds = selectedMemberIds;
+        await postRequest(ROUTES.groups.addMembers(groupId), { userIds });
+      }
+
+      onSuccess(groupData);
     } catch (e: any) {
       console.warn('Error creating group:', e);
       Alert.alert(
@@ -86,17 +152,22 @@ export const NewGroupForm: React.FC<NewGroupFormProps> = ({
   };
 
   return (
-    <View style={{ marginTop: 16 }}>
-      <Text
-        style={{
-          color: palette.text,
-          fontSize: 16,
-          fontWeight: '600',
-          marginBottom: 12,
-        }}
-      >
-        Create a new group
-      </Text>
+    <View style={{ marginTop: 12 }}>
+      <View style={{ marginBottom: 16 }}>
+        <Text
+          style={{
+            color: palette.text,
+            fontSize: 20,
+            fontWeight: '700',
+            letterSpacing: 0.2,
+          }}
+        >
+          Create a group
+        </Text>
+        <Text style={{ color: palette.subtext, fontSize: 12, marginTop: 4 }}>
+          Pick members, give it a name, and start chatting.
+        </Text>
+      </View>
 
       {/* Group name */}
       <View style={{ marginBottom: 12 }}>
@@ -121,10 +192,10 @@ export const NewGroupForm: React.FC<NewGroupFormProps> = ({
         >
           <TextInput
             value={name}
-            onChangeText={setName}
+            onChangeText={onChangeName}
             placeholder="e.g. KIS Dev Squad"
             placeholderTextColor={palette.subtext}
-            style={{ color: palette.text, fontSize: 14 }}
+            style={{ color: palette.text, fontSize: 15 }}
           />
         </View>
       </View>
@@ -152,7 +223,7 @@ export const NewGroupForm: React.FC<NewGroupFormProps> = ({
         >
           <TextInput
             value={slug}
-            onChangeText={setSlug}
+            onChangeText={onChangeSlug}
             autoCapitalize="none"
             autoCorrect={false}
             placeholder="e.g. kis-dev-squad"
@@ -194,7 +265,7 @@ export const NewGroupForm: React.FC<NewGroupFormProps> = ({
         >
           <TextInput
             value={description}
-            onChangeText={setDescription}
+            onChangeText={onChangeDescription}
             placeholder="What is this group about?"
             placeholderTextColor={palette.subtext}
             style={{
@@ -205,6 +276,138 @@ export const NewGroupForm: React.FC<NewGroupFormProps> = ({
             }}
             multiline
           />
+        </View>
+      </View>
+
+      {communityId ? (
+        <View style={{ marginBottom: 16 }}>
+          <Text style={{ color: palette.subtext, fontSize: 13, marginBottom: 6 }}>
+            Community
+          </Text>
+          <View
+            style={{
+              borderRadius: 12,
+              borderWidth: 1,
+              borderColor: palette.inputBorder,
+              backgroundColor: palette.card,
+              paddingHorizontal: 12,
+              paddingVertical: 10,
+            }}
+          >
+            <Text style={{ color: palette.text, fontSize: 14, fontWeight: '600' }}>
+              {communityName || 'Selected community'}
+            </Text>
+          </View>
+        </View>
+      ) : (
+        <View style={{ marginBottom: 16 }}>
+          <Text
+            style={{
+              color: palette.subtext,
+              fontSize: 13,
+              marginBottom: 6,
+            }}
+          >
+            Select a channel for this group
+          </Text>
+          <View
+            style={{
+              borderRadius: 12,
+              borderWidth: 1,
+              borderColor: palette.inputBorder,
+              backgroundColor: palette.card,
+              padding: 8,
+              maxHeight: 160,
+            }}
+          >
+            {channelsLoading ? (
+              <ActivityIndicator color={palette.primary} />
+            ) : channels.length === 0 ? (
+              <Pressable
+                onPress={onCreateChannel}
+                style={({ pressed }) => ({
+                  borderWidth: 1,
+                  borderColor: palette.inputBorder,
+                  borderRadius: 10,
+                  paddingVertical: 10,
+                  paddingHorizontal: 12,
+                  backgroundColor: pressed ? palette.surface : 'transparent',
+                })}
+              >
+                <Text style={{ color: palette.text, fontSize: 13 }}>
+                  No channels found. Create a channel first.
+                </Text>
+              </Pressable>
+            ) : (
+              <ScrollView showsVerticalScrollIndicator={false}>
+                {channels.map((ch) => {
+                  const isSelected = selectedChannelId === String(ch.id);
+                  return (
+                    <Pressable
+                      key={String(ch.id)}
+                      onPress={() => onChangeChannelId(String(ch.id))}
+                      style={{
+                        paddingVertical: 8,
+                        paddingHorizontal: 10,
+                        borderRadius: 10,
+                        borderWidth: 1,
+                        borderColor: palette.inputBorder,
+                        marginBottom: 8,
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                      backgroundColor: isSelected ? palette.bg : 'transparent',
+                      }}
+                    >
+                      <Text style={{ color: palette.text, fontSize: 13 }}>
+                        {ch.name || `Channel ${ch.id}`}
+                      </Text>
+                      {isSelected && (
+                        <KISIcon name="check" size={16} color={palette.primary} />
+                      )}
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
+            )}
+          </View>
+        </View>
+      )}
+
+      {/* Members */}
+      <View style={{ marginBottom: 16 }}>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 }}>
+          <Text style={{ color: palette.subtext, fontSize: 13 }}>Members</Text>
+          <Text style={{ color: palette.subtext, fontSize: 12 }}>{memberCountLabel}</Text>
+        </View>
+        <View
+          style={{
+            borderRadius: 12,
+            borderWidth: 1,
+            borderColor: palette.inputBorder,
+            backgroundColor: palette.card,
+            padding: 10,
+          }}
+        >
+          <Pressable
+            onPress={onSelectMembers}
+            style={({ pressed }) => ({
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              paddingVertical: 10,
+              paddingHorizontal: 12,
+              borderRadius: 10,
+              borderWidth: 1,
+              borderColor: palette.inputBorder,
+              backgroundColor: pressed ? palette.surface : 'transparent',
+            })}
+          >
+            <Text style={{ color: palette.text, fontSize: 13 }}>
+              Add or edit members
+            </Text>
+            <KISIcon name="chevron-right" size={16} color={palette.subtext} />
+          </Pressable>
         </View>
       </View>
 
@@ -219,6 +422,11 @@ export const NewGroupForm: React.FC<NewGroupFormProps> = ({
           paddingVertical: 10,
           paddingHorizontal: 16,
           backgroundColor: palette.primary,
+          shadowColor: palette.primary,
+          shadowOpacity: 0.25,
+          shadowRadius: 12,
+          shadowOffset: { width: 0, height: 8 },
+          elevation: 4,
           opacity:
             submitting || !name.trim()
               ? 0.6

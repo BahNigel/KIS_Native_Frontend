@@ -7,11 +7,13 @@ import {
   Pressable,
   NativeSyntheticEvent,
   NativeScrollEvent,
+  Image,
 } from 'react-native';
 
 import { useKISTheme } from '@/theme/useTheme';
 import { KIS_TOKENS } from '@/theme/constants';
 import { KISIcon } from '@/constants/kisIcons';
+import ImagePlaceholder from '@/components/common/ImagePlaceholder';
 
 import {
   styles,
@@ -21,6 +23,7 @@ import {
   applyQuickChips,
   applyCustomRules,
   bySearch,
+  directConversationAvatar,
   participantsToIds,
   normalizePhoneKey,
   otherParticipantPhone,
@@ -39,6 +42,11 @@ type ChatsTabProps = {
   currentUserId?: string;
   conversationMeta?: Record<string, { lastMessage?: string; lastAt?: string; unreadCount?: number }>;
   contactNameByPhone?: Record<string, string>;
+  communityByConversationId?: Record<string, { id: string; name: string }>;
+  communityGroupConversationIds?: Set<string>;
+  statusByUserId?: Record<string, { hasStatus: boolean; hasUnseen: boolean }>;
+  onOpenStatus?: (userId: string) => void;
+  onOpenAvatarPreview?: (payload: { avatarUrl: string; chat: Chat; userId?: string | null }) => void;
 
   onScroll?: (e: NativeSyntheticEvent<NativeScrollEvent>) => void;
   onEndReached?: () => void;
@@ -59,6 +67,11 @@ export function ChatsTab({
   currentUserId,
   conversationMeta,
   contactNameByPhone,
+  communityByConversationId,
+  communityGroupConversationIds,
+  statusByUserId,
+  onOpenStatus,
+  onOpenAvatarPreview,
   onScroll,
   onEndReached,
   onOpenChat,
@@ -88,12 +101,28 @@ export function ChatsTab({
    * FINAL FILTERED DATA
    * ------------------------------------------------------------ */
   const data = useMemo(() => {
-    const filtered = normalizedChats.filter(
-      (c: Chat) =>
-        applyQuickChips(c, activeQuick) &&
+    const chipsForApply = new Set(activeQuick);
+    if (chipsForApply.has('Community')) chipsForApply.delete('Community');
+
+    const filtered = normalizedChats.filter((c: Chat) => {
+      if (c.kind === 'post') return false;
+      if (c.kind === 'channel') return false;
+      const convId = String((c as any).conversationId ?? c.id);
+      if (c.isGroup && c.communityId) return false;
+      if (communityGroupConversationIds?.has(convId)) return false;
+      const isCommunityConv =
+        c.isCommunityChat ||
+        c.kind === 'community' ||
+        c.kind === 'post' ||
+        Boolean(c.communityId) ||
+        Boolean(communityByConversationId?.[convId]);
+      if (activeQuick.has('Community') && !isCommunityConv) return false;
+      return (
+        applyQuickChips(c, chipsForApply) &&
         applyCustomRules(c, customRules) &&
         bySearch(c, search)
-    );
+      );
+    });
 
     const getLastAt = (item: Chat) => {
       const convId = String((item as any).conversationId ?? item.id);
@@ -186,6 +215,35 @@ export function ChatsTab({
           if (selectionMode) {
             toggleSelectChat(item);
           } else {
+            const convKey = String((item as any).conversationId ?? item.id);
+            const community = communityByConversationId?.[convKey];
+            const communityId =
+              item.communityId ??
+              community?.id ??
+              (item.isCommunityChat ? item.id : undefined);
+            const isCommunity =
+              item.isCommunityChat ||
+              item.kind === 'community' ||
+              item.kind === 'post' ||
+              Boolean(communityId);
+            if (community) {
+              onOpenChat?.({
+                ...item,
+                name: community.name || displayName,
+                isCommunityChat: true,
+                communityId: community.id,
+              });
+              return;
+            }
+            if (isCommunity && communityId) {
+              onOpenChat?.({
+                ...item,
+                name: (community?.name || item.name || displayName) as string,
+                isCommunityChat: true,
+                communityId,
+              });
+              return;
+            }
             onOpenChat?.({ ...item, name: displayName });
           }
         };
@@ -194,14 +252,30 @@ export function ChatsTab({
           toggleSelectChat(item);
         };
 
+        const avatarUrl = item.avatarUrl || (item.isDirect
+          ? directConversationAvatar(item.participants ?? [], currentUserId)
+          : null);
+
+        const ids = participantsToIds(item.participants ?? []);
+        const otherId = item.isDirect
+          ? ids.find((u) => u && u !== currentUserId) ?? null
+          : null;
+        const statusInfo = otherId ? statusByUserId?.[otherId] : null;
+        const hasStatus = Boolean(statusInfo?.hasStatus);
+        const ringColor = hasStatus
+          ? statusInfo?.hasUnseen
+            ? palette.primaryStrong ?? palette.primary
+            : palette.subtext ?? palette.divider
+          : null;
+
         return (
           <Pressable
             onPress={handlePress}
             onLongPress={handleLongPress}
             style={[
               styles.row,
-              {
-                backgroundColor: isSelected
+            {
+              backgroundColor: isSelected
                   ? palette.primarySoft
                   : palette.card,
                 borderColor: isSelected
@@ -211,18 +285,40 @@ export function ChatsTab({
               KIS_TOKENS.elevation.card,
             ]}
           >
-            {/* AVATAR (placeholder until real avatar support) */}
-            <View style={{ position: 'relative' }}>
+            {/* AVATAR */}
+            <Pressable
+              onPress={() => {
+                if (hasStatus && otherId) {
+                  onOpenStatus?.(otherId);
+                  return;
+                }
+                if (avatarUrl) {
+                  onOpenAvatarPreview?.({
+                    avatarUrl,
+                    chat: item,
+                    userId: otherId ?? null,
+                  });
+                }
+              }}
+              disabled={!hasStatus && !avatarUrl}
+              style={{ position: 'relative' }}
+            >
               <View
-                style={[
-                  styles.avatar,
-                  { backgroundColor: palette.divider },
-                ]}
-              />
+                style={{
+                  borderWidth: ringColor ? 2 : 0,
+                  borderColor: ringColor ?? 'transparent',
+                  padding: ringColor ? 2 : 0,
+                  borderRadius: 28,
+                }}
+              >
+                {avatarUrl ? (
+                  <Image source={{ uri: avatarUrl }} style={styles.avatar} />
+                ) : (
+                  <ImagePlaceholder size={44} radius={22} style={styles.avatar} />
+                )}
+              </View>
 
               {item.isDirect && (() => {
-                const ids = participantsToIds(item.participants ?? []);
-                const otherId = ids.find((u) => u && u !== currentUserId);
                 const online = otherId ? presenceByUser?.[otherId]?.isOnline : false;
                 if (!online) return null;
                 return (
@@ -267,7 +363,7 @@ export function ChatsTab({
                   </Text>
                 </View>
               )}
-            </View>
+            </Pressable>
 
             {/* NAME + LAST MESSAGE */}
             <View style={{ flex: 1 }}>

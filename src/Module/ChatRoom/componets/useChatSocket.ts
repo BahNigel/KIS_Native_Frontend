@@ -106,6 +106,7 @@ type BackendMessage = {
   senderName?: string | null;
 
   ciphertext?: string;
+  encryptionMeta?: Record<string, any>;
   text?: string;
 
   attachments?: any[];
@@ -152,6 +153,11 @@ function mapBackendToChatMessage(
       ? raw.createdAt
       : new Date(raw.createdAt).toISOString();
 
+  const rawText = raw.text ?? '';
+  const ciphertext = raw.ciphertext ?? undefined;
+  const hasEncryptedMeta = !!(raw.encryptionMeta ?? (raw as any).encryption_meta);
+  const text = rawText || (ciphertext || hasEncryptedMeta ? 'Encrypted message' : undefined);
+
   return {
     id: raw.id,
     clientId: raw.clientId ?? undefined,
@@ -168,7 +174,9 @@ function mapBackendToChatMessage(
     kind: raw.kind,
     status: raw.status as ChatMessage['status'] | undefined,
 
-    text: raw.text ?? raw.ciphertext ?? undefined,
+    text,
+    ciphertext,
+    encryptionMeta: raw.encryptionMeta ?? (raw as any).encryption_meta ?? undefined,
 
     voice: raw.voice,
     styledText: raw.styledText,

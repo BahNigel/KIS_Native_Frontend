@@ -23,8 +23,10 @@ export const getRequest = async (
 
     // const token = await resolveBearerToken();
     const token = await AsyncStorage.getItem('access_token');
+    const deviceId = await AsyncStorage.getItem('device_id');
     const baseHeaders: HeadersInit = {};
     if (token) baseHeaders.Authorization = `Bearer ${token}`;
+    if (deviceId) baseHeaders['X-Device-Id'] = deviceId;
 
     const headers = { ...baseHeaders, ...(options.headers ?? {}) };
 

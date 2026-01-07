@@ -50,12 +50,61 @@ const ROUTES = {
     otp: `${API_BASE_URL}/api/v1/auth/otp/initiate/`,
     sendDeviceCode: `${API_BASE_URL}/api/v1/auth/otp/verify/`,
     status: `${API_BASE_URL}/api/v1/auth/otp/status`,
+    forgotPassword: `${API_BASE_URL}/api/v1/auth/password/forgot/`,
+    resetPassword: `${API_BASE_URL}/api/v1/auth/password/reset/`,
+    e2eeRegisterKeys: `${API_BASE_URL}/api/v1/auth/e2ee/keys/`,
+    e2eeFetchBundle: (userId: string) => `${API_BASE_URL}/api/v1/auth/e2ee/keys/${userId}/`,
     checkContact: `${API_BASE_URL}/api/v1/contacts/check`
   },
   user: {
     profile: `${API_BASE_URL}/user-info/`,
     updateProfile: `${API_BASE_URL}/user-info/update/`,
     preferences: `${API_BASE_URL}/privacy-settings/`,
+    detail: (id: string) => `${API_BASE_URL}/api/v1/users/${id}/`,
+  },
+  profiles: {
+    me: `${API_BASE_URL}/api/v1/profiles/me/`,
+    view: (id: string) => `${API_BASE_URL}/api/v1/profiles/${id}/view/`,
+    update: (id: string) => `${API_BASE_URL}/api/v1/profiles/${id}/`,
+  },
+  profilePrivacy: {
+    list: `${API_BASE_URL}/api/v1/profile-privacy/`,
+    detail: (id: string) => `${API_BASE_URL}/api/v1/profile-privacy/${id}/`,
+  },
+  profileArticles: {
+    list: `${API_BASE_URL}/api/v1/profile-articles/`,
+    detail: (id: string) => `${API_BASE_URL}/api/v1/profile-articles/${id}/`,
+  },
+  profilePreferences: {
+    list: `${API_BASE_URL}/api/v1/profile-preferences/`,
+    detail: (id: string) => `${API_BASE_URL}/api/v1/profile-preferences/${id}/`,
+    me: `${API_BASE_URL}/api/v1/profile-preferences/me/`,
+  },
+  profileShowcases: {
+    list: `${API_BASE_URL}/api/v1/profile-showcases/`,
+    detail: (id: string) => `${API_BASE_URL}/api/v1/profile-showcases/${id}/`,
+  },
+  profileItems: {
+    experiences: `${API_BASE_URL}/api/v1/experiences/`,
+    educations: `${API_BASE_URL}/api/v1/educations/`,
+    skills: `${API_BASE_URL}/api/v1/skills/`,
+    projects: `${API_BASE_URL}/api/v1/projects/`,
+    recommendations: `${API_BASE_URL}/api/v1/recommendations/`,
+  },
+  subscriptions: {
+    list: `${API_BASE_URL}/api/v1/subscriptions/`,
+    detail: (id: string) => `${API_BASE_URL}/api/v1/subscriptions/${id}/`,
+    create: `${API_BASE_URL}/api/v1/subscriptions/`,
+  },
+  wallet: {
+    me: `${API_BASE_URL}/api/v1/wallet/me/`,
+    ledger: `${API_BASE_URL}/api/v1/wallet/ledger/`,
+    transactions: `${API_BASE_URL}/api/v1/wallet/transactions/`,
+    deposit: `${API_BASE_URL}/api/v1/wallet/deposit/`,
+    convert: `${API_BASE_URL}/api/v1/wallet/convert/`,
+    transfer: `${API_BASE_URL}/api/v1/wallet/transfer/`,
+    upgrade: `${API_BASE_URL}/api/v1/wallet/upgrade/`,
+    redeem: `${API_BASE_URL}/api/v1/wallet/redeem/`,
   },
   contacts: {
     check: `${API_BASE_URL}/user/check-contacts/`,
@@ -66,12 +115,14 @@ const ROUTES = {
     exchangeKeys: `${API_BASE_URL}/messages/exchange_keys/`,
   },
   channels: {
-    getAllChannels: `${API_BASE_URL}/channels/`,
-    getChannelById: (id: string) => `${API_BASE_URL}/channels/${id}/`,
-    createChannel: `${API_BASE_URL}/channels/create/`,
-    addMembersToChannel: `${API_BASE_URL}/channels/add-members/`,
+    getAllChannels: `${API_BASE_URL}/api/v1/channels/`,
+    getChannelById: (id: string) => `${API_BASE_URL}/api/v1/channels/${id}/`,
+    createChannel: `${API_BASE_URL}/api/v1/channels/`,
+    subscribeChannel: (id: string) => `${API_BASE_URL}/api/v1/channels/${id}/subscribe/`,
+    addMembersToChannel: (channelId: string) =>
+      `${API_BASE_URL}/api/v1/channels/${channelId}/members/`,
     getChannelMembers: (channelId: string) =>
-      `${API_BASE_URL}/channels/${channelId}/members/`,
+      `${API_BASE_URL}/api/v1/channels/${channelId}/members/`,
   },
   subchannels: {
     getAllSubchannels: `${API_BASE_URL}/subchannels/`,
@@ -81,12 +132,18 @@ const ROUTES = {
       `${API_BASE_URL}/subchannels/${id}/members/`,
   },
   groups: {
-    createGroup: `${API_BASE_URL}/api/v1/groups/`,
-    getAllGroups: `${API_BASE_URL}/groups/`,
-    getGroupById: (id: string) => `${API_BASE_URL}/groups/${id}/`,
-    addMembersToGroup: `${API_BASE_URL}/groups/members/`,
-    getGroupMembers: (id: string) =>
-      `${API_BASE_URL}/groups/${id}/members/`,
+    list: `${API_BASE_URL}/api/v1/groups/`,
+    create: `${API_BASE_URL}/api/v1/groups/`,
+    detail: (id: string) => `${API_BASE_URL}/api/v1/groups/${id}/`,
+    members: (id: string) => `${API_BASE_URL}/api/v1/groups/${id}/members/`,
+    addMembers: (id: string) => `${API_BASE_URL}/api/v1/groups/${id}/add-members/`,
+    join: (id: string) => `${API_BASE_URL}/api/v1/groups/${id}/join/`,
+    leave: (id: string) => `${API_BASE_URL}/api/v1/groups/${id}/leave/`,
+    requestJoin: (id: string) => `${API_BASE_URL}/api/v1/groups/${id}/request-join/`,
+    approveRequest: (id: string) => `${API_BASE_URL}/api/v1/groups/${id}/approve-request/`,
+    rejectRequest: (id: string) => `${API_BASE_URL}/api/v1/groups/${id}/reject-request/`,
+    ban: (id: string) => `${API_BASE_URL}/api/v1/groups/${id}/ban/`,
+    unban: (id: string) => `${API_BASE_URL}/api/v1/groups/${id}/unban/`,
   },
   permissions: {
     getPermissionTypes: `${API_BASE_URL}/permissions/types/`,
@@ -103,12 +160,37 @@ const ROUTES = {
     listConversations: `${API_BASE_URL}/api/v1/conversations/`,
   },
   community: {
-    followCommunity: `${API_BASE_URL}/community_action/`,
-    createCommunity: `${API_BASE_URL}/api/v1/communities/`,
+    list: `${API_BASE_URL}/api/v1/communities/`,
+    create: `${API_BASE_URL}/api/v1/communities/`,
+    detail: (id: string) => `${API_BASE_URL}/api/v1/communities/${id}/`,
+    members: (id: string) => `${API_BASE_URL}/api/v1/communities/${id}/members/`,
+    addMembers: (id: string) => `${API_BASE_URL}/api/v1/communities/${id}/add-members/`,
+    join: (id: string) => `${API_BASE_URL}/api/v1/communities/${id}/join/`,
+    leave: (id: string) => `${API_BASE_URL}/api/v1/communities/${id}/leave/`,
+    requestJoin: (id: string) => `${API_BASE_URL}/api/v1/communities/${id}/request-join/`,
+    approveRequest: (id: string) => `${API_BASE_URL}/api/v1/communities/${id}/approve-request/`,
+    rejectRequest: (id: string) => `${API_BASE_URL}/api/v1/communities/${id}/reject-request/`,
+    ban: (id: string) => `${API_BASE_URL}/api/v1/communities/${id}/ban/`,
+    unban: (id: string) => `${API_BASE_URL}/api/v1/communities/${id}/unban/`,
+    posts: `${API_BASE_URL}/api/v1/posts/`,
+    postDetail: (id: string) => `${API_BASE_URL}/api/v1/posts/${id}/`,
+    postComment: (id: string) => `${API_BASE_URL}/api/v1/posts/${id}/comment/`,
+    postReact: (id: string) => `${API_BASE_URL}/api/v1/posts/${id}/react/`,
+    postPin: (id: string) => `${API_BASE_URL}/api/v1/posts/${id}/pin/`,
+    postUnpin: (id: string) => `${API_BASE_URL}/api/v1/posts/${id}/unpin/`,
   },
   partners: {
-    create: `${API_BASE_URL}/api/v1/partners/`
-  }
+    list: `${API_BASE_URL}/api/v1/partners/`,
+    create: `${API_BASE_URL}/api/v1/partners/`,
+    detail: (id: string) => `${API_BASE_URL}/api/v1/partners/${id}/`,
+    posts: `${API_BASE_URL}/api/v1/partners/posts/`,
+  },
+  statuses: {
+    list: `${API_BASE_URL}/api/v1/statuses/`,
+    create: `${API_BASE_URL}/api/v1/statuses/`,
+    mine: `${API_BASE_URL}/api/v1/statuses/mine/`,
+    view: (id: string) => `${API_BASE_URL}/api/v1/statuses/${id}/view/`,
+  },
   // Optional: chat backend REST endpoints could be added here later if needed
 };
 

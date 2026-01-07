@@ -37,6 +37,7 @@ import {
   Alert,
   TextInput,
   Modal,
+  DeviceEventEmitter,
 } from 'react-native';
 
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -124,6 +125,7 @@ export type AttachmentFilePayload = {
 
 type ExtendedChatRoomPageProps = ChatRoomPageProps & {
   hideHeader?: boolean;
+  onOpenInfo?: (payload: { chat: ChatRoomPageProps['chat']; currentUserId: string | null }) => void;
 };
 
 type MessageLocator = {
@@ -141,6 +143,7 @@ export const ChatRoomPage: React.FC<ExtendedChatRoomPageProps> = ({
   allChats = [],
   onForwardMessages,
   hideHeader,
+  onOpenInfo,
 }) => {
   /* ------------------------------------------------------------------------ */
   /*                               THEME / SAFE AREA                           */
@@ -569,7 +572,9 @@ export const ChatRoomPage: React.FC<ExtendedChatRoomPageProps> = ({
     requestStateOverride ?? (chat as any)?.requestState ?? 'none',
   );
 
-  const canSend = draft.trim().length > 0;
+  const canPost = (chat as any)?.canPost ?? true;
+  const isChannel = (chat as any)?.kind === 'channel';
+  const canSend = draft.trim().length > 0 && canPost;
 
   const statusText = useMemo(() => {
     const convId = conversationId ?? String(storageRoomId);
@@ -770,6 +775,23 @@ export const ChatRoomPage: React.FC<ExtendedChatRoomPageProps> = ({
   /* ======================================================================== */
 
   const bg = palette.chatBg ?? palette.bg;
+  const handleOpenInfo = useCallback(() => {
+    if (!chat) return;
+    onOpenInfo?.({ chat, currentUserId });
+  }, [chat, currentUserId, onOpenInfo]);
+
+  useEffect(() => {
+    const sub = DeviceEventEmitter.addListener('chat.openInfo', (payload: any) => {
+      const targetId = String(payload?.chatId ?? '');
+      const chatId = String(chat?.conversationId ?? chat?.id ?? '');
+      if (!targetId || !chatId) return;
+      if (targetId !== chatId) return;
+      handleOpenInfo();
+    });
+    return () => {
+      sub.remove();
+    };
+  }, [chat?.conversationId, chat?.id, handleOpenInfo]);
 
   return (
     <View
@@ -783,6 +805,8 @@ export const ChatRoomPage: React.FC<ExtendedChatRoomPageProps> = ({
           chat={chat}
           onBack={selectionMode ? exitSelectionMode : onBack}
           palette={palette}
+          onOpenInfo={selectionMode ? undefined : handleOpenInfo}
+          currentUserId={currentUserId}
           statusText={statusText}
           dmStatusLabel={dmStatusLabel}
           dmStatusVariant={dmStatusVariant}
@@ -1184,27 +1208,42 @@ export const ChatRoomPage: React.FC<ExtendedChatRoomPageProps> = ({
           onVisibleMessageIds={handleVisibleMessageIds}
         />
 
-        <MessageComposer
-          value={draft}
-          onChangeText={handleChangeDraft}
-          onSend={handleSend}
-          canSend={canSend}
-          palette={palette}
-          disabled={!chat}
-          onSendVoice={handleSendVoice}
-          onOpenStickerEditor={() => setOpenStickerEditor(true)}
-          onChooseTextBackground={setTextCardBg}
-          onSendSticker={handleSendSticker}
-          stickerVersion={stickerLibraryVersion}
-          replyTo={replyTo}
-          onClearReply={() => setReplyTo(null)}
-          editing={editing}
-          onCancelEditing={() => setEditing(null)}
-          onSendAttachment={handleSendAttachment}
-          onSendContacts={handleSendContacts}
-          onCreatePoll={handleCreatePoll}
-          onCreateEvent={handleCreateEvent}
-        />
+        {isChannel && !canPost ? (
+          <View
+            style={{
+              padding: 14,
+              borderTopWidth: 1,
+              borderTopColor: palette.inputBorder,
+              backgroundColor: palette.card,
+            }}
+          >
+            <Text style={{ color: palette.subtext, textAlign: 'center' }}>
+              Only channel admins can post. Subscribe to receive updates.
+            </Text>
+          </View>
+        ) : (
+          <MessageComposer
+            value={draft}
+            onChangeText={handleChangeDraft}
+            onSend={handleSend}
+            canSend={canSend}
+            palette={palette}
+            disabled={!chat}
+            onSendVoice={handleSendVoice}
+            onOpenStickerEditor={() => setOpenStickerEditor(true)}
+            onChooseTextBackground={setTextCardBg}
+            onSendSticker={handleSendSticker}
+            stickerVersion={stickerLibraryVersion}
+            replyTo={replyTo}
+            onClearReply={() => setReplyTo(null)}
+            editing={editing}
+            onCancelEditing={() => setEditing(null)}
+            onSendAttachment={handleSendAttachment}
+            onSendContacts={handleSendContacts}
+            onCreatePoll={handleCreatePoll}
+            onCreateEvent={handleCreateEvent}
+          />
+        )}
       </KeyboardAvoidingView>
 
       {textCardBg && (

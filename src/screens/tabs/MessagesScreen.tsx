@@ -2,11 +2,13 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   View,
   Text,
+  Image,
   StyleSheet,
   TextInput,
   Pressable,
   Platform,
   Animated,
+  Alert,
   Easing,
   LayoutChangeEvent,
   NativeSyntheticEvent,
@@ -15,6 +17,7 @@ import {
   DeviceEventEmitter,
   AppState,
   useWindowDimensions,
+  Modal,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -31,10 +34,12 @@ import ChatRoomPage from '@/Module/ChatRoom/ChatRoomPage';
 import { useSocket } from '../../../SocketProvider';
 import { loadMessages, upsertMessage } from '@/Module/ChatRoom/Storage/chatStorage';
 import { normalizePhoneKey } from '@/Module/ChatRoom/messagesUtils';
+import { decryptFromUser, ensureDeviceId } from '@/security/e2ee';
 import { FilterManager, ToggleChip } from '@/components/messaging/Filters';
 import UpdatesTab from '@/screens/tabs/MesssagingSubTabs/UpdatesTab';
 import CallsTab from '@/screens/tabs/MesssagingSubTabs/CallsTab';
-import HubTab from '@/screens/tabs/MesssagingSubTabs/HubTab';
+import ROUTES from '@/network';
+import { getRequest } from '@/network/get';
 import { 
   styles,
   type CustomFilter,
@@ -48,6 +53,7 @@ import { mapBackendToChatMessage } from '@/Module/ChatRoom/componets/chatMapping
 const Tab = createMaterialTopTabNavigator();
 type MessagesScreenProps = {
   onOpenChat: (chat: Chat) => void;
+  onOpenInfo?: (payload: { chat: Chat; currentUserId: string | null }) => void;
 };
 
 type LocalQuick = QuickChip;
@@ -60,7 +66,7 @@ type LocalQuick = QuickChip;
  * - Animate the overflow menu (fade + scale) instead of hard-mounting
  * - Avoid repeated setState on layout if height hasn't changed
  */
-export default function MessagesScreen({ onOpenChat }: MessagesScreenProps) {
+export default function MessagesScreen({ onOpenChat, onOpenInfo }: MessagesScreenProps) {
   const { palette } = useKISTheme();
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
@@ -89,12 +95,66 @@ const [selectCount, setSelectCount] = useState<number | null>(null);
 const [conversations, setConversations] = useState<Chat[]>([]);
 const [contactNameByPhone, setContactNameByPhone] = useState<Record<string, string>>({});
 const [conversationMeta, setConversationMeta] = useState<Record<string, { lastMessage?: string; lastAt?: string; unreadCount?: number }>>({});
+const [communityByConversationId, setCommunityByConversationId] = useState<Record<string, { id: string; name: string }>>({});
+const [communityGroupConversationIds, setCommunityGroupConversationIds] = useState<Set<string>>(new Set());
+const [statusByUserId, setStatusByUserId] = useState<Record<string, { hasStatus: boolean; hasUnseen: boolean }>>({});
+const [avatarPreview, setAvatarPreview] = useState<{ uri: string; chat?: Chat; userId?: string | null } | null>(null);
+const [avatarPreviewFull, setAvatarPreviewFull] = useState(false);
+const avatarAnim = useRef(new Animated.Value(0)).current;
+const tabRef = useRef<any>(null);
+
+const deviceIdRef = useRef<string>('');
+const joinedRoomsRef = useRef<Set<string>>(new Set());
 const { socket, isConnected, typingByConversation, currentUserId, presenceByUser } = useSocket();
+
+const loadStatusSummary = useCallback(async (sourceConversations?: Chat[]) => {
+  try {
+    const contacts = await refreshFromDeviceAndBackend();
+    const visibleIds = contacts
+      .filter((c) => c.isRegistered && c.userId)
+      .map((c) => String(c.userId));
+    const convs = sourceConversations ?? conversations;
+    convs.forEach((conv) => {
+      if (!conv?.isDirect) return;
+      const parts = Array.isArray(conv.participants) ? conv.participants : [];
+      parts.forEach((p: any) => {
+        const id = p?.user?.id ?? p?.userId ?? p?.id;
+        if (!id) return;
+        const strId = String(id);
+        if (strId && strId !== String(currentUserId ?? '')) {
+          visibleIds.push(strId);
+        }
+      });
+    });
+    if (currentUserId) visibleIds.push(String(currentUserId));
+    const uniqueIds = Array.from(new Set(visibleIds));
+    const qs = uniqueIds.length ? `?userIds=${uniqueIds.join(',')}` : '';
+    const res = await getRequest(`${ROUTES.statuses.list}${qs}`);
+    const list = Array.isArray(res?.data?.results) ? res.data.results : [];
+    const next: Record<string, { hasStatus: boolean; hasUnseen: boolean }> = {};
+    list.forEach((entry: any) => {
+      const userId = String(entry?.user?.id ?? '');
+      if (!userId) return;
+      const items = Array.isArray(entry?.items) ? entry.items : [];
+      const hasStatus = items.length > 0;
+      const hasUnseen =
+        typeof entry?.has_unseen === 'boolean'
+          ? entry.has_unseen
+          : items.some((item: any) => !item.viewed);
+      next[userId] = { hasStatus, hasUnseen };
+    });
+    setStatusByUserId(next);
+  } catch (e) {
+    console.warn('[MessagesScreen] loadStatusSummary failed', e);
+    setStatusByUserId({});
+  }
+}, [currentUserId, conversations]);
 
 const refreshConversations = useCallback(async (force?: boolean) => {
   const convs = await fetchConversationsForCurrentUser([], currentUserId ?? undefined, !!force);
   setConversations(convs);
-}, [currentUserId]);
+  await loadStatusSummary(convs);
+}, [currentUserId, loadStatusSummary]);
 
 useEffect(() => {
   let active = true;
@@ -103,14 +163,16 @@ useEffect(() => {
     if (term.length >= 2) {
       const convs = await searchConversationsFromServer(term, currentUserId ?? undefined);
       if (active) setConversations(convs);
+      if (active) await loadStatusSummary();
       return;
     }
     const convs = await fetchConversationsForCurrentUser([], currentUserId ?? undefined);
     console.log("checking if conversation is comming from the backend: ", convs)
     if (active) setConversations(convs);
+    if (active) await loadStatusSummary();
   })();
   return () => { active = false; };
-}, [onOpenChat, currentUserId, query]);
+}, [currentUserId, query, loadStatusSummary]);
 
 useEffect(() => {
   const sub = DeviceEventEmitter.addListener('conversation.refresh', async () => {
@@ -128,6 +190,95 @@ useEffect(() => {
   });
   return () => sub.remove();
 }, [refreshConversations]);
+
+useEffect(() => {
+  const sub = DeviceEventEmitter.addListener('status.updated', () => {
+    loadStatusSummary();
+  });
+  return () => {
+    sub.remove();
+  };
+}, [loadStatusSummary]);
+
+useEffect(() => {
+  const sub = DeviceEventEmitter.addListener('status.open', () => {
+    tabRef.current?.navigate?.('Updates');
+  });
+  return () => {
+    sub.remove();
+  };
+}, []);
+
+useEffect(() => {
+  if (!avatarPreview) return;
+  avatarAnim.setValue(0);
+  Animated.timing(avatarAnim, {
+    toValue: 1,
+    duration: 180,
+    easing: Easing.out(Easing.ease),
+    useNativeDriver: true,
+  }).start();
+}, [avatarPreview, avatarAnim]);
+
+useEffect(() => {
+  if (!currentUserId) return;
+  let active = true;
+  const loadCommunities = async () => {
+    try {
+      const res = await getRequest(ROUTES.community.list, {
+        errorMessage: 'Failed to load communities',
+      });
+      const list = Array.isArray(res?.data?.results)
+        ? res.data.results
+        : Array.isArray(res?.results)
+        ? res.results
+        : res?.data ?? res ?? [];
+      if (!active || !Array.isArray(list)) return;
+      const map: Record<string, { id: string; name: string }> = {};
+      const groupConvIds = new Set<string>();
+      await Promise.all(
+        list.map(async (c: any) => {
+          const communityId = c?.id;
+          const mainId = c?.main_conversation_id ?? c?.mainConversationId;
+          const postsId = c?.posts_conversation_id ?? c?.postsConversationId;
+          const name = String(c.name ?? c.title ?? 'Community');
+          if (mainId) {
+            map[String(mainId)] = { id: String(c.id), name };
+          }
+          if (postsId) {
+            map[String(postsId)] = { id: String(c.id), name };
+          }
+          if (!communityId) return;
+          try {
+            const groupsRes = await getRequest(`${ROUTES.groups.list}?community=${communityId}`);
+            const groupsList = Array.isArray(groupsRes?.data?.results)
+              ? groupsRes.data.results
+              : Array.isArray(groupsRes?.results)
+              ? groupsRes.results
+              : groupsRes?.data ?? groupsRes ?? [];
+            if (Array.isArray(groupsList)) {
+              groupsList.forEach((g: any) => {
+                const convId = g?.conversation_id ?? g?.conversationId;
+                if (convId) groupConvIds.add(String(convId));
+              });
+            }
+          } catch {
+            // ignore group fetch errors per community
+          }
+        }),
+      );
+      setCommunityByConversationId(map);
+      setCommunityGroupConversationIds(groupConvIds);
+    } catch {
+      if (active) setCommunityByConversationId({});
+      if (active) setCommunityGroupConversationIds(new Set());
+    }
+  };
+  loadCommunities();
+  return () => {
+    active = false;
+  };
+}, [currentUserId]);
 
 useEffect(() => {
   const sub = DeviceEventEmitter.addListener('conversation.read', (payload: any) => {
@@ -194,11 +345,23 @@ useEffect(() => {
 }, [conversations]);
 
 useEffect(() => {
+  if (deviceIdRef.current) return;
+  ensureDeviceId()
+    .then((id) => {
+      deviceIdRef.current = id;
+    })
+    .catch(() => {});
+}, []);
+
+useEffect(() => {
   if (!socket || !isConnected) return;
   const onMessage = (payload: any) => {
     const convId = String(payload?.conversationId ?? payload?.conversation_id ?? '');
     if (!convId) return;
-    const lastMessage = payload?.text ?? payload?.ciphertext ?? '';
+    const encMeta = payload?.encryptionMeta ?? payload?.encryption_meta ?? undefined;
+    const hasEncrypted = !!(encMeta || payload?.ciphertext);
+    let lastMessage = payload?.text ?? '';
+    if (!lastMessage && hasEncrypted) lastMessage = 'Encrypted message';
     const lastAt = payload?.createdAt ?? new Date().toISOString();
     const senderId =
       payload?.senderId != null ? String(payload.senderId) : '';
@@ -224,6 +387,64 @@ useEffect(() => {
       );
       upsertMessage(convId, mapped).catch(() => {});
     } catch {}
+
+    if (encMeta?.e2ee === 'signal') {
+      const senderDeviceId = encMeta?.senderDeviceId ?? encMeta?.deviceId ?? '';
+      const recipients = Array.isArray(encMeta?.recipients) ? encMeta.recipients : null;
+      const currentDeviceId = deviceIdRef.current;
+      const recipientCipher = recipients
+        ? recipients.find(
+            (r: any) =>
+              String(r.userId) === String(currentUserId) ||
+              String(r.deviceId) === String(currentDeviceId),
+          )
+        : null;
+      const ciphertext = recipientCipher?.ciphertext ?? payload?.ciphertext;
+      const type = recipientCipher?.type ?? encMeta?.type ?? 1;
+      if (senderDeviceId && ciphertext) {
+        decryptFromUser(
+          String(payload?.senderId ?? ''),
+          String(senderDeviceId),
+          String(ciphertext),
+          Number(type),
+        )
+          .then((plaintext) => {
+            let parsed: any = null;
+            try {
+              parsed = JSON.parse(plaintext);
+            } catch {}
+            const textValue = parsed?.text ?? plaintext;
+            setConversationMeta((prev) => ({
+              ...prev,
+              [convId]: {
+                lastMessage: textValue,
+                lastAt,
+                unreadCount: prev[convId]?.unreadCount ?? 0,
+              },
+            }));
+            const mapped = mapBackendToChatMessage(
+              payload,
+              String(currentUserId ?? ''),
+              convId,
+            );
+            const patched = {
+              ...mapped,
+              text: textValue,
+              styledText: parsed?.styledText ?? mapped.styledText,
+              attachments: parsed?.attachments ?? mapped.attachments,
+              contacts: parsed?.contacts ?? mapped.contacts,
+              poll: parsed?.poll ?? mapped.poll,
+              event: parsed?.event ?? mapped.event,
+              voice: parsed?.voice ?? mapped.voice,
+              sticker: parsed?.sticker ?? mapped.sticker,
+              replyToId: parsed?.replyToId ?? mapped.replyToId,
+              kind: parsed?.kind ?? mapped.kind,
+            };
+            upsertMessage(convId, patched).catch(() => {});
+          })
+          .catch(() => {});
+      }
+    }
   };
   socket.on('chat.message', onMessage);
   return () => {
@@ -238,16 +459,40 @@ useEffect(() => {
     .filter(Boolean)
     .map((v: any) => String(v));
 
-  for (const id of convIds) {
-    socket.emit('chat.join', { conversationId: id });
+  const nextSet = new Set(convIds);
+  const prevSet = joinedRoomsRef.current;
+  for (const id of nextSet) {
+    if (!prevSet.has(id)) {
+      socket.emit('chat.join', { conversationId: id });
+    }
   }
-
-  return () => {
-    for (const id of convIds) {
+  for (const id of prevSet) {
+    if (!nextSet.has(id)) {
       socket.emit('chat.leave', { conversationId: id });
     }
-  };
+  }
+  joinedRoomsRef.current = nextSet;
 }, [socket, isConnected, conversations]);
+
+useEffect(() => {
+  if (!socket) return;
+  const handleDisconnect = () => {
+    for (const id of joinedRoomsRef.current) {
+      socket.emit('chat.leave', { conversationId: id });
+    }
+    joinedRoomsRef.current = new Set();
+  };
+  socket.on('disconnect', handleDisconnect);
+  return () => {
+    socket.off('disconnect', handleDisconnect);
+    if (socket.connected) {
+      for (const id of joinedRoomsRef.current) {
+        socket.emit('chat.leave', { conversationId: id });
+      }
+      joinedRoomsRef.current = new Set();
+    }
+  };
+}, [socket]);
 
 
 useEffect(() => {
@@ -507,6 +752,7 @@ const handleMuteSelected = () => {
       if (
         c === 'Unread' ||
         c === 'Groups' ||
+        c === 'Community' ||
         c === 'Mentions' ||
         c === 'Archived' ||
         c === 'Blocked'
@@ -516,7 +762,17 @@ const handleMuteSelected = () => {
   }, [activeQuick]);
 
   // ── Animated Top Tab Bar (collapses space) ───────────────────────────────
+  const [activeTopTab, setActiveTopTab] = useState<'Chats' | 'Updates' | 'Calls'>('Chats');
+  const [tabSearchOpen, setTabSearchOpen] = useState(false);
+  const [tabSearchQuery, setTabSearchQuery] = useState('');
+
   const AnimatedTopBar = (tabProps: any) => {
+    const nextTab = tabProps?.state?.routes?.[tabProps.state.index]?.name;
+    useEffect(() => {
+      if (nextTab === 'Chats' || nextTab === 'Updates' || nextTab === 'Calls') {
+        setActiveTopTab(nextTab);
+      }
+    }, [nextTab]);
     return (
       <Animated.View
         onLayout={(e) => onTabLayout(e.nativeEvent.layout.height)}
@@ -539,6 +795,35 @@ const handleMuteSelected = () => {
       </Animated.View>
     );
   };
+
+  const menuItems = useMemo(() => {
+    if (activeTopTab === 'Updates') {
+      return [
+        { key: 'new-status', label: 'New status' },
+        { key: 'new-channel', label: 'New channel' },
+        { key: 'updates-settings', label: 'Updates settings' },
+      ];
+    }
+    if (activeTopTab === 'Calls') {
+      return [
+        { key: 'new-call', label: 'New call' },
+        { key: 'call-history', label: 'Call history' },
+        { key: 'calls-settings', label: 'Calls settings' },
+      ];
+    }
+    return [
+      { key: 'new-chat', label: 'New chat' },
+      { key: 'new-group', label: 'New group' },
+      { key: 'settings', label: 'Settings' },
+    ];
+  }, [activeTopTab]);
+
+  useEffect(() => {
+    if (activeTopTab === 'Chats') {
+      setTabSearchOpen(false);
+      setTabSearchQuery('');
+    }
+  }, [activeTopTab]);
 
   // ── Animated menu (fade + scale) ─────────────────────────────────────────
   const menuAnim = useRef(new Animated.Value(0)).current; // 0 hidden, 1 visible
@@ -716,13 +1001,20 @@ const handleMuteSelected = () => {
 
             <View style={styles.appBarRight}>
               <Pressable
-                onPress={() => {}}
+                onPress={() => {
+                  if (activeTopTab === 'Chats') return;
+                  setTabSearchOpen(true);
+                }}
                 hitSlop={10}
                 style={({ pressed }) => [
                   { opacity: pressed ? KIS_TOKENS.opacity.pressed : 1, padding: 8 },
                 ]}
               >
-                <KISIcon name="camera" size={18} color={palette.text} />
+                <KISIcon
+                  name={activeTopTab === 'Chats' ? 'camera' : 'search'}
+                  size={18}
+                  color={palette.text}
+                />
               </Pressable>
               <Pressable
                 onPress={() => setMenuVisible((v) => !v)}
@@ -756,11 +1048,7 @@ const handleMuteSelected = () => {
                   menuStyle,
                 ]}
               >
-                {[
-                  { key: 'new-chat', label: 'New chat' },
-                  { key: 'new-group', label: 'New group' },
-                  { key: 'settings', label: 'Settings' },
-                ].map((m) => (
+                {menuItems.map((m) => (
                   <Pressable
                     key={m.key}
                     onPress={() => setMenuVisible(false)}
@@ -781,91 +1069,129 @@ const handleMuteSelected = () => {
 
 
       {/* ------------ Animated Elevated Search Bar + Filters ------------ */}
-      <Animated.View
-        onLayout={onHeaderLayout}
-        style={{
-          transform: [{ translateY: translateHeaderY }],
-          marginBottom: headerNegMargin, // collapse space so list moves up
-          paddingHorizontal: 12,
-          paddingTop: 10,
-          paddingBottom: 8,
-          zIndex: 1,
-        }}
-      >
-        <View
-          style={[
-            styles.searchContainer,
-            {
-              borderColor: palette.inputBorder,
-              backgroundColor: palette.surfaceElevated,
-              shadowColor: palette.shadow,
-            },
-            KIS_TOKENS.elevation.card,
-          ]}
+      {activeTopTab === 'Chats' ? (
+        <Animated.View
+          onLayout={onHeaderLayout}
+          style={{
+            transform: [{ translateY: translateHeaderY }],
+            marginBottom: headerNegMargin, // collapse space so list moves up
+            paddingHorizontal: 12,
+            paddingTop: 10,
+            paddingBottom: 8,
+            zIndex: 1,
+          }}
         >
-          <KISIcon name="search" size={18} color={palette.text} />
-          <TextInput
-            value={query}
-            onChangeText={setQuery}
-            placeholder="Search chats, people, and groups…"
-            placeholderTextColor={palette.subtext}
-            style={[styles.searchInput, { color: palette.text }]}
-          />
-          <Pressable onPress={() => {}} style={styles.searchIconBtn}>
-            <KISIcon name="mic" size={18} color={palette.text} />
-          </Pressable>
-          <View style={[styles.searchDivider, { backgroundColor: palette.inputBorder }]} />
-          <Pressable onPress={() => setFilterMgrOpen(true)} style={styles.searchIconBtn} hitSlop={8}>
-            <KISIcon name="settings" size={18} color={palette.text} />
-          </Pressable>
-        </View>
-
-        {/* Quick chips + Custom filter row */}
-        <View style={styles.chipsRow}>
-          {(['Unread', 'Groups', 'Mentions', 'Archived', 'Blocked'] as LocalQuick[]).map(
-            (chip) => (
-              <ToggleChip
-                key={chip}
-                label={chip}
-                active={activeQuick.has(chip)}
-                onPress={() => quickToggle(chip)}
-                palette={palette}
-              />
-            )
-          )}
-
-          {customFilters.map((f) => (
-            <ToggleChip
-              key={f.id}
-              label={f.label}
-              active={activeCustom === f.id}
-              onPress={() => setActiveCustom((cur) => (cur === f.id ? null : f.id))}
-              palette={palette}
-            />
-          ))}
-
-          <Pressable
-            onPress={() => setFilterMgrOpen(true)}
-            style={({ pressed }) => [
-              styles.chip,
+          <View
+            style={[
+              styles.searchContainer,
               {
-                backgroundColor: pressed ? palette.surface : palette.card,
                 borderColor: palette.inputBorder,
-                flexDirection: 'row',
-                alignItems: 'center',
-                gap: 6,
+                backgroundColor: palette.surfaceElevated,
+                shadowColor: palette.shadow,
               },
+              KIS_TOKENS.elevation.card,
             ]}
           >
-            <KISIcon name="add" size={18} color={palette.text} />
-            <Text style={{ color: palette.text, fontSize: 13 }}>Create</Text>
-          </Pressable>
+            <KISIcon name="search" size={18} color={palette.text} />
+            <TextInput
+              value={query}
+              onChangeText={setQuery}
+              placeholder="Search chats, people, and groups…"
+              placeholderTextColor={palette.subtext}
+              style={[styles.searchInput, { color: palette.text }]}
+            />
+            <Pressable onPress={() => {}} style={styles.searchIconBtn}>
+              <KISIcon name="mic" size={18} color={palette.text} />
+            </Pressable>
+            <View style={[styles.searchDivider, { backgroundColor: palette.inputBorder }]} />
+            <Pressable onPress={() => setFilterMgrOpen(true)} style={styles.searchIconBtn} hitSlop={8}>
+              <KISIcon name="settings" size={18} color={palette.text} />
+            </Pressable>
+          </View>
+
+          {/* Quick chips + Custom filter row */}
+          <View style={styles.chipsRow}>
+            {(['Unread', 'Groups', 'Community', 'Mentions', 'Archived', 'Blocked'] as LocalQuick[]).map(
+              (chip) => (
+                <ToggleChip
+                  key={chip}
+                  label={chip}
+                  active={activeQuick.has(chip)}
+                  onPress={() => quickToggle(chip)}
+                  palette={palette}
+                />
+              )
+            )}
+
+            {customFilters.map((f) => (
+              <ToggleChip
+                key={f.id}
+                label={f.label}
+                active={activeCustom === f.id}
+                onPress={() => setActiveCustom((cur) => (cur === f.id ? null : f.id))}
+                palette={palette}
+              />
+            ))}
+
+            <Pressable
+              onPress={() => setFilterMgrOpen(true)}
+              style={({ pressed }) => [
+                styles.chip,
+                {
+                  backgroundColor: pressed ? palette.surface : palette.card,
+                  borderColor: palette.inputBorder,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 6,
+                },
+              ]}
+            >
+              <KISIcon name="add" size={18} color={palette.text} />
+              <Text style={{ color: palette.text, fontSize: 13 }}>Create</Text>
+            </Pressable>
+          </View>
+        </Animated.View>
+      ) : null}
+
+      {/* ------------ Updates/Calls Search Modal ------------ */}
+      {tabSearchOpen && activeTopTab !== 'Chats' ? (
+        <View style={styles.searchOverlay}>
+          <Pressable
+            style={styles.searchOverlayBackdrop}
+            onPress={() => setTabSearchOpen(false)}
+          />
+          <View
+            style={[
+              styles.searchOverlayCard,
+              { backgroundColor: palette.card, borderColor: palette.inputBorder },
+            ]}
+          >
+            <View style={styles.searchOverlayRow}>
+              <KISIcon name="search" size={18} color={palette.text} />
+              <TextInput
+                value={tabSearchQuery}
+                onChangeText={setTabSearchQuery}
+                placeholder={
+                  activeTopTab === 'Updates'
+                    ? 'Search updates…'
+                    : 'Search calls…'
+                }
+                placeholderTextColor={palette.subtext}
+                style={[styles.searchInput, { color: palette.text }]}
+                autoFocus
+              />
+              <Pressable onPress={() => setTabSearchQuery('')} style={styles.searchIconBtn}>
+                <KISIcon name="close" size={18} color={palette.text} />
+              </Pressable>
+            </View>
+          </View>
         </View>
-      </Animated.View>
+      ) : null}
 
       {/* ------------ Top Tabs (animated tab bar) ------------ */}
       <View style={{ flex: 1, backgroundColor: palette.bg }}>
         <Tab.Navigator
+          ref={tabRef}
           tabBar={(props) => <AnimatedTopBar {...props} />}
           screenOptions={{ swipeEnabled: true, tabBarScrollEnabled: false }}
         >
@@ -883,6 +1209,21 @@ const handleMuteSelected = () => {
                 currentUserId={currentUserId ?? undefined}
                 contactNameByPhone={contactNameByPhone}
                 conversationMeta={conversationMeta}
+                communityByConversationId={communityByConversationId}
+                communityGroupConversationIds={communityGroupConversationIds}
+                statusByUserId={statusByUserId}
+                onOpenStatus={(userId) => {
+                  DeviceEventEmitter.emit('status.open', { userId });
+                  tabRef.current?.navigate?.('Updates');
+                }}
+                onOpenAvatarPreview={(payload) => {
+                  setAvatarPreview({
+                    uri: payload.avatarUrl,
+                    chat: payload.chat,
+                    userId: payload.userId ?? null,
+                  });
+                  setAvatarPreviewFull(false);
+                }}
                 onScroll={handleChatsScroll}
                 onEndReached={handleChatsEndReached}
                 onOpenChat={onOpenChat} // if you’re still using the chat room, keep this
@@ -892,37 +1233,173 @@ const handleMuteSelected = () => {
                 />
             )}
           />
-          <Tab.Screen name="Updates" component={UpdatesTab} />
-          <Tab.Screen name="Hub" component={HubTab} />
-          <Tab.Screen name="Calls" component={CallsTab} />
+          <Tab.Screen
+            name="Updates"
+            children={() => (
+              <UpdatesTab searchTerm={tabSearchQuery} onOpenChat={onOpenChat} />
+            )}
+          />
+          <Tab.Screen
+            name="Calls"
+            children={() => <CallsTab searchTerm={tabSearchQuery} />}
+          />
         </Tab.Navigator>
 
         {/* 🔵 Suspended "Add" button (FAB) */}
+        {activeTopTab === 'Chats' ? (
+          <Pressable
+            onPress={openAddContacts}
+            style={({ pressed }) => [
+              {
+                position: 'absolute',
+                right: 16,
+                bottom: 16 + 64, // 64-ish to sit above bottom tab bar
+                width: 56,
+                height: 56,
+                borderRadius: 28,
+                alignItems: 'center',
+                justifyContent: 'center',
+                backgroundColor: palette.primary,
+                shadowColor: palette.shadow,
+                shadowOpacity: 0.3,
+                shadowRadius: 8,
+                shadowOffset: { width: 0, height: 4 },
+                elevation: 6,
+              },
+              pressed && { opacity: KIS_TOKENS.opacity.pressed },
+            ]}
+          >
+            <KISIcon name="add" size={24} color={palette.inverseText ?? '#fff'} />
+          </Pressable>
+        ) : null}
+      </View>
+
+      <Modal
+        visible={!!avatarPreview}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setAvatarPreview(null)}
+      >
         <Pressable
-          onPress={openAddContacts}
-          style={({ pressed }) => [
-            {
+          style={[
+            styles.searchOverlayBackdrop,
+            { backgroundColor: avatarPreviewFull ? '#000' : 'rgba(0,0,0,0)' },
+          ]}
+          onPress={() => setAvatarPreview(null)}
+        />
+        {avatarPreview ? (
+          <Animated.View
+            style={{
               position: 'absolute',
-              right: 16,
-              bottom: 16 + 64, // 64-ish to sit above bottom tab bar
-              width: 56,
-              height: 56,
-              borderRadius: 28,
+              top: insets.top + 24,
+              left: 0,
+              right: 0,
+              bottom: insets.bottom + 24,
               alignItems: 'center',
               justifyContent: 'center',
-              backgroundColor: palette.primary,
-              shadowColor: palette.shadow,
-              shadowOpacity: 0.3,
-              shadowRadius: 8,
-              shadowOffset: { width: 0, height: 4 },
-              elevation: 6,
-            },
-            pressed && { opacity: KIS_TOKENS.opacity.pressed },
-          ]}
-        >
-          <KISIcon name="add" size={24} color={palette.inverseText ?? '#fff'} />
-        </Pressable>
-      </View>
+              transform: [
+                {
+                  scale: avatarAnim.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0.9, 1],
+                  }),
+                },
+              ],
+            }}
+          >
+            <Pressable
+              onPress={() => setAvatarPreviewFull((prev) => !prev)}
+              style={{
+                width: avatarPreviewFull ? width : Math.min(width * 0.7, 280),
+                height: avatarPreviewFull ? height * 0.7 : Math.min(width * 0.7, 280),
+                borderRadius: avatarPreviewFull ? 0 : 18,
+                overflow: 'hidden',
+                backgroundColor: palette.card,
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <Image
+                source={{ uri: avatarPreview.uri }}
+                resizeMode="cover"
+                style={{ width: '100%', height: '100%' }}
+              />
+                <Pressable
+                  onPress={() => setAvatarPreview(null)}
+                  style={{
+                    position: 'absolute',
+                    top: 10,
+                    left: 10,
+                    width: 34,
+                    height: 34,
+                    borderRadius: 17,
+                    backgroundColor: 'rgba(0,0,0,0.55)',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <KISIcon name="arrow-left" size={18} color="#fff" />
+                </Pressable>
+            </Pressable>
+            {!avatarPreviewFull ? (
+              <View
+                style={{
+                  marginTop: 12,
+                  width: Math.min(width * 0.7, 280),
+                  flexDirection: 'row',
+                  borderRadius: 16,
+                  overflow: 'hidden',
+                  backgroundColor: palette.card,
+                  borderWidth: StyleSheet.hairlineWidth,
+                  borderColor: palette.inputBorder,
+                }}
+              >
+                <Pressable
+                  onPress={() => {
+                    if (avatarPreview.chat) {
+                      setAvatarPreview(null);
+                      onOpenChat(avatarPreview.chat);
+                    }
+                  }}
+                  style={{ flex: 1, paddingVertical: 12, alignItems: 'center' }}
+                >
+                  <KISIcon name="chat" size={20} color={palette.primary} />
+                </Pressable>
+                <Pressable
+                  onPress={() => Alert.alert('Coming up', 'Voice calls are coming soon.')}
+                  style={{ flex: 1, paddingVertical: 12, alignItems: 'center' }}
+                >
+                  <KISIcon name="phone" size={20} color={palette.text} />
+                </Pressable>
+                <Pressable
+                  onPress={() => Alert.alert('Coming up', 'Video calls are coming soon.')}
+                  style={{ flex: 1, paddingVertical: 12, alignItems: 'center' }}
+                >
+                  <KISIcon name="video" size={20} color={palette.text} />
+                </Pressable>
+                <Pressable
+                  onPress={() => {
+                    if (avatarPreview.chat) {
+                      setAvatarPreview(null);
+                      if (onOpenInfo) {
+                        onOpenInfo({
+                          chat: avatarPreview.chat,
+                          currentUserId: currentUserId ?? null,
+                        });
+                        return;
+                      }
+                      onOpenChat(avatarPreview.chat);
+                    }
+                  }}
+                  style={{ flex: 1, paddingVertical: 12, alignItems: 'center' }}
+                >
+                  <KISIcon name="info" size={20} color={palette.text} />
+                </Pressable>
+              </View>
+            ) : null}
+          </Animated.View>
+        ) : null}
+      </Modal>
 
       {/* Custom Filter Manager */}
       <FilterManager

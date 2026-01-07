@@ -50,6 +50,8 @@ export type Chat = {
   isCommunityChat?: boolean;
   isContactChat?: boolean;
   isDirect?: boolean;
+  isSubscribed?: boolean;
+  canPost?: boolean;
 
   groupId?: string | number;
   communityId?: string | number;
@@ -178,6 +180,40 @@ export function directConversationName(
       if ((p as ParticipantWire).id != null && (!hasCurrentUser || String((p as ParticipantWire).id) !== String(currentUserId))) {
         return String((p as ParticipantWire).id);
       }
+    }
+  }
+
+  return null;
+}
+
+export function directConversationAvatar(
+  participants: string[] | ParticipantWire[] | undefined,
+  currentUserId: string | undefined,
+): string | null {
+  if (!participants) return null;
+  const hasCurrentUser = !!currentUserId;
+
+  if (Array.isArray(participants)) {
+    for (const p of participants as ParticipantWire[]) {
+      if (!p) continue;
+      const u = (p as ParticipantWire).user;
+      if (u && typeof u === 'object') {
+        const uid = String((u as UserWire).id ?? '');
+        if (hasCurrentUser && uid && uid === String(currentUserId)) continue;
+        const avatar =
+          (u as any)?.profile?.avatar_url ??
+          (u as any)?.profile?.avatarUrl ??
+          (u as any)?.avatar_url ??
+          (u as any)?.avatarUrl;
+        if (avatar) return String(avatar);
+      }
+
+      const fallback =
+        (p as any)?.avatar_url ??
+        (p as any)?.avatarUrl ??
+        (p as any)?.user?.avatar_url ??
+        (p as any)?.user?.avatarUrl;
+      if (fallback) return String(fallback);
     }
   }
 
@@ -313,11 +349,12 @@ export function normalizeChatFromServer(raw: any): Chat {
 
 /* ------------------------------ Filter utils ------------------------------ */
 
-export type QuickChip = 'Unread' | 'Groups' | 'Mentions' | 'Archived' | 'Blocked';
+export type QuickChip = 'Unread' | 'Groups' | 'Mentions' | 'Archived' | 'Blocked' | 'Community';
 
 export function applyQuickChips(chat: Chat, chips: Set<QuickChip>) {
   if (chips.has('Unread') && (chat.unreadCount ?? 0) <= 0) return false;
   if (chips.has('Groups') && !chat.isGroup) return false;
+  if (chips.has('Community') && !(chat.isCommunityChat || chat.kind === 'community' || chat.kind === 'post')) return false;
   if (chips.has('Mentions') && !chat.hasMention) return false;
   if (chips.has('Archived') && !chat.isArchived) return false;
   if (chips.has('Blocked') && !chat.isBlocked) return false;
@@ -459,6 +496,35 @@ export const styles = StyleSheet.create({
     borderTopLeftRadius: 16,
     borderTopRightRadius: 16,
     borderWidth: 1,
+  },
+  searchOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 10,
+    justifyContent: 'flex-start',
+  },
+  searchOverlayBackdrop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+  },
+  searchOverlayCard: {
+    marginTop: 10,
+    marginHorizontal: 12,
+    borderWidth: 1,
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  searchOverlayRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   modalTitle: { fontSize: 18, fontWeight: '800', marginBottom: 10 },
 

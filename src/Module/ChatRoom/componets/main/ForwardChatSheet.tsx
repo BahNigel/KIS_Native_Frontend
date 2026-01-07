@@ -10,6 +10,7 @@ import {
 
 import type { Chat } from '../../messagesUtils';
 import { KISIcon } from '@/constants/kisIcons';
+import ImagePlaceholder from '@/components/common/ImagePlaceholder';
 
 type ForwardChatSheetProps = {
   visible: boolean;
@@ -184,28 +185,11 @@ export const ForwardChatSheet: React.FC<ForwardChatSheetProps> = ({
                     : 'transparent',
                 }}
               >
-                {/* Avatar placeholder */}
-                <View
-                  style={{
-                    width: 32,
-                    height: 32,
-                    borderRadius: 16,
-                    backgroundColor: palette.avatarBg ?? '#666',
-                    marginRight: 10,
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  }}
-                >
-                  <Text
-                    style={{
-                      color: palette.onAvatar ?? '#fff',
-                      fontSize: 14,
-                      fontWeight: '600',
-                    }}
-                  >
-                    {item.name?.slice(0, 1).toUpperCase() ?? '?'}
-                  </Text>
-                </View>
+                <ImagePlaceholder
+                  size={32}
+                  radius={16}
+                  style={{ marginRight: 10 }}
+                />
 
                 <Text
                   style={{

@@ -604,7 +604,8 @@ export function useChatPersistence(
 
   const replaceMessages = useCallback(
     async (next: ChatMessage[]) => {
-      const filtered = next.filter((m) => {
+      const list = Array.isArray(next) ? next : [];
+      const filtered = list.filter((m) => {
         const convId = m.conversationId ?? m.roomId;
         return String(convId ?? '') === String(roomIdRef.current);
       });

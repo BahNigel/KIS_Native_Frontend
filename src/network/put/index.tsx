@@ -47,11 +47,13 @@ export const putData = async (
   try {
     // Retrieve the user token from AsyncStorage for authorization
     const userToken = await AsyncStorage.getItem('userToken');
+    const deviceId = await AsyncStorage.getItem('device_id');
     const authHeaders = userToken ? { Authorization: `Bearer ${userToken}` } : {};
+    const deviceHeaders = deviceId ? { 'X-Device-Id': deviceId } : {};
 
     // Send PUT request to the API
     const response = await apiService.put(url, data, {
-      headers: { ...authHeaders, ...headers },
+      headers: { ...authHeaders, ...deviceHeaders, ...headers },
     });
 
     // Parse the API response

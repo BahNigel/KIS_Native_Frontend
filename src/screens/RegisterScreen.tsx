@@ -30,6 +30,7 @@ import * as RNLocalize from 'react-native-localize';
 import { postRequest } from '@/network/post/index';
 import KISButton from '@/constants/KISButton';
 import ROUTES from '@/network';
+import { ensureDeviceId } from '@/security/e2ee';
 
 type HeadersInit = Record<string, string>;
 
@@ -339,11 +340,14 @@ export default function RegisterScreen({ navigation }: any) {
 
       const phoneE164 = buildPhoneE164(regPhone);
 
+      const deviceId = await ensureDeviceId();
       const payload: Record<string, any> = {
         phone: phoneE164,
         password: regPassword,
         password2: regPassword2,
         country: countryISO,
+        device_id: deviceId,
+        device_platform: Platform.OS,
       };
       if (displayName.trim()) payload.display_name = displayName.trim();
 

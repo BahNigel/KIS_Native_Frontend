@@ -1,15 +1,25 @@
 // src/screens/tabs/partnersTypes.ts
 export type PartnerAdmin = {
   id: string;
-  name: string;
-  initials: string;
-  position: string;
-  avatarUrl?: string;
+  name?: string | null;
+  initials?: string;
+  position?: string;
+  avatarUrl?: string | null;
 };
 
-export type Partner = {
+export type PartnerApi = {
   id: string;
   name: string;
+  slug: string;
+  description?: string | null;
+  avatar_url?: string | null;
+  is_active?: boolean;
+  main_conversation_id?: string | null;
+  created_at?: string;
+  updated_at?: string;
+};
+
+export type Partner = PartnerApi & {
   initials: string;
   tagline: string;
   admins: PartnerAdmin[];
@@ -17,17 +27,39 @@ export type Partner = {
 
 export type PartnerGroup = {
   id: string;
-  partnerId: string;
   name: string;
-  type: 'public' | 'private';
-  communityId?: string;
+  partner?: string | null;
+  community?: string | null;
+  channel?: string | null;
+  conversation_id?: string | null;
 };
 
 export type PartnerCommunity = {
   id: string;
-  partnerId: string;
   name: string;
-  description?: string;
+  description?: string | null;
+  avatar_url?: string | null;
+  partner?: string | null;
+  main_conversation_id?: string | null;
+  posts_conversation_id?: string | null;
+};
+
+export type PartnerPost = {
+  id: string;
+  partner: string;
+  author?: {
+    id?: string;
+    display_name?: string | null;
+    phone?: string | null;
+    avatar_url?: string | null;
+  };
+  text?: string | null;
+  styled_text?: any;
+  attachments?: any[];
+  poll?: any;
+  event?: any;
+  link?: string | null;
+  created_at?: string;
 };
 
 export const LEFT_RAIL_WIDTH = 72;

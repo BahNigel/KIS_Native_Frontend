@@ -1,7 +1,7 @@
 // src/navigation/MainTabs.tsx
 // ❌ No NavigationContainer here — only navigators and screens.
 
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Platform,
   Pressable,
@@ -12,6 +12,7 @@ import {
   useWindowDimensions,      // ✅ useWindowDimensions instead of Dimensions
   Animated as RNAnimated,   // 👈 native Animated for overlay
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   createBottomTabNavigator,
   BottomTabBarProps,
@@ -34,7 +35,11 @@ import BibleScreen from '../screens/tabs/BibleScreen';
 import BroadcastScreen from '../screens/tabs/BroadcastScreen';
 import ProfileScreen from '../screens/tabs/ProfileScreen';
 import ChatRoomPage from '@/Module/ChatRoom/ChatRoomPage';
+import CommunityRoomPage from '@/Module/Community/CommunityRoomPage';
+import ChatInfoPage from '@/Module/ChatRoom/ChatInfoPage';
+import CommunityInfoPage from '@/Module/Community/CommunityInfoPage';
 import { Chat } from '@/Module/ChatRoom/messagesUtils';
+import { useSocket } from '../../SocketProvider';
 
 type RouteKey = 'Partners' | 'Bible' | 'Messages' | 'Broadcast' | 'Profile';
 
@@ -244,6 +249,7 @@ function AnimatedKISTabBar({
 
 export function MainTabs() {
   const { palette } = useKISTheme();
+  const { currentUserId } = useSocket();
   // ✅ Responsive width for overlay slide
   const { width } = useWindowDimensions();
 
@@ -251,11 +257,59 @@ export function MainTabs() {
   const [activeChat, setActiveChat] = useState<Chat | null>(null);
   const [chatVisible, setChatVisible] = useState(false);
   const chatSlide = useRef(new RNAnimated.Value(0)).current; // 0 = off-screen, 1 = on-screen
+  const [activeInfo, setActiveInfo] = useState<{ chat: Chat; currentUserId: string | null } | null>(null);
+  const [infoVisible, setInfoVisible] = useState(false);
+  const infoSlide = useRef(new RNAnimated.Value(0)).current;
+  const [activeCommunity, setActiveCommunity] = useState<{ id: string; name: string } | null>(null);
+  const [communityVisible, setCommunityVisible] = useState(false);
+  const communitySlide = useRef(new RNAnimated.Value(0)).current;
+  const [communityInfoVisible, setCommunityInfoVisible] = useState(false);
+  const [activeCommunityInfo, setActiveCommunityInfo] = useState<{ id: string; name: string } | null>(null);
+  const communityInfoSlide = useRef(new RNAnimated.Value(0)).current;
 
   // 👇 control for hiding the nav bar (managed ONLY here)
   const [hidNav, setHidNav] = useState(false);
 
+  useEffect(() => {
+    let mounted = true;
+    const logDeviceAuth = async () => {
+      try {
+        const token = await AsyncStorage.getItem('access_token');
+        const deviceId = await AsyncStorage.getItem('device_id');
+        if (mounted) {
+          console.log('[DEV] access_token:', token);
+          console.log('[DEV] device_id:', deviceId);
+        }
+      } catch (e) {
+        console.warn('[DEV] failed to read auth/device tokens', e);
+      }
+    };
+    logDeviceAuth();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const openCommunity = (community: { id: string; name: string }) => {
+    setActiveCommunity(community);
+    setCommunityVisible(true);
+
+    RNAnimated.timing(communitySlide, {
+      toValue: 1,
+      duration: 260,
+      useNativeDriver: true,
+    }).start();
+  };
+
   const openChat = (chat: Chat) => {
+    const communityId = chat?.communityId ?? (chat?.isCommunityChat ? chat?.id : null);
+    if (chat?.isCommunityChat || chat?.kind === 'community' || communityId) {
+      openCommunity({
+        id: String(communityId),
+        name: String(chat?.name ?? 'Community'),
+      });
+      return;
+    }
     setActiveChat(chat);
     setChatVisible(true);
 
@@ -277,9 +331,77 @@ export function MainTabs() {
     });
   };
 
+  const openInfo = (payload: { chat: Chat; currentUserId: string | null }) => {
+    setActiveInfo(payload);
+    setInfoVisible(true);
+    RNAnimated.timing(infoSlide, {
+      toValue: 1,
+      duration: 240,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  const closeInfo = () => {
+    RNAnimated.timing(infoSlide, {
+      toValue: 0,
+      duration: 240,
+      useNativeDriver: true,
+    }).start(() => {
+      setInfoVisible(false);
+      setActiveInfo(null);
+    });
+  };
+
+  const closeCommunity = () => {
+    RNAnimated.timing(communitySlide, {
+      toValue: 0,
+      duration: 260,
+      useNativeDriver: true,
+    }).start(() => {
+      setCommunityVisible(false);
+      setActiveCommunity(null);
+    });
+  };
+
+  const openCommunityInfo = (payload: { id: string; name: string }) => {
+    setActiveCommunityInfo(payload);
+    setCommunityInfoVisible(true);
+    RNAnimated.timing(communityInfoSlide, {
+      toValue: 1,
+      duration: 240,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  const closeCommunityInfo = () => {
+    RNAnimated.timing(communityInfoSlide, {
+      toValue: 0,
+      duration: 240,
+      useNativeDriver: true,
+    }).start(() => {
+      setCommunityInfoVisible(false);
+      setActiveCommunityInfo(null);
+    });
+  };
+
   const chatTranslateX = chatSlide.interpolate({
     inputRange: [0, 1],
     outputRange: [width, 0], // slide in from right, using current width
+  });
+
+  const communityTranslateX = communitySlide.interpolate({
+    inputRange: [0, 1],
+    outputRange: [width, 0],
+  });
+
+  const infoTranslateX = infoSlide.interpolate({
+    inputRange: [0, 1],
+    outputRange: [width, 0],
+  });
+
+  const communityInfoTranslateX = communityInfoSlide.interpolate({
+    inputRange: [0, 1],
+    outputRange: [width, 0],
   });
 
   return (
@@ -307,7 +429,7 @@ export function MainTabs() {
         />
 
         <Tabs.Screen name="Messages" options={{ title: 'Messages' }}>
-          {() => <MessagesScreen onOpenChat={openChat} />}
+          {() => <MessagesScreen onOpenChat={openChat} onOpenInfo={openInfo} />}
         </Tabs.Screen>
 
         <Tabs.Screen
@@ -332,11 +454,93 @@ export function MainTabs() {
           right: 0,
           bottom: 0,
           transform: [{ translateX: chatTranslateX }],
-          zIndex: 999,
+          zIndex: 1001,
           backgroundColor: palette.bg,
         }}
       >
-        <ChatRoomPage chat={activeChat} onBack={closeChat} />
+        <ChatRoomPage
+          chat={activeChat}
+          onBack={closeChat}
+          onOpenInfo={openInfo}
+        />
+      </RNAnimated.View>
+
+      <RNAnimated.View
+        pointerEvents={infoVisible ? 'auto' : 'none'}
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          transform: [{ translateX: infoTranslateX }],
+          zIndex: 1002,
+          backgroundColor: palette.bg,
+        }}
+      >
+        {activeInfo ? (
+          <ChatInfoPage
+            chat={activeInfo.chat}
+            currentUserId={activeInfo.currentUserId}
+            onBack={closeInfo}
+            onChatUpdated={(updated) => {
+              setActiveChat((prev) => {
+                if (!prev || prev.id !== updated.id) return prev;
+                return { ...prev, ...updated };
+              });
+              setActiveInfo((prev) => {
+                if (!prev) return prev;
+                return { ...prev, chat: { ...prev.chat, ...updated } };
+              });
+            }}
+          />
+        ) : null}
+      </RNAnimated.View>
+
+      <RNAnimated.View
+        pointerEvents={communityVisible ? 'auto' : 'none'}
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          transform: [{ translateX: communityTranslateX }],
+          zIndex: 1000,
+          backgroundColor: palette.bg,
+        }}
+      >
+        {activeCommunity ? (
+          <CommunityRoomPage
+            community={activeCommunity}
+            onBack={closeCommunity}
+            onOpenChat={openChat}
+            onOpenInfo={openCommunityInfo}
+          />
+        ) : null}
+      </RNAnimated.View>
+
+      <RNAnimated.View
+        pointerEvents={communityInfoVisible ? 'auto' : 'none'}
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          transform: [{ translateX: communityInfoTranslateX }],
+          zIndex: 1003,
+          backgroundColor: palette.bg,
+        }}
+      >
+        {activeCommunityInfo ? (
+          <CommunityInfoPage
+            communityId={activeCommunityInfo.id}
+            communityName={activeCommunityInfo.name}
+            currentUserId={currentUserId ?? null}
+            onBack={closeCommunityInfo}
+          />
+        ) : null}
       </RNAnimated.View>
     </View>
   );

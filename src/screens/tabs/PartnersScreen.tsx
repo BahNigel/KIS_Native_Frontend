@@ -19,8 +19,14 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useKISTheme } from '../../theme/useTheme';
 import { useAuth } from '../../../App';
-import { MOCK_COMMUNITIES, MOCK_GROUPS, MOCK_PARTNERS } from '@/components/partners/partnersMockData';
-import { Partner, PartnerCommunity, PartnerGroup, RIGHT_PEEK_WIDTH } from '@/components/partners/partnersTypes';
+import { getRequest } from '@/network/get';
+import ROUTES from '@/network';
+import {
+  Partner,
+  PartnerCommunity,
+  PartnerGroup,
+  RIGHT_PEEK_WIDTH,
+} from '@/components/partners/partnersTypes';
 import styles from '@/components/partners/partnersStyles';
 import PartnersLeftRail from '@/components/partners/PartnersLeftRail';
 import PartnersCenterPane from '@/components/partners/PartnersCenterPane';
@@ -35,10 +41,13 @@ export default function PartnersScreen({ setHidNav }: any) {
   const { setAuth } = useAuth();
   const { width, height } = useWindowDimensions();
 
-  const [selectedPartnerId, setSelectedPartnerId] = useState<string>(
-    MOCK_PARTNERS[0]?.id,
-  );
+  const [partners, setPartners] = useState<Partner[]>([]);
+  const [partnerCommunities, setPartnerCommunities] = useState<PartnerCommunity[]>([]);
+  const [partnerGroups, setPartnerGroups] = useState<PartnerGroup[]>([]);
+  const [selectedPartnerId, setSelectedPartnerId] = useState<string>('');
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
+  const [selectedFeed, setSelectedFeed] = useState<'general' | null>(null);
+  const [selectedCommunityFeedId, setSelectedCommunityFeedId] = useState<string | null>(null);
   const [isMessagesExpanded, setIsMessagesExpanded] = useState(false);
 
   // Bottom sheet open/closed
@@ -115,25 +124,108 @@ export default function PartnersScreen({ setHidNav }: any) {
     extrapolate: 'clamp',
   });
 
-  const selectedPartner: Partner = useMemo(
-    () => MOCK_PARTNERS.find((p) => p.id === selectedPartnerId) ?? MOCK_PARTNERS[0],
-    [selectedPartnerId],
+  const initialsFor = useCallback((name?: string | null) => {
+    if (!name) return '??';
+    const parts = name.trim().split(/\s+/).slice(0, 2);
+    return parts.map((p) => p[0]?.toUpperCase()).join('');
+  }, []);
+
+  const mapPartner = useCallback(
+    (raw: any): Partner => ({
+      id: raw.id,
+      name: raw.name,
+      slug: raw.slug,
+      description: raw.description ?? '',
+      avatar_url: raw.avatar_url ?? '',
+      is_active: raw.is_active ?? true,
+      main_conversation_id: raw.main_conversation_id ?? null,
+      created_at: raw.created_at,
+      updated_at: raw.updated_at,
+      initials: initialsFor(raw.name),
+      tagline: raw.description || raw.slug || '',
+      admins: Array.isArray(raw.admins) ? raw.admins : [],
+    }),
+    [initialsFor],
+  );
+
+  const selectedPartner: Partner | undefined = useMemo(
+    () => partners.find((p) => p.id === selectedPartnerId) ?? partners[0],
+    [partners, selectedPartnerId],
   );
 
   const groupsForPartner: PartnerGroup[] = useMemo(
-    () => MOCK_GROUPS.filter((g) => g.partnerId === selectedPartner?.id),
-    [selectedPartner?.id],
+    () => partnerGroups.filter((g) => g.partner === selectedPartner?.id),
+    [partnerGroups, selectedPartner?.id],
   );
 
   const communitiesForPartner: PartnerCommunity[] = useMemo(
-    () => MOCK_COMMUNITIES.filter((c) => c.partnerId === selectedPartner?.id),
-    [selectedPartner?.id],
+    () => partnerCommunities.filter((c) => c.partner === selectedPartner?.id),
+    [partnerCommunities, selectedPartner?.id],
   );
 
   const rootGroups: PartnerGroup[] = useMemo(
-    () => groupsForPartner.filter((g) => !g.communityId),
+    () => groupsForPartner.filter((g) => !g.community),
     [groupsForPartner],
   );
+
+  const loadPartners = useCallback(async () => {
+    const res = await getRequest(ROUTES.partners.list, {
+      errorMessage: 'Unable to load partners.',
+    });
+    const list = (res?.data?.results ?? res?.data ?? res ?? []) as any[];
+    const mapped = Array.isArray(list) ? list.map(mapPartner) : [];
+    setPartners(mapped);
+    if (mapped.length > 0) {
+      const exists = selectedPartnerId
+        ? mapped.some((p) => p.id === selectedPartnerId)
+        : false;
+      if (!selectedPartnerId || !exists) {
+        setSelectedPartnerId(mapped[0].id);
+      }
+    }
+  }, [mapPartner, selectedPartnerId]);
+
+  const loadPartnerDetail = useCallback(async (partnerId: string) => {
+    const res = await getRequest(ROUTES.partners.detail(partnerId), {
+      errorMessage: 'Unable to load partner details.',
+    });
+    if (!res?.success || !res?.data) return;
+    setPartners((prev) =>
+      prev.map((p) => (p.id === partnerId ? mapPartner({ ...p, ...res.data }) : p)),
+    );
+  }, [mapPartner]);
+
+  const loadPartnerCommunities = useCallback(async (partnerId: string) => {
+    const res = await getRequest(`${ROUTES.community.list}?partner=${partnerId}`, {
+      errorMessage: 'Unable to load partner communities.',
+    });
+    const list = (res?.data?.results ?? res?.data ?? res ?? []) as PartnerCommunity[];
+    setPartnerCommunities(Array.isArray(list) ? list : []);
+  }, []);
+
+  const loadPartnerGroups = useCallback(async (partnerId: string) => {
+    const res = await getRequest(`${ROUTES.groups.list}?partner=${partnerId}`, {
+      errorMessage: 'Unable to load partner groups.',
+    });
+    const list = (res?.data?.results ?? res?.data ?? res ?? []) as PartnerGroup[];
+    setPartnerGroups(Array.isArray(list) ? list : []);
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadPartners();
+    }, [loadPartners]),
+  );
+
+  useEffect(() => {
+    if (!selectedPartnerId) return;
+    loadPartnerDetail(selectedPartnerId);
+    loadPartnerCommunities(selectedPartnerId);
+    loadPartnerGroups(selectedPartnerId);
+    setSelectedGroupId(null);
+    setSelectedFeed(null);
+    setSelectedCommunityFeedId(null);
+  }, [selectedPartnerId, loadPartnerDetail, loadPartnerCommunities, loadPartnerGroups]);
 
   // Reset expanded communities when partner changes
   useEffect(() => {
@@ -188,7 +280,28 @@ export default function PartnersScreen({ setHidNav }: any) {
 
   const onGroupPress = (groupId: string) => {
     setSelectedGroupId(groupId);
+    setSelectedFeed(null);
+    setSelectedCommunityFeedId(null);
     // ❌ no direct setHidNav here – handled by animation completion
+    if (!isMessagesExpanded) {
+      animateMessagesPane(true);
+    }
+  };
+
+  const onFeedPress = () => {
+    if (!selectedPartner) return;
+    setSelectedGroupId(null);
+    setSelectedFeed('general');
+    setSelectedCommunityFeedId(null);
+    if (!isMessagesExpanded) {
+      animateMessagesPane(true);
+    }
+  };
+
+  const onCommunityFeedPress = (communityId: string) => {
+    setSelectedGroupId(null);
+    setSelectedFeed(null);
+    setSelectedCommunityFeedId(communityId);
     if (!isMessagesExpanded) {
       animateMessagesPane(true);
     }
@@ -319,6 +432,7 @@ export default function PartnersScreen({ setHidNav }: any) {
       {...panResponder.panHandlers}
     >
       <PartnersLeftRail
+        partners={partners}
         selectedPartnerId={selectedPartnerId}
         onSelectPartner={setSelectedPartnerId}
         onAddPartnerPress={onAddPartnerPress}
@@ -326,7 +440,7 @@ export default function PartnersScreen({ setHidNav }: any) {
       />
 
       <PartnersCenterPane
-        selectedPartner={selectedPartner}
+        selectedPartner={selectedPartner ?? mapPartner({ id: '', name: 'Partner', slug: '' })}
         selectedGroupId={selectedGroupId}
         rootGroups={rootGroups}
         groupsForPartner={groupsForPartner}
@@ -334,6 +448,8 @@ export default function PartnersScreen({ setHidNav }: any) {
         expandedCommunities={expandedCommunities}
         onToggleCommunity={toggleCommunity}
         onGroupPress={onGroupPress}
+        onFeedPress={onFeedPress}
+        onCommunityFeedPress={onCommunityFeedPress}
         onPartnerHeaderPress={onPartnerHeaderPress}
       />
 
@@ -343,7 +459,10 @@ export default function PartnersScreen({ setHidNav }: any) {
         isMessagesExpanded={isMessagesExpanded}
         toggleMessagesPane={toggleMessagesPane}
         selectedGroupId={selectedGroupId}
+        selectedFeed={selectedFeed}
+        selectedCommunityFeedId={selectedCommunityFeedId}
         groupsForPartner={groupsForPartner}
+        communitiesForPartner={communitiesForPartner}
         selectedPartner={selectedPartner}
       />
 
@@ -354,6 +473,8 @@ export default function PartnersScreen({ setHidNav }: any) {
         overlayOpacity={overlayOpacity}
         sheetPanHandlers={sheetPanResponder.panHandlers}
         selectedPartner={selectedPartner}
+        communitiesCount={communitiesForPartner.length}
+        groupsCount={groupsForPartner.length}
         animatePartnerSheet={animatePartnerSheet}
       />
     </View>

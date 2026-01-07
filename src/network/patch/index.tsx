@@ -1,71 +1,72 @@
-/**
- * Patch Data Utility Function
- *
- * Description:
- * A reusable function to send PATCH requests to an API endpoint. It supports sending partial updates,
- * custom headers, and provides mechanisms to handle success/error messages. This function is 
- * designed for general-purpose usage across the project.
- *
- * Parameters:
- * - url (string): The API endpoint to send the PATCH request to.
- * - data (any): The partial data payload to be sent in the PATCH request body.
- * - options (PatchDataOptions): An object to configure various options for the PATCH operation:
- *   - headers (Record<string, string>): Custom headers to include in the API request.
- *   - messages (object): Customizable success and error messages:
- *     - success (string): Success message to return on successful operation.
- *     - error (string): Error message to return if the operation fails.
- *
- * Returns:
- * - A promise resolving to an object with the following properties:
- *   - success (boolean): Whether the operation succeeded.
- *   - data (any): The response data from the API.
- *   - message (string): A success or error message.
- *
- * Usage:
- * Call the function with the desired API URL, data payload, and optional configurations.
- * Example:
- * const result = await patchData('/api/users/1', { name: 'Jane Doe' }, { messages: { success: 'User updated successfully' } });
- */
+// src/network/patchRequest.ts
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import apiService from "@/src/services/apiService";
+import apiService from '../../services/apiService';
+import { CacheTypes } from '../cacheKeys';
+import { setCache } from '../cache';
 
-interface PatchDataOptions {
-  headers?: Record<string, string>; // Custom headers for the API request
-  messages?: {
-    success?: string; // Custom success message
-    error?: string; // Custom error message
-  };
-}
+type HeadersInit = Record<string, string>;
 
-export const patchData = async (
+const sanitizeFileData = (obj: any): any => {
+  if (Array.isArray(obj)) return obj.map(sanitizeFileData);
+  if (obj && typeof obj === 'object') {
+    if ((obj as any).uri && (obj as any).name && (obj as any).type) return (obj as any).uri;
+    const out: any = {};
+    for (const k of Object.keys(obj)) out[k] = sanitizeFileData(obj[k]);
+    return out;
+  }
+  return obj;
+};
+
+export const patchRequest = async (
   url: string,
   data: any,
-  options: PatchDataOptions = {}
-): Promise<any> => {
-  const { headers = {}, messages = {} } = options;
-
+  options: {
+    headers?: HeadersInit;
+    cacheKey?: string;
+    cacheType?: string;
+    successMessage?: string;
+    errorMessage?: string;
+  } = {}
+) => {
   try {
-    // Retrieve the user token from AsyncStorage for authorization
-    const userToken = await AsyncStorage.getItem('userToken');
-    const authHeaders = userToken ? { Authorization: `Bearer ${userToken}` } : {};
+    const token = await AsyncStorage.getItem('access_token');
+    const deviceId = await AsyncStorage.getItem('device_id');
 
-    // Send PATCH request to the API
-    const response = await apiService.patch(url, data, {
-      headers: { ...authHeaders, ...headers },
-    });
+    const isFormData =
+      typeof FormData !== 'undefined' &&
+      (data instanceof FormData ||
+        (data &&
+          typeof data === 'object' &&
+          typeof (data as any).append === 'function' &&
+          Array.isArray((data as any)._parts)));
 
-    // Parse the API response
-    const responseData = await response.json();
-
-    // Check the API response status
-    if (response.status === 200 || response.status === 204) {
-      return { success: true, data: responseData, message: messages.success || 'Data updated successfully.' };
-    } else {
-      return { success: false, message: messages.error || 'Failed to update data.' };
+    const baseHeaders: HeadersInit = {};
+    if (!isFormData) {
+      baseHeaders['Content-Type'] = 'application/json';
     }
+    if (token) baseHeaders.Authorization = `Bearer ${token}`;
+    if (deviceId) baseHeaders['X-Device-Id'] = deviceId;
+
+    const headers = { ...baseHeaders, ...(options.headers ?? {}) };
+    const payload = isFormData ? data : sanitizeFileData(data);
+
+    const response = await apiService.patch(url, payload, headers);
+    const responseData = await response.json().catch(() => ({}));
+
+    if (response.ok) {
+      if (options.cacheKey) {
+        const cType = options.cacheType || CacheTypes.DEFAULT;
+        await setCache(cType, options.cacheKey, responseData);
+      }
+      return { success: true, data: responseData, message: options.successMessage || '' };
+    }
+
+    const msg =
+      (responseData && (responseData.message || responseData.detail)) ||
+      options.errorMessage ||
+      'Request failed.';
+    return { success: false, message: msg, status: response.status, data: responseData };
   } catch (error: any) {
-    // Handle errors during the PATCH operation
-    console.error(error);
-    return { success: false, message: error.message || 'An error occurred while updating data.' };
+    return { success: false, message: error?.message || options.errorMessage || 'An error occurred.' };
   }
 };
