@@ -126,6 +126,12 @@ export type AttachmentFilePayload = {
 type ExtendedChatRoomPageProps = ChatRoomPageProps & {
   hideHeader?: boolean;
   onOpenInfo?: (payload: { chat: ChatRoomPageProps['chat']; currentUserId: string | null }) => void;
+  headerContextLabel?: string | null;
+  onPressHeaderContext?: () => void;
+  safeAreaTopInsetOverride?: number;
+  showMessageCount?: boolean;
+  messageCountLabel?: string;
+  onMessageCountChange?: (count: number) => void;
 };
 
 type MessageLocator = {
@@ -144,6 +150,12 @@ export const ChatRoomPage: React.FC<ExtendedChatRoomPageProps> = ({
   onForwardMessages,
   hideHeader,
   onOpenInfo,
+  headerContextLabel,
+  onPressHeaderContext,
+  safeAreaTopInsetOverride,
+  showMessageCount = false,
+  messageCountLabel,
+  onMessageCountChange,
 }) => {
   /* ------------------------------------------------------------------------ */
   /*                               THEME / SAFE AREA                           */
@@ -151,6 +163,10 @@ export const ChatRoomPage: React.FC<ExtendedChatRoomPageProps> = ({
 
   const { palette } = useKISTheme();
   const insets = useSafeAreaInsets();
+  const topInset =
+    typeof safeAreaTopInsetOverride === 'number'
+      ? safeAreaTopInsetOverride
+      : insets.top;
 
   /* ------------------------------------------------------------------------ */
   /*                               AUTH CONTEXT                                */
@@ -158,7 +174,7 @@ export const ChatRoomPage: React.FC<ExtendedChatRoomPageProps> = ({
 
   const { authToken, currentUserId, currentUserName } =
     useChatAuth(chat);
-  const { typingByConversation, presenceByUser } = useSocket();
+  const { typingByConversation, presenceByUser, socket } = useSocket();
 
   /* ------------------------------------------------------------------------ */
   /*                         CONVERSATION BOOTSTRAP                            */
@@ -205,6 +221,12 @@ export const ChatRoomPage: React.FC<ExtendedChatRoomPageProps> = ({
     currentUserName,
     conversationId,
   });
+
+  useEffect(() => {
+    if (!onMessageCountChange) return;
+    const count = messages.filter((msg) => !msg.isDeleted).length;
+    onMessageCountChange(count);
+  }, [messages, onMessageCountChange]);
 
   /* ======================================================================== */
   /*                              LOCAL UI STATE                               */
@@ -271,6 +293,98 @@ export const ChatRoomPage: React.FC<ExtendedChatRoomPageProps> = ({
     pinnedCount,
     subRoomCount,
   } = useSelectionState(messages, subRooms);
+
+  const forwardTargets = useMemo(() => {
+    const currentId = String(chat?.conversationId ?? chat?.id ?? '');
+    return allChats.filter((c) => {
+      const id = String((c as any)?.conversationId ?? (c as any)?.id ?? '');
+      return id && id !== currentId;
+    });
+  }, [allChats, chat?.conversationId, chat?.id]);
+
+  const createForwardClientId = useCallback(
+    () => `client_${Date.now()}_${Math.random().toString(36).slice(2)}`,
+    [],
+  );
+
+  const buildForwardPayload = useCallback((message: ChatMessage) => {
+    const kind = message.kind ?? 'text';
+    const text = message.text ?? message.styledText?.text ?? '';
+    const attachments = message.attachments ?? [];
+
+    const hasContent =
+      text.trim().length > 0 ||
+      Boolean(message.styledText) ||
+      Boolean(message.sticker) ||
+      Boolean(message.voice) ||
+      Boolean(message.poll) ||
+      Boolean(message.event) ||
+      Boolean(message.contacts?.length) ||
+      attachments.length > 0;
+
+    if (!hasContent) return null;
+
+    return {
+      kind,
+      text,
+      styledText: message.styledText ?? null,
+      voice: message.voice ?? null,
+      sticker: message.sticker ?? null,
+      contacts: message.contacts ?? null,
+      poll: message.poll ?? null,
+      event: message.event ?? null,
+      attachments,
+    };
+  }, []);
+
+  const handleForwardConfirm = useCallback(
+    async (chatIds: string[]) => {
+      if (!chatIds.length || selectedMessages.length === 0) {
+        setForwardSheetVisible(false);
+        return;
+      }
+
+      if (onForwardMessages) {
+        onForwardMessages({
+          fromRoomId: String(storageRoomId),
+          toChatIds: chatIds,
+          messages: selectedMessages,
+        });
+        exitSelectionMode();
+        setForwardSheetVisible(false);
+        return;
+      }
+
+      if (!socket) {
+        Alert.alert('Forward', 'Unable to forward messages right now.');
+        return;
+      }
+
+      chatIds.forEach((chatId) => {
+        selectedMessages.forEach((message) => {
+          const payload = buildForwardPayload(message);
+          if (!payload) return;
+          socket.emit('chat.send', {
+            conversationId: chatId,
+            clientId: createForwardClientId(),
+            ...payload,
+          });
+        });
+      });
+
+      exitSelectionMode();
+      setForwardSheetVisible(false);
+    },
+    [
+      selectedMessages,
+      socket,
+      onForwardMessages,
+      buildForwardPayload,
+      createForwardClientId,
+      exitSelectionMode,
+      storageRoomId,
+    ],
+  );
 
   const {
     handlePinSelected,
@@ -611,6 +725,14 @@ export const ChatRoomPage: React.FC<ExtendedChatRoomPageProps> = ({
     return 'offline';
   }, [typingByConversation, presenceByUser, conversationId, storageRoomId, chat, currentUserId]);
 
+  const statusTextFinal = useMemo(() => {
+    if (!showMessageCount) return statusText;
+    const count = messages.filter((msg) => !msg.isDeleted).length;
+    const label = messageCountLabel ?? 'comments';
+    const noun = count === 1 && label.endsWith('s') ? label.slice(0, -1) : label;
+    return `${count} ${noun}`;
+  }, [showMessageCount, statusText, messages, messageCountLabel]);
+
   useEffect(() => {
     if (!conversationId) return;
     const isTyping = draft.trim().length > 0;
@@ -797,7 +919,7 @@ export const ChatRoomPage: React.FC<ExtendedChatRoomPageProps> = ({
     <View
       style={[
         styles.root,
-        { backgroundColor: bg, paddingTop: insets.top },
+        { backgroundColor: bg, paddingTop: topInset },
       ]}
     >
       {!hideHeader && (
@@ -807,7 +929,9 @@ export const ChatRoomPage: React.FC<ExtendedChatRoomPageProps> = ({
           palette={palette}
           onOpenInfo={selectionMode ? undefined : handleOpenInfo}
           currentUserId={currentUserId}
-          statusText={statusText}
+          statusText={statusTextFinal}
+          contextLabel={headerContextLabel}
+          onPressContext={onPressHeaderContext}
           dmStatusLabel={dmStatusLabel}
           dmStatusVariant={dmStatusVariant}
           selectionMode={selectionMode}
@@ -1293,6 +1417,14 @@ export const ChatRoomPage: React.FC<ExtendedChatRoomPageProps> = ({
         onClose={() => setSubRoomsSheetVisible(false)}
         parentRoomId={String(storageRoomId)}
         subRooms={subRooms}
+        palette={palette}
+      />
+
+      <ForwardChatSheet
+        visible={forwardSheetVisible}
+        onClose={() => setForwardSheetVisible(false)}
+        onConfirm={handleForwardConfirm}
+        chats={forwardTargets}
         palette={palette}
       />
     </View>

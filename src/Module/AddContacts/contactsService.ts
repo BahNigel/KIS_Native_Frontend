@@ -2,6 +2,7 @@
 
 import Contacts, { Contact as RNContact } from 'react-native-contacts';
 import { Platform, PermissionsAndroid } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import ROUTES from '@/network';
 import { getRequest } from '@/network/get';
 
@@ -14,6 +15,14 @@ export type KISDeviceContact = {
 export type KISContact = KISDeviceContact & {
   isRegistered: boolean;
   userId?: string;
+};
+
+const CONTACTS_CACHE_KEY = 'KIS_CONTACTS_CACHE_V1';
+const CONTACTS_CACHE_META_KEY = 'KIS_CONTACTS_CACHE_META_V1';
+const DEFAULT_CACHE_MAX_AGE_MS = 10 * 60 * 1000;
+
+type CacheMeta = {
+  savedAt: number;
 };
 
 /**
@@ -162,9 +171,53 @@ export async function markRegisteredOnBackend(
  * GET DEVICE CONTACTS + MARK REGISTERED USERS
  */
 export async function refreshFromDeviceAndBackend(): Promise<KISContact[]> {
+  return refreshFromDeviceAndBackendWithOptions({});
+}
+
+export async function refreshFromDeviceAndBackendWithOptions(options: {
+  force?: boolean;
+  maxAgeMs?: number;
+}): Promise<KISContact[]> {
+  const maxAgeMs = options.maxAgeMs ?? DEFAULT_CACHE_MAX_AGE_MS;
+
+  if (!options.force) {
+    const cached = await getCachedContacts(maxAgeMs);
+    if (cached) return cached;
+  }
+
   const deviceContacts = await getDeviceContactsFromDevice();
   const marked = await markRegisteredOnBackend(deviceContacts);
+  await setCachedContacts(marked);
   return marked;
+}
+
+async function getCachedContacts(maxAgeMs: number): Promise<KISContact[] | null> {
+  try {
+    const [rawContacts, rawMeta] = await Promise.all([
+      AsyncStorage.getItem(CONTACTS_CACHE_KEY),
+      AsyncStorage.getItem(CONTACTS_CACHE_META_KEY),
+    ]);
+    if (!rawContacts || !rawMeta) return null;
+    const meta = JSON.parse(rawMeta) as CacheMeta;
+    if (!meta?.savedAt) return null;
+    if (Date.now() - meta.savedAt > maxAgeMs) return null;
+    const parsed = JSON.parse(rawContacts);
+    return Array.isArray(parsed) ? (parsed as KISContact[]) : null;
+  } catch {
+    return null;
+  }
+}
+
+async function setCachedContacts(contacts: KISContact[]): Promise<void> {
+  try {
+    await Promise.all([
+      AsyncStorage.setItem(CONTACTS_CACHE_KEY, JSON.stringify(contacts)),
+      AsyncStorage.setItem(
+        CONTACTS_CACHE_META_KEY,
+        JSON.stringify({ savedAt: Date.now() }),
+      ),
+    ]);
+  } catch {}
 }
 
 /**

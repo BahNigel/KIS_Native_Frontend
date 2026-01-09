@@ -65,6 +65,10 @@ export type KISIconName =
   | 'contacts'
   | 'poll'
   | 'calendar'
+  | 'heart'
+  | 'comment'
+  | 'share'
+  | 'link'
   // NEW — specific file types
   | 'file-pdf'
   | 'file-word'
@@ -218,6 +222,10 @@ const ion: IonMap = {
   },
   poll: { filled: 'stats-chart', outline: 'stats-chart-outline' },
   calendar: { filled: 'calendar', outline: 'calendar-outline' },
+  heart: { filled: 'heart', outline: 'heart-outline' },
+  comment: { filled: 'chatbubble-ellipses', outline: 'chatbubble-ellipses-outline' },
+  share: { filled: 'share-social', outline: 'share-social-outline' },
+  link: { filled: 'link', outline: 'link-outline' },
 };
 
 export interface KISIconProps {

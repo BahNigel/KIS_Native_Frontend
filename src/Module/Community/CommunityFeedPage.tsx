@@ -1,18 +1,30 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   FlatList,
   Pressable,
-  ActivityIndicator,
+  Image,
+  Share,
+  Alert,
+  Modal,
 } from 'react-native';
 import { useKISTheme } from '@/theme/useTheme';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import ROUTES from '@/network';
 import { getRequest } from '@/network/get';
+import { postRequest } from '@/network/post';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { KISIcon } from '@/constants/kisIcons';
 import ImagePlaceholder from '@/components/common/ImagePlaceholder';
 import Skeleton from '@/components/common/Skeleton';
+import FeedComposerSheet, { FeedComposerPayload } from '@/components/feeds/FeedComposerSheet';
+import FeedPostActionsSheet from '@/components/feeds/FeedPostActionsSheet';
+import ChatRoomPage from '@/Module/ChatRoom/ChatRoomPage';
+import ShareRenderer, { type SharePayload } from '@/components/feeds/ShareRenderer';
+import { uploadFileToBackend } from '@/Module/ChatRoom/uploadFileToBackend';
+import { NEST_API_BASE_URL } from '@/network';
 
 type Community = {
   id: string;
@@ -22,8 +34,14 @@ type Community = {
 type Post = {
   id: string;
   text?: string;
+  styled_text?: { text?: string };
+  attachments?: any[];
+  comments_count?: number;
+  comment_conversation_id?: string;
+  reactions?: { emoji: string; count: number }[];
+  has_reacted?: boolean;
   created_at?: string;
-  author?: { display_name?: string };
+  author?: { display_name?: string; id?: string };
 };
 
 type FeedItem =
@@ -40,8 +58,21 @@ export default function CommunityFeedPage({
   onBack,
 }: CommunityFeedPageProps) {
   const { palette } = useKISTheme();
+  const insets = useSafeAreaInsets();
   const [loading, setLoading] = useState(true);
   const [posts, setPosts] = useState<Post[]>([]);
+  const [composerVisible, setComposerVisible] = useState(false);
+  const [actionsVisible, setActionsVisible] = useState(false);
+  const [activePost, setActivePost] = useState<Post | null>(null);
+  const [commentChatVisible, setCommentChatVisible] = useState(false);
+  const [commentChat, setCommentChat] = useState<{ post: Post; chat: any } | null>(null);
+  const [commentCounts, setCommentCounts] = useState<Record<string, number>>({});
+  const [likeCounts, setLikeCounts] = useState<Record<string, number>>({});
+  const [likedPostIds, setLikedPostIds] = useState<Record<string, boolean>>({});
+  const likedPostIdsRef = useRef<Record<string, boolean>>({});
+  const shareShotRef = useRef<any>(null);
+  const [sharePayload, setSharePayload] = useState<SharePayload | null>(null);
+  const listRef = useRef<FlatList<FeedItem>>(null);
 
   const loadFeed = useCallback(async () => {
     setLoading(true);
@@ -49,7 +80,7 @@ export default function CommunityFeedPage({
       const res = await getRequest(`${ROUTES.community.posts}?community=${community.id}`, {
         errorMessage: 'Failed to load posts',
       });
-      const list = res?.data ?? res ?? [];
+      const list = res?.data?.results ?? res?.data ?? res ?? [];
       setPosts(Array.isArray(list) ? list : []);
     } finally {
       setLoading(false);
@@ -59,6 +90,230 @@ export default function CommunityFeedPage({
   useEffect(() => {
     loadFeed();
   }, [loadFeed]);
+
+  useEffect(() => {
+    likedPostIdsRef.current = likedPostIds;
+  }, [likedPostIds]);
+
+  useEffect(() => {
+    setCommentCounts((prev) => {
+      const next = { ...prev };
+      posts.forEach((post) => {
+        if (next[post.id] == null && typeof post.comments_count === 'number') {
+          next[post.id] = post.comments_count;
+        }
+      });
+      return next;
+    });
+    setLikeCounts((prev) => {
+      const next = { ...prev };
+      posts.forEach((post) => {
+        if (next[post.id] == null && Array.isArray(post.reactions)) {
+          const count = post.reactions.reduce((sum, r) => sum + (r?.count ?? 0), 0);
+          next[post.id] = count;
+        }
+      });
+      return next;
+    });
+    setLikedPostIds((prev) => {
+      const next = { ...prev };
+      posts.forEach((post) => {
+        if (typeof post.has_reacted === 'boolean') {
+          next[post.id] = post.has_reacted;
+        }
+      });
+      return next;
+    });
+  }, [posts]);
+
+  const handleCreate = async (payload: FeedComposerPayload) => {
+    const res = await postRequest(
+      ROUTES.community.posts,
+      { community: community.id, ...payload },
+      { errorMessage: 'Unable to post to community feed.' },
+    );
+    if (res?.success) {
+      loadFeed();
+    }
+  };
+
+  const handleReact = async (postId: string) => {
+    const alreadyLiked = likedPostIdsRef.current[postId];
+    const nextLiked = !alreadyLiked;
+    setLikedPostIds((prev) => ({ ...prev, [postId]: nextLiked }));
+    setLikeCounts((prev) => ({
+      ...prev,
+      [postId]: Math.max(0, (prev[postId] ?? 0) + (nextLiked ? 1 : -1)),
+    }));
+    const res = await postRequest(
+      ROUTES.community.postReact(postId),
+      { emoji: '👍', action: nextLiked ? 'add' : 'remove' },
+      { errorMessage: 'Unable to react.' },
+    );
+    if (res?.data?.has_reacted !== undefined) {
+      const serverLiked = Boolean(res.data.has_reacted);
+      setLikedPostIds((prev) => ({ ...prev, [postId]: serverLiked }));
+    }
+  };
+
+  const captureShareImage = async (payload: SharePayload) => {
+    setSharePayload(payload);
+    await new Promise((resolve) => requestAnimationFrame(() => resolve(true)));
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    const uri = await shareShotRef.current?.capture?.();
+    setSharePayload(null);
+    return uri as string | undefined;
+  };
+
+  const uploadShareAsset = async (uri: string) => {
+    const token = await AsyncStorage.getItem('access_token');
+    if (!token) return null;
+    const attachment = await uploadFileToBackend({
+      file: {
+        uri,
+        name: `kis-share-${Date.now()}.png`,
+        type: 'image/png',
+      },
+      authToken: token,
+      baseUrl: NEST_API_BASE_URL,
+    });
+    return attachment?.url ?? null;
+  };
+
+  const handleShare = async (post: Post) => {
+    const text = post.text ?? post.styled_text?.text ?? '';
+    const attachment = Array.isArray(post.attachments) ? post.attachments[0] : null;
+    const attachmentUrl = attachment?.url ?? attachment?.uri ?? null;
+    const kind = attachment?.kind ?? attachment?.mimeType ?? '';
+    const isImage = String(kind).includes('image');
+    const watermarkColor = '#22C55E';
+    const subtitle = 'Community share';
+
+    if (attachmentUrl && isImage) {
+      const imageUri = await captureShareImage({
+        mode: 'image',
+        text,
+        imageUri: attachmentUrl,
+        watermarkColor,
+        subtitle,
+      });
+      if (imageUri) {
+        const url = await uploadShareAsset(imageUri);
+        if (url) {
+          await Share.share({ message: url, url });
+          return;
+        }
+      }
+    }
+
+    if (!attachmentUrl) {
+      const imageUri = await captureShareImage({
+        mode: 'text',
+        text: text || 'Shared from KIS',
+        watermarkColor,
+        subtitle,
+      });
+      if (imageUri) {
+        const url = await uploadShareAsset(imageUri);
+        if (url) {
+          await Share.share({ message: url, url });
+          return;
+        }
+      }
+    }
+
+    if (attachmentUrl) {
+      await Share.share({ message: `KIS: ${attachmentUrl}`, url: attachmentUrl });
+      return;
+    }
+
+    await Share.share({ message: text || 'Shared from KIS' });
+  };
+
+  const openCommentChat = async (post: Post) => {
+    setActivePost(post);
+    let conversationId = post.comment_conversation_id;
+    if (!conversationId) {
+      const res = await postRequest(
+        ROUTES.community.postCommentRoom(post.id),
+        {},
+        { errorMessage: 'Unable to open comments.' },
+      );
+      conversationId =
+        res?.data?.conversation_id ??
+        res?.data?.conversationId ??
+        res?.data?.id;
+    }
+    if (!conversationId) {
+      Alert.alert('Comments', 'Unable to open comment thread.');
+      return;
+    }
+    setCommentChat({
+      post,
+      chat: {
+        id: conversationId,
+        conversationId,
+        name: 'Comments',
+        title: 'Comments',
+        isGroup: true,
+        kind: 'group',
+        communityId: community.id,
+        communityName: community.name,
+      },
+    });
+    setCommentChatVisible(true);
+  };
+
+  const handleDelete = async (postId: string) => {
+    const res = await postRequest(
+      ROUTES.community.postDelete(postId),
+      {},
+      { errorMessage: 'Unable to delete post.' },
+    );
+    if (res?.success) {
+      setPosts((prev) => prev.filter((p) => p.id !== postId));
+    }
+  };
+
+  const handleBroadcast = async (postId: string) => {
+    const res = await postRequest(
+      ROUTES.community.postBroadcast(postId),
+      {},
+      { errorMessage: 'Unable to broadcast post.' },
+    );
+    if (res?.success) {
+      Alert.alert('Broadcast', 'Post added to broadcast.');
+    }
+  };
+
+  const handleBlockUser = async (userId?: string) => {
+    if (!userId) return;
+    const res = await postRequest(
+      ROUTES.moderation.userBlocks,
+      { blocked: userId, reason: 'feed_block' },
+      { errorMessage: 'Unable to block user.' },
+    );
+    if (res?.success) {
+      setPosts((prev) => prev.filter((p) => p.author?.id !== userId));
+    }
+  };
+
+  const handleReport = async (postId: string) => {
+    const res = await postRequest(
+      ROUTES.moderation.flags,
+      {
+        source: 'USER',
+        target_type: 'POST',
+        target_id: postId,
+        reason: 'Reported from feed',
+        severity: 'LOW',
+      },
+      { errorMessage: 'Unable to report post.' },
+    );
+    if (res?.success) {
+      Alert.alert('Report', 'Thanks for letting us know.');
+    }
+  };
 
   const feedItems = useMemo(() => {
     const items: FeedItem[] = [];
@@ -70,6 +325,24 @@ export default function CommunityFeedPage({
     });
     return items;
   }, [posts]);
+
+  const scrollToActivePost = useCallback(() => {
+    if (!activePost) return;
+    const index = feedItems.findIndex(
+      (item) => item.type === 'post' && item.data.id === activePost.id,
+    );
+    if (index < 0) return;
+    setTimeout(() => {
+      listRef.current?.scrollToIndex({ index, animated: true });
+    }, 200);
+  }, [activePost, feedItems]);
+
+  const handleOpenPostFromChat = useCallback(() => {
+    setCommentChatVisible(false);
+    setTimeout(() => {
+      scrollToActivePost();
+    }, 250);
+  }, [scrollToActivePost]);
 
   return (
     <View style={[styles.root, { backgroundColor: palette.bg }]}>
@@ -107,9 +380,16 @@ export default function CommunityFeedPage({
         </View>
       ) : (
         <FlatList
+          ref={listRef}
           data={feedItems}
           keyExtractor={(item, idx) => (item.type === 'post' ? item.data.id : item.id ?? String(idx))}
           contentContainerStyle={{ padding: 16, paddingBottom: 32 }}
+          onScrollToIndexFailed={(info) => {
+            listRef.current?.scrollToOffset({
+              offset: info.averageItemLength * info.index,
+              animated: true,
+            });
+          }}
           renderItem={({ item }) => {
             if (item.type === 'ad') {
               return (
@@ -125,6 +405,12 @@ export default function CommunityFeedPage({
               );
             }
             const post = item.data;
+            const attachment = Array.isArray(post.attachments) ? post.attachments[0] : null;
+            const attachmentUrl = attachment?.url ?? attachment?.uri ?? null;
+            const thumbUrl =
+              attachment?.thumbUrl ?? attachment?.thumb_url ?? attachment?.thumbnail ?? null;
+            const kind = attachment?.kind ?? attachment?.mimeType ?? '';
+            const isVideo = String(kind).includes('video') || String(kind).includes('mp4');
             return (
               <View style={[styles.postCard, { borderColor: palette.inputBorder, backgroundColor: palette.card }]}>
                 <View style={styles.postHeader}>
@@ -137,20 +423,68 @@ export default function CommunityFeedPage({
                       {post.created_at ? new Date(post.created_at).toLocaleString() : 'Just now'}
                     </Text>
                   </View>
+                  <Pressable
+                    onPress={() => {
+                      setActivePost(post);
+                      setActionsVisible(true);
+                    }}
+                    style={styles.moreButton}
+                  >
+                    <KISIcon name="more-vert" size={18} color={palette.subtext} />
+                  </Pressable>
                 </View>
+                {attachmentUrl ? (
+                  <View style={styles.mediaWrap}>
+                    {isVideo ? (
+                      <>
+                        {thumbUrl ? (
+                          <Image source={{ uri: thumbUrl }} style={styles.media} />
+                        ) : (
+                          <View style={[styles.media, styles.mediaFallback, { borderColor: palette.inputBorder }]}>
+                            <KISIcon name="play" size={22} color={palette.subtext} />
+                            <Text style={{ color: palette.subtext, fontSize: 12, marginTop: 6 }}>
+                              Add a thumbnail
+                            </Text>
+                          </View>
+                        )}
+                        <View style={[styles.playBadge, { backgroundColor: '#00000066' }]}>
+                          <KISIcon name="play" size={14} color="#fff" />
+                        </View>
+                      </>
+                    ) : (
+                      <Image source={{ uri: attachmentUrl }} style={styles.media} />
+                    )}
+                  </View>
+                ) : null}
                 <Text style={{ color: palette.text, marginTop: 10 }}>
-                  {post.text ?? ''}
+                  {post.text ?? post.styled_text?.text ?? ''}
                 </Text>
                 <View style={styles.postActions}>
-                  <Pressable style={styles.actionPill}>
-                    <KISIcon name="heart" size={14} color={palette.subtext} />
-                    <Text style={{ color: palette.subtext, marginLeft: 6 }}>Like</Text>
+                  <Pressable style={styles.actionPill} onPress={() => handleReact(post.id)}>
+                    <KISIcon
+                      name="heart"
+                      size={14}
+                      color={likedPostIds[post.id] ? palette.primary : palette.subtext}
+                    />
+                    <Text style={{ color: palette.subtext, marginLeft: 6 }}>
+                      Like{(likeCounts[post.id] ?? 0) ? ` (${likeCounts[post.id]})` : ''}
+                    </Text>
                   </Pressable>
-                  <Pressable style={styles.actionPill}>
+                  <Pressable
+                    style={styles.actionPill}
+                    onPress={() => {
+                      openCommentChat(post);
+                    }}
+                  >
                     <KISIcon name="comment" size={14} color={palette.subtext} />
-                    <Text style={{ color: palette.subtext, marginLeft: 6 }}>Comment</Text>
+                    <Text style={{ color: palette.subtext, marginLeft: 6 }}>
+                      Comment
+                      {(commentCounts[post.id] ?? post.comments_count)
+                        ? ` (${commentCounts[post.id] ?? post.comments_count})`
+                        : ''}
+                    </Text>
                   </Pressable>
-                  <Pressable style={styles.actionPill}>
+                  <Pressable style={styles.actionPill} onPress={() => handleShare(post)}>
                     <KISIcon name="share" size={14} color={palette.subtext} />
                     <Text style={{ color: palette.subtext, marginLeft: 6 }}>Share</Text>
                   </Pressable>
@@ -165,6 +499,102 @@ export default function CommunityFeedPage({
           }
         />
       )}
+
+      <Pressable
+        onPress={() => {
+          setComposerVisible(true);
+        }}
+        style={({ pressed }) => [
+          styles.fab,
+          {
+            backgroundColor: palette.primary,
+            opacity: pressed ? 0.85 : 1,
+          },
+        ]}
+      >
+        <KISIcon name="add" size={20} color={palette.onPrimary ?? '#fff'} />
+      </Pressable>
+
+      <FeedComposerSheet
+        visible={composerVisible}
+        onClose={() => setComposerVisible(false)}
+        onSubmit={handleCreate}
+      />
+      <ShareRenderer ref={shareShotRef} payload={sharePayload} />
+
+      <FeedPostActionsSheet
+        visible={actionsVisible}
+        onClose={() => setActionsVisible(false)}
+        actions={[
+          {
+            key: 'comment',
+            label: 'Comment',
+            onPress: () => {
+              if (activePost) openCommentChat(activePost);
+            },
+          },
+          {
+            key: 'share',
+            label: 'Share',
+            onPress: () => {
+              if (activePost) handleShare(activePost);
+            },
+          },
+          {
+            key: 'broadcast',
+            label: 'Broadcast',
+            onPress: () => {
+              if (activePost) handleBroadcast(activePost.id);
+            },
+          },
+          {
+            key: 'report',
+            label: 'Report',
+            onPress: () => {
+              if (activePost) handleReport(activePost.id);
+            },
+          },
+          {
+            key: 'block',
+            label: 'Block user',
+            onPress: () => {
+              if (activePost) handleBlockUser(activePost.author?.id);
+            },
+          },
+          {
+            key: 'delete',
+            label: 'Delete post',
+            destructive: true,
+            onPress: () => {
+              if (activePost) handleDelete(activePost.id);
+            },
+          },
+        ].filter((action) => action.key !== 'delete' || activePost?.id)}
+      />
+
+      <Modal
+        visible={commentChatVisible}
+        animationType="slide"
+        onRequestClose={() => setCommentChatVisible(false)}
+      >
+        {commentChat ? (
+          <ChatRoomPage
+            chat={commentChat.chat}
+            onBack={() => setCommentChatVisible(false)}
+            allChats={[]}
+            headerContextLabel={`Feed: ${
+              commentChat.post.text ?? commentChat.post.styled_text?.text ?? community.name
+            }`}
+            onPressHeaderContext={handleOpenPostFromChat}
+            safeAreaTopInsetOverride={insets.top}
+            showMessageCount
+            messageCountLabel="comments"
+            onMessageCountChange={(count) => {
+              setCommentCounts((prev) => ({ ...prev, [commentChat.post.id]: count }));
+            }}
+          />
+        ) : null}
+      </Modal>
     </View>
   );
 }
@@ -189,7 +619,39 @@ const styles = StyleSheet.create({
   postCard: { borderWidth: 1, borderRadius: 14, padding: 14, marginBottom: 14 },
   postHeader: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   avatar: { width: 36, height: 36, borderRadius: 18 },
+  moreButton: { padding: 6 },
   postActions: { flexDirection: 'row', gap: 8, marginTop: 12, flexWrap: 'wrap' },
   actionPill: { flexDirection: 'row', alignItems: 'center', paddingVertical: 6, paddingHorizontal: 10, borderRadius: 999 },
   adCard: { borderWidth: 1, borderRadius: 14, padding: 14, marginBottom: 14 },
+  mediaWrap: { marginTop: 10 },
+  media: { width: '100%', height: 180, borderRadius: 12 },
+  mediaFallback: {
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+  },
+  playBadge: {
+    position: 'absolute',
+    right: 10,
+    bottom: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderRadius: 999,
+  },
+  fab: {
+    position: 'absolute',
+    right: 20,
+    bottom: 24,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    alignItems: 'center',
+    justifyContent: 'center',
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOpacity: 0.2,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 4 },
+  },
 });

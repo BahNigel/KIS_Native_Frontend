@@ -42,6 +42,10 @@ type ChatHeaderProps = {
 
   // NEW: presence/typing status
   statusText?: string | null;
+
+  // NEW: context label for feed comment rooms
+  contextLabel?: string | null;
+  onPressContext?: () => void;
 };
 
 export const ChatHeader: React.FC<ChatHeaderProps> = ({
@@ -71,6 +75,8 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
   dmStatusLabel,
   dmStatusVariant = 'normal',
   statusText,
+  contextLabel,
+  onPressContext,
 }) => {
   const title = chat?.name ?? 'Chat';
   const headerAvatar =
@@ -301,7 +307,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
             <ImagePlaceholder size={36} radius={18} style={styles.headerAvatar} />
           )}
 
-          <View style={{ marginLeft: 10 }}>
+          <View style={{ marginLeft: 10, flex: 1 }}>
             <Text
               style={[
                 styles.headerTitle,
@@ -311,6 +317,23 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
             >
               {title}
             </Text>
+            {contextLabel ? (
+              <Pressable
+                onPress={onPressContext}
+                disabled={!onPressContext}
+                style={({ pressed }) => [{ opacity: pressed ? 0.7 : 1 }]}
+              >
+                <Text
+                  style={[
+                    styles.headerContext,
+                    { color: palette.headerSubtext ?? palette.subtext },
+                  ]}
+                  numberOfLines={1}
+                >
+                  {contextLabel}
+                </Text>
+              </Pressable>
+            ) : null}
             <Text
               style={[
                 styles.headerSubtitle,

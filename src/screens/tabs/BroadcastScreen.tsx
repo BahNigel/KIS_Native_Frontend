@@ -25,6 +25,8 @@ export default function BroadcastScreen() {
   const [channels, setChannels] = useState<any[]>([]);
   const [loadingChannels, setLoadingChannels] = useState(false);
   const [query, setQuery] = useState('');
+  const [broadcasts, setBroadcasts] = useState<any[]>([]);
+  const [loadingBroadcasts, setLoadingBroadcasts] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -53,6 +55,18 @@ export default function BroadcastScreen() {
   }, [accountTier]);
   const canUseBroadcast = isBusinessTier(accountTier);
 
+  const loadBroadcasts = useCallback(async () => {
+    setLoadingBroadcasts(true);
+    const res = await getRequest(ROUTES.broadcasts.list, {
+      errorMessage: 'Unable to load broadcasts.',
+    });
+    if (res?.success) {
+      const payload = res.data?.results ?? res.data ?? [];
+      setBroadcasts(Array.isArray(payload) ? payload : []);
+    }
+    setLoadingBroadcasts(false);
+  }, []);
+
   const loadChannels = useCallback(
     async (search: string) => {
       setLoadingChannels(true);
@@ -78,6 +92,10 @@ export default function BroadcastScreen() {
     }, 250);
     return () => clearTimeout(timer);
   }, [query, loadChannels]);
+
+  useEffect(() => {
+    loadBroadcasts();
+  }, [loadBroadcasts]);
 
   const handleSubscribe = async (channelId: string) => {
     const res = await postRequest(
@@ -169,6 +187,45 @@ export default function BroadcastScreen() {
             />
           </View>
         ) : null}
+
+        <View style={[styles.card, { backgroundColor: palette.card, marginTop: 16 }]}>
+          <Text style={[styles.cardTitle, { color: palette.text }]}>Latest broadcasts</Text>
+          <Text style={[styles.cardSubtitle, { color: palette.subtext }]}>
+            Broadcast items are available for up to 10 days. Channel chatrooms stay permanent.
+          </Text>
+          {loadingBroadcasts ? (
+            <View style={{ marginTop: 12, gap: 10 }}>
+              <Skeleton height={52} radius={12} />
+              <Skeleton height={52} radius={12} />
+            </View>
+          ) : (
+            <View style={{ marginTop: 12, gap: 12 }}>
+              {broadcasts.length === 0 ? (
+                <Text style={{ color: palette.subtext }}>No broadcasts yet.</Text>
+              ) : (
+                broadcasts.map((item) => {
+                  const body = item.text || item.styled_text?.text || '';
+                  return (
+                  <View key={item.id} style={[styles.broadcastCard, { borderColor: palette.divider }]}>
+                    <Text style={[styles.broadcastTitle, { color: palette.text }]}>
+                      {item.title || 'Broadcast'}
+                    </Text>
+                    {body ? (
+                      <Text style={[styles.broadcastText, { color: palette.subtext }]}>
+                        {body}
+                      </Text>
+                    ) : null}
+                    <Text style={[styles.broadcastMeta, { color: palette.subtext }]}>
+                      {item.source_type ? `${item.source_type} • ` : ''}
+                      {item.created_at ? new Date(item.created_at).toLocaleString() : 'Just now'}
+                    </Text>
+                  </View>
+                  );
+                })
+              )}
+            </View>
+          )}
+        </View>
 
         <View style={[styles.card, { backgroundColor: palette.card, marginTop: 16 }]}>
           <Text style={[styles.cardTitle, { color: palette.text }]}>Channel directory</Text>
@@ -267,4 +324,13 @@ const styles = StyleSheet.create({
   channelMeta: { marginTop: 4, fontSize: 13 },
   channelInvite: { marginTop: 6, fontSize: 12 },
   roleChip: { alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999 },
+  broadcastCard: {
+    borderWidth: 1,
+    borderRadius: 14,
+    padding: 12,
+    gap: 6,
+  },
+  broadcastTitle: { fontSize: 16, fontWeight: '700' },
+  broadcastText: { fontSize: 13 },
+  broadcastMeta: { fontSize: 12 },
 });

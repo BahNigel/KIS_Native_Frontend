@@ -107,54 +107,10 @@ const deviceIdRef = useRef<string>('');
 const joinedRoomsRef = useRef<Set<string>>(new Set());
 const { socket, isConnected, typingByConversation, currentUserId, presenceByUser } = useSocket();
 
-const loadStatusSummary = useCallback(async (sourceConversations?: Chat[]) => {
-  try {
-    const contacts = await refreshFromDeviceAndBackend();
-    const visibleIds = contacts
-      .filter((c) => c.isRegistered && c.userId)
-      .map((c) => String(c.userId));
-    const convs = sourceConversations ?? conversations;
-    convs.forEach((conv) => {
-      if (!conv?.isDirect) return;
-      const parts = Array.isArray(conv.participants) ? conv.participants : [];
-      parts.forEach((p: any) => {
-        const id = p?.user?.id ?? p?.userId ?? p?.id;
-        if (!id) return;
-        const strId = String(id);
-        if (strId && strId !== String(currentUserId ?? '')) {
-          visibleIds.push(strId);
-        }
-      });
-    });
-    if (currentUserId) visibleIds.push(String(currentUserId));
-    const uniqueIds = Array.from(new Set(visibleIds));
-    const qs = uniqueIds.length ? `?userIds=${uniqueIds.join(',')}` : '';
-    const res = await getRequest(`${ROUTES.statuses.list}${qs}`);
-    const list = Array.isArray(res?.data?.results) ? res.data.results : [];
-    const next: Record<string, { hasStatus: boolean; hasUnseen: boolean }> = {};
-    list.forEach((entry: any) => {
-      const userId = String(entry?.user?.id ?? '');
-      if (!userId) return;
-      const items = Array.isArray(entry?.items) ? entry.items : [];
-      const hasStatus = items.length > 0;
-      const hasUnseen =
-        typeof entry?.has_unseen === 'boolean'
-          ? entry.has_unseen
-          : items.some((item: any) => !item.viewed);
-      next[userId] = { hasStatus, hasUnseen };
-    });
-    setStatusByUserId(next);
-  } catch (e) {
-    console.warn('[MessagesScreen] loadStatusSummary failed', e);
-    setStatusByUserId({});
-  }
-}, [currentUserId, conversations]);
-
 const refreshConversations = useCallback(async (force?: boolean) => {
   const convs = await fetchConversationsForCurrentUser([], currentUserId ?? undefined, !!force);
   setConversations(convs);
-  await loadStatusSummary(convs);
-}, [currentUserId, loadStatusSummary]);
+}, [currentUserId]);
 
 useEffect(() => {
   let active = true;
@@ -163,16 +119,15 @@ useEffect(() => {
     if (term.length >= 2) {
       const convs = await searchConversationsFromServer(term, currentUserId ?? undefined);
       if (active) setConversations(convs);
-      if (active) await loadStatusSummary();
+      // statuses are loaded only on explicit user action
       return;
     }
     const convs = await fetchConversationsForCurrentUser([], currentUserId ?? undefined);
     console.log("checking if conversation is comming from the backend: ", convs)
     if (active) setConversations(convs);
-    if (active) await loadStatusSummary();
   })();
   return () => { active = false; };
-}, [currentUserId, query, loadStatusSummary]);
+}, [currentUserId, query]);
 
 useEffect(() => {
   const sub = DeviceEventEmitter.addListener('conversation.refresh', async () => {
@@ -190,15 +145,6 @@ useEffect(() => {
   });
   return () => sub.remove();
 }, [refreshConversations]);
-
-useEffect(() => {
-  const sub = DeviceEventEmitter.addListener('status.updated', () => {
-    loadStatusSummary();
-  });
-  return () => {
-    sub.remove();
-  };
-}, [loadStatusSummary]);
 
 useEffect(() => {
   const sub = DeviceEventEmitter.addListener('status.open', () => {
@@ -1426,7 +1372,11 @@ const handleMuteSelected = () => {
             backgroundColor: palette.bg,
           }}
         >
-          <ChatRoomPage chat={activeChat} onBack={closeChat} />
+          <ChatRoomPage
+            chat={activeChat}
+            onBack={closeChat}
+            allChats={conversations}
+          />
         </Animated.View>
       )}
       {(

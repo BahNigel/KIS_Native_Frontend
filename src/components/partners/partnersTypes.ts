@@ -59,6 +59,10 @@ export type PartnerPost = {
   poll?: any;
   event?: any;
   link?: string | null;
+  reactions?: { emoji: string; count: number }[];
+  comments_count?: number;
+  has_reacted?: boolean;
+  comment_conversation_id?: string | null;
   created_at?: string;
 };
 

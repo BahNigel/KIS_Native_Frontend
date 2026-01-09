@@ -33,7 +33,7 @@ import {
   KISContact,
   KISDeviceContact,
   markRegisteredOnBackend,
-  refreshFromDeviceAndBackend,
+  refreshFromDeviceAndBackendWithOptions,
   saveContactToDevice,
 } from './contactsService';
 import { EntryActionRow } from './components/EntryActionRow';
@@ -382,7 +382,7 @@ export const AddContactsPage: React.FC<AddContactsPageProps> = ({
       }
 
       // 2) Always refresh from device + backend
-      const fresh = await refreshFromDeviceAndBackend();
+      const fresh = await refreshFromDeviceAndBackendWithOptions({ force: true });
       const merged = mergeContactsByPhone(cachedContacts, fresh);
       // ✅ normalize ids before storing to cache & state
       const normalizedForCache = withCacheContactIds(merged);
@@ -404,7 +404,7 @@ export const AddContactsPage: React.FC<AddContactsPageProps> = ({
     setError(null);
     setRefreshing(true);
     try {
-      const fresh = await refreshFromDeviceAndBackend();
+      const fresh = await refreshFromDeviceAndBackendWithOptions({ force: true });
       const merged = mergeContactsByPhone(contacts, fresh);
       // ✅ enforce cached id format on refresh
       const normalizedForCache = withCacheContactIds(merged);

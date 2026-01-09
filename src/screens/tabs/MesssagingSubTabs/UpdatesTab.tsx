@@ -23,7 +23,7 @@ import NewChannelForm from '@/Module/AddContacts/components/NewChannelForm';
 import { Chat } from '@/Module/ChatRoom/messagesUtils';
 import Skeleton from '@/components/common/Skeleton';
 import { launchImageLibrary } from 'react-native-image-picker';
-import { refreshFromDeviceAndBackend } from '@/Module/AddContacts/contactsService';
+import { refreshFromDeviceAndBackendWithOptions } from '@/Module/AddContacts/contactsService';
 import { useSocket } from '../../../../SocketProvider';
 import Video from 'react-native-video';
 import AudioRecorderPlayer from 'react-native-audio-recorder-player';
@@ -219,7 +219,7 @@ export default function UpdatesTab({ searchTerm = '', onOpenChat }: UpdatesTabPr
   const loadStatuses = useCallback(async () => {
     setStatusesLoading(true);
     try {
-      const contacts = await refreshFromDeviceAndBackend();
+      const contacts = await refreshFromDeviceAndBackendWithOptions({});
       const visibleIds = contacts
         .filter((c) => c.isRegistered && c.userId)
         .map((c) => String(c.userId));
@@ -264,7 +264,6 @@ export default function UpdatesTab({ searchTerm = '', onOpenChat }: UpdatesTabPr
         ...otherUsers,
       ];
       setStatusUsers(merged);
-      DeviceEventEmitter.emit('status.updated');
     } catch (e) {
       console.warn('[UpdatesTab] loadStatuses failed', e);
       setStatusUsers([{ id: 'me', name: 'My status', items: [] }]);

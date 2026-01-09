@@ -67,7 +67,6 @@ export const chatRoomStyles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 8,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    top:-5,
   },
   headerBackButton: {
     padding: 8,
@@ -92,6 +91,11 @@ export const chatRoomStyles = StyleSheet.create({
   headerSubtitle: {
     marginTop: 1,
     fontSize: 12,
+  },
+  headerContext: {
+    marginTop: 2,
+    fontSize: 12,
+    fontWeight: '600',
   },
   headerActions: {
     flexDirection: 'row',

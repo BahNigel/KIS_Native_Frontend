@@ -379,6 +379,7 @@ export function useChatMessaging({
             console.warn('[E2EE] decrypt failed', err);
           });
       });
+      return Promise.resolve(incoming);
     },
     [replaceMessages, currentUserId],
   );

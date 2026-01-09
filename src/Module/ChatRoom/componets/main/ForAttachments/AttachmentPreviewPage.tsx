@@ -245,13 +245,15 @@ export const AttachmentPreviewPage: React.FC<AttachmentPreviewPageProps> = ({
   };
 
   if (!kind || !localItems.length) {
-    console.log(
-      '[AttachmentPreviewPage] returning null (no kind/items)',
-      {
-        kind,
-        itemsLength: localItems.length,
-      },
-    );
+    if (visible) {
+      console.log(
+        '[AttachmentPreviewPage] returning null (no kind/items)',
+        {
+          kind,
+          itemsLength: localItems.length,
+        },
+      );
+    }
     return null;
   }
 
