@@ -1,7 +1,8 @@
 // src/screens/tabs/profile/ProfileScreen.tsx
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import {
   Animated,
+  DeviceEventEmitter,
   Image,
   Linking,
   Pressable,
@@ -20,6 +21,7 @@ import { useAuth } from '../../../App';
 import { styles } from './profile/profile.styles';
 import { useProfileController } from './profile/useProfileController';
 import { formatMoney } from './profile/profile.utils';
+import UpgradeSheet from './profile/profile/sheets/UpgradeSheet';
 
 import HeroHeader from './profile/components/HeroHeader';
 import AccountCreditsCard from './profile/components/AccountCreditsCard';
@@ -28,101 +30,6 @@ import SectionCard from './profile/components/SectionCard';
 import BottomSheet from './profile/sheets/BottomSheet';
 import SheetHeader from './profile/sheets/SheetHeader';
 
-/** ---------------------------
- *  Tier meta (YOUR exact rules)
- *  --------------------------- */
-const tierMetaFor = (tier: any) => {
-  const name = String(tier?.name ?? tier?.code ?? tier?.slug ?? '').toLowerCase();
-  const features = tier?.features_json ?? {};
-
-  const addFeature = (text: string, list: string[]) => {
-    if (text && !list.includes(text)) list.push(text);
-  };
-
-  let tagline = tier?.feature_tagline || '';
-  let badge = tier?.feature_badge || '';
-  let highlight = tier?.feature_highlight || '';
-  let list: string[] = Array.isArray(tier?.feature_list) ? [...tier.feature_list] : [];
-
-  // ✅ USER PROVIDED FALLBACKS (do not change)
-  if (!list.length && name.includes('partner')) {
-    tagline = 'Organizations, ministries & enterprises';
-    badge = 'Partner';
-    highlight = 'Multi-account orgs + revenue tools';
-    list = [
-      'Verified organization profile',
-      'Multiple admins & roles',
-      'Live streaming + events',
-      'Donations & revenue tools',
-      'Advanced analytics dashboard',
-      'Priority support',
-    ];
-  } else if (!list.length && name.includes('business pro')) {
-    tagline = 'High-impact teams and creators';
-    badge = 'Most popular';
-    highlight = 'Advanced analytics + team workflows';
-    list = [
-      'Unlimited communities & groups',
-      'Team collaboration tools',
-      'Advanced insights & reporting',
-      'Priority moderation tools',
-      'Branding controls',
-      'Faster support response',
-    ];
-  } else if (!list.length && name.includes('business')) {
-    tagline = 'Teams, growth & visibility';
-    highlight = 'KIS Business broadcast + storefront';
-    list = [
-      'KIS Business broadcast channel',
-      'Business profile + CTA buttons',
-      'Multiple admins for business page',
-      'Business insights & audience metrics',
-      'Basic catalog for services/products',
-      'Promo codes + offers',
-      'Auto-reply & business hours',
-      'Featured discovery boost',
-    ];
-  } else if (!list.length && name.includes('pro')) {
-    tagline = 'Creators and power users';
-    highlight = 'Enhanced profile + higher limits';
-    list = [
-      'More communities & groups',
-      'Enhanced profile visibility',
-      'Higher media limits',
-      'Advanced messaging tools',
-      'Priority search ranking',
-      'Extended support',
-    ];
-  } else if (!list.length) {
-    tagline = 'Start free, upgrade anytime';
-    highlight = 'Everything you need to begin';
-    list = [
-      'Direct messaging',
-      'Core community access',
-      'Standard profile',
-      'Basic storage',
-      'Search & discovery',
-      'Standard support',
-    ];
-  }
-
-  // Optional: append caps if backend provides them (safe + non-breaking)
-  addFeature(features.communities != null ? `Communities: ${features.communities}` : '', list);
-  addFeature(
-    features.groups_per_community != null ? `Groups per community: ${features.groups_per_community}` : '',
-    list
-  );
-  addFeature(features.storage_gb != null ? `Storage: ${features.storage_gb} GB` : '', list);
-
-  // If backend gave a tagline/badge/highlight but empty string, ensure reasonable defaults:
-  if (!tagline) tagline = 'Upgrade for more power';
-  return {
-    badge,
-    tagline,
-    highlight,
-    features: list.filter(Boolean).slice(0, 10),
-  };
-};
 
 const fieldLabels: Record<string, string> = {
   avatar: 'Profile photo',
@@ -152,6 +59,7 @@ const walletModes = [
   { value: 'deposit', label: 'Add Money' },
   { value: 'cash_to_credits', label: 'Convert to Credits' },
   { value: 'credits_to_cash', label: 'Convert to Money' },
+  { value: 'points_to_credits', label: 'Points to Credits' },
   { value: 'transfer', label: 'Send Gift' },
   { value: 'promo', label: 'Redeem Promo' },
 ];
@@ -181,6 +89,23 @@ export default function ProfileScreen() {
     if (c.activeSheet === 'upgrade') return 'Upgrade Account';
     return 'Wallet & Credits';
   }, [c.activeSheet]);
+
+  const openWalletSheet = c.openSheet;
+  const setWalletForm = c.setWalletForm;
+
+  useEffect(() => {
+    const sub = DeviceEventEmitter.addListener('wallet.open', (payload: any) => {
+      openWalletSheet('wallet');
+      setWalletForm((prev: any) => ({
+        ...prev,
+        mode: payload?.mode ?? prev.mode,
+        amount: payload?.amount ? String(payload.amount) : prev.amount,
+        credits: payload?.credits ? String(payload.credits) : prev.credits,
+        points: payload?.points ? String(payload.points) : prev.points,
+      }));
+    });
+    return () => sub.remove();
+  }, [openWalletSheet, setWalletForm]);
 
   return (
     <View style={[styles.wrap, { backgroundColor: palette.bg }]}>
@@ -625,6 +550,15 @@ export default function ProfileScreen() {
                   />
                 )}
 
+                {c.walletForm.mode === 'points_to_credits' && (
+                  <KISTextInput
+                    label="Points to convert"
+                    value={c.walletForm.points}
+                    onChangeText={(t) => c.setWalletForm((s: any) => ({ ...s, points: t }))}
+                    keyboardType="number-pad"
+                  />
+                )}
+
                 {c.walletForm.mode === 'transfer' && (
                   <>
                     <KISTextInput
@@ -672,86 +606,19 @@ export default function ProfileScreen() {
                 UPGRADE (UPDATED)
                ========================= */}
             {c.activeSheet === 'upgrade' && (
-              <View style={{ gap: 12 }}>
-                {(c.profile?.tiers || []).map((tier: any) => {
-                  const isCurrent =
-                    String(accountTier?.id ?? accountTier?.name ?? '') ===
-                    String(tier?.id ?? tier?.name ?? '');
-
-                  const meta = tierMetaFor(tier);
-
-                  return (
-                    <Pressable
-                      key={tier.id ?? tier.name}
-                      onPress={() => c.upgradeTier(tier.id)}
-                      style={[
-                        styles.tierCard,
-                        {
-                          borderColor: palette.divider,
-                          backgroundColor: palette.card,
-                        },
-                      ]}
-                    >
-                      {/* Header row */}
-                      <View style={styles.tierHeader}>
-                        <View style={{ flex: 1 }}>
-                          <Text style={[styles.tierTitle, { color: palette.text }]}>{tier.name}</Text>
-                          <Text style={[styles.tierTagline, { color: palette.subtext }]}>{meta.tagline}</Text>
-                        </View>
-
-                        {!!meta.badge && (
-                          <View style={[styles.tierBadge, { backgroundColor: palette.primarySoft }]}>
-                            <Text style={[styles.tierBadgeText, { color: palette.primaryStrong }]}>
-                              {meta.badge}
-                            </Text>
-                          </View>
-                        )}
-                      </View>
-
-                      {/* Price */}
-                      <Text style={[styles.tierPrice, { color: palette.text }]}>
-                        ${formatMoney(tier.price_cents || 0)}/mo
-                      </Text>
-
-                      {/* Highlight */}
-                      {!!meta.highlight && (
-                        <Text style={[styles.tierHighlight, { color: palette.primaryStrong }]}>
-                          {meta.highlight}
-                        </Text>
-                      )}
-
-                      {/* Features list */}
-                      <View style={{ gap: 8, marginTop: 10 }}>
-                        {meta.features.map((f) => (
-                          <View key={`${tier.id}-${f}`} style={styles.tierFeatureRow}>
-                            <View
-                              style={[
-                                styles.tierCheckWrap,
-                                { backgroundColor: palette.primarySoft },
-                              ]}
-                            >
-                              <KISIcon name="check" size={12} color={palette.primaryStrong} />
-                            </View>
-                            <Text style={[styles.tierFeatureText, { color: palette.subtext }]}>
-                              {f}
-                            </Text>
-                          </View>
-                        ))}
-                      </View>
-
-                      {/* Action */}
-                      <View style={styles.tierActionRow}>
-                        <KISButton
-                          title={isCurrent ? 'Current plan' : 'Choose plan'}
-                          variant={isCurrent ? 'outline' : 'primary'}
-                          onPress={() => c.upgradeTier(tier.id)}
-                          disabled={isCurrent || c.saving}
-                        />
-                      </View>
-                    </Pressable>
-                  );
-                })}
-              </View>
+              <UpgradeSheet
+                tiers={c.profile?.tiers || []}
+                accountTier={accountTier}
+                saving={c.saving}
+                onUpgrade={c.upgradeTier}
+                subscription={c.billingHistory?.subscription ?? c.profile?.subscription}
+                billingHistory={c.billingHistory}
+                usage={c.billingHistory?.usage || c.profile?.stats}
+                onCancel={c.cancelSubscription}
+                onResume={c.resumeSubscription}
+                onDowngrade={c.downgradeTier}
+                onRetry={c.retryTransaction}
+              />
             )}
           </ScrollView>
         </BottomSheet>

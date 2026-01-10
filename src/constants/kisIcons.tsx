@@ -69,6 +69,9 @@ export type KISIconName =
   | 'comment'
   | 'share'
   | 'link'
+  | 'sparkles'
+  | 'school'
+  | 'list'
   // NEW — specific file types
   | 'file-pdf'
   | 'file-word'
@@ -226,6 +229,9 @@ const ion: IonMap = {
   comment: { filled: 'chatbubble-ellipses', outline: 'chatbubble-ellipses-outline' },
   share: { filled: 'share-social', outline: 'share-social-outline' },
   link: { filled: 'link', outline: 'link-outline' },
+  sparkles: { filled: 'sparkles', outline: 'sparkles-outline' },
+  school: { filled: 'school', outline: 'school-outline' },
+  list: { filled: 'list', outline: 'list-outline' },
 };
 
 export interface KISIconProps {

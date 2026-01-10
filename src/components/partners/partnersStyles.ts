@@ -84,9 +84,13 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
   },
   adminCard: {
-    width: 80,
+    width: 90,
     marginRight: 10,
     alignItems: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 6,
+    borderRadius: 12,
+    borderWidth: 1,
   },
   adminAvatar: {
     width: 36,
@@ -118,6 +122,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     borderRadius: 8,
     marginBottom: 4,
+    borderWidth: 1,
   },
   groupHash: {
     width: 20,
@@ -147,6 +152,7 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     marginBottom: 2,
     marginLeft: 4,
+    borderWidth: 1,
   },
 
   // RIGHT MESSAGES PANE
@@ -156,6 +162,8 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     borderLeftWidth: 1,
+    zIndex: 20,
+    elevation: 4,
   },
   messagesHeader: {
     flexDirection: 'row',
@@ -201,6 +209,8 @@ const styles = StyleSheet.create({
   sheetOverlay: {
     ...StyleSheet.absoluteFillObject,
     justifyContent: 'flex-end',
+    zIndex: 20,
+    elevation: 6,
   },
   sheetBackdrop: {
     ...StyleSheet.absoluteFillObject,
@@ -244,6 +254,158 @@ const styles = StyleSheet.create({
   sheetSectionText: {
     fontSize: 13,
     lineHeight: 18,
+  },
+
+  // PARTNER SETTINGS SHEET
+  settingsSheetHeader: {
+    paddingHorizontal: 18,
+    paddingBottom: 6,
+  },
+  settingsTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+  },
+  settingsSubtitle: {
+    fontSize: 12,
+    marginTop: 4,
+    lineHeight: 16,
+  },
+  settingsRoleBadge: {
+    alignSelf: 'flex-start',
+    borderRadius: 14,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    marginTop: 8,
+  },
+  settingsRoleText: {
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 0.3,
+  },
+  settingsSectionCard: {
+    borderRadius: 12,
+    borderWidth: 1,
+    padding: 12,
+    marginBottom: 10,
+  },
+  settingsSectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  settingsSectionTitle: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  settingsSectionMeta: {
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  settingsSectionDescription: {
+    fontSize: 12,
+    lineHeight: 16,
+  },
+  settingsSectionActionRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 10,
+  },
+
+  // SETTINGS PANEL
+  settingsPanelOverlay: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    right: 0,
+    left: 0,
+    zIndex: 40,
+    elevation: 6,
+  },
+  settingsPanelBackdrop: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    left: 0,
+    right: 0,
+  },
+  settingsPanelContainer: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    right: 0,
+    left: 0,
+    borderLeftWidth: 1,
+  },
+  settingsPanelHeader: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  settingsPanelTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  settingsPanelDescription: {
+    fontSize: 12,
+    marginTop: 2,
+  },
+  settingsPanelBody: {
+    padding: 16,
+  },
+  settingsFeatureRow: {
+    borderRadius: 10,
+    borderWidth: 1,
+    padding: 10,
+    marginBottom: 8,
+  },
+  settingsFeatureTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  settingsFeatureDescription: {
+    fontSize: 12,
+    marginTop: 4,
+  },
+  settingsFeatureMeta: {
+    fontSize: 10,
+    fontWeight: '700',
+    marginTop: 6,
+  },
+  settingsTextInput: {
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    marginTop: 8,
+    fontSize: 13,
+  },
+  overviewGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+    marginBottom: 12,
+  },
+  overviewCard: {
+    width: '48%',
+    borderRadius: 12,
+    borderWidth: 1,
+    padding: 10,
+  },
+  overviewValue: {
+    fontSize: 18,
+    fontWeight: '800',
+  },
+  overviewLabel: {
+    fontSize: 11,
+    marginTop: 4,
+  },
+  overviewMeta: {
+    fontSize: 10,
+    marginTop: 2,
   },
 });
 

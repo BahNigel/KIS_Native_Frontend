@@ -27,16 +27,7 @@ import React, {
 } from 'react';
 import {
   View,
-  KeyboardAvoidingView,
-  Platform,
-  Text,
-  ScrollView,
-  TouchableOpacity,
-  StyleSheet,
-  Pressable,
   Alert,
-  TextInput,
-  Modal,
   DeviceEventEmitter,
 } from 'react-native';
 
@@ -49,22 +40,12 @@ import { chatRoomStyles as styles } from './chatRoomStyles';
 /* -------------------------------------------------------------------------- */
 
 import { ChatHeader } from './componets/main/ChatHeader';
-import { MessageList } from './componets/main/MessageList';
-import { MessageComposer } from './componets/main/MessageComposer';
-
-import {
-  TextCardComposer,
-  TextCardPayload,
-} from './componets/main/TextCardComposer';
-
-import {
-  StickerEditor,
-  Sticker,
-} from './componets/main/FroSticker/StickerEditor';
-
-import { ForwardChatSheet } from './componets/main/ForwardChatSheet';
-import { PinnedMessagesSheet } from './componets/main/PinnedMessagesSheet';
-import { SubRoomsSheet } from './componets/main/SubRoomsSheet';
+import ChatRoomBody from './ChatRoomBody';
+import ChatRoomOverlays from './ChatRoomOverlays';
+import ChatRoomEditors from './ChatRoomEditors';
+import ChatRoomSheets from './ChatRoomSheets';
+import { TextCardPayload } from './componets/main/TextCardComposer';
+import { Sticker } from './componets/main/FroSticker/StickerEditor';
 
 /* -------------------------------------------------------------------------- */
 /*                                   HOOKS                                    */
@@ -78,7 +59,8 @@ import { useSelectionState } from './hooks/useSelectionState';
 import { useBulkMessageActions } from './hooks/useBulkMessageActions';
 import { useSocket } from '../../../SocketProvider';
 import { getRequest } from '@/network/get';
-import { NEST_API_BASE_URL } from '@/network';
+import { postRequest } from '@/network/post';
+import ROUTES, { NEST_API_BASE_URL } from '@/network';
 
 /* -------------------------------------------------------------------------- */
 /*                                   TYPES                                    */
@@ -400,6 +382,33 @@ export const ChatRoomPage: React.FC<ExtendedChatRoomPageProps> = ({
     softDeleteMessage,
     exitSelectionMode,
     isSingleSelection,
+    canBroadcast: chat?.kind === 'channel',
+    onBroadcastMessages: async (payload) => {
+      const convId = String(conversationId ?? chat?.conversationId ?? chat?.id ?? '');
+      if (!convId) {
+        Alert.alert('Broadcast', 'Conversation ID is missing.');
+        return;
+      }
+      const messageIds = payload
+        .map((m) => m.serverId ?? (m.id?.startsWith('client_') ? null : m.id))
+        .filter(Boolean);
+      if (messageIds.length === 0) {
+        Alert.alert('Broadcast', 'Select at least one delivered message.');
+        return;
+      }
+
+      const res = await postRequest(
+        ROUTES.broadcasts.channelMessages,
+        { conversation_id: convId, message_ids: messageIds },
+        { errorMessage: 'Unable to broadcast selected messages.' },
+      );
+      if (!res?.success) {
+        Alert.alert('Broadcast', res?.message || 'Unable to broadcast messages.');
+        return;
+      }
+      DeviceEventEmitter.emit('broadcast.refresh');
+      Alert.alert('Broadcast', 'Messages added to broadcast.');
+    },
     onReportMessage: async (message) => {
       const convId =
         message.conversationId ?? conversationId ?? chat?.id ?? null;
@@ -952,546 +961,139 @@ export const ChatRoomPage: React.FC<ExtendedChatRoomPageProps> = ({
       )}
 
       {!selectionMode && (
-        <View
-          pointerEvents={menuVisible ? 'auto' : 'none'}
-          style={localStyles.menuRoot}
-        >
-          {menuVisible && (
-            <>
-              <Pressable
-                onPress={() => setMenuVisible(false)}
-                style={localStyles.menuOverlay}
-              />
-              <View
-                style={[
-                  localStyles.menuBox,
-                  {
-                    borderColor: palette.inputBorder ?? palette.divider,
-                    backgroundColor: palette.card ?? palette.surface,
-                  },
-                ]}
-              >
-                {dmRole === 'recipient' &&
-                  requestStateEffective === 'pending' && (
-                    <Pressable
-                      onPress={async () => {
-                        setMenuVisible(false);
-                        await handleAcceptRequest();
-                      }}
-                      style={({ pressed }) => [
-                        localStyles.menuItem,
-                        { backgroundColor: pressed ? palette.surface : 'transparent' },
-                      ]}
-                    >
-                      <Text style={{ color: palette.text, fontSize: 14 }}>
-                        Accept request
-                      </Text>
-                    </Pressable>
-                  )}
-
-                {!isLocked && (
-                  <Pressable
-                    onPress={async () => {
-                      setMenuVisible(false);
-                      await handleBlockChat();
-                    }}
-                    style={({ pressed }) => [
-                      localStyles.menuItem,
-                      { backgroundColor: pressed ? palette.surface : 'transparent' },
-                    ]}
-                  >
-                    <Text style={{ color: palette.text, fontSize: 14 }}>
-                      Block chat
-                    </Text>
-                  </Pressable>
-                )}
-
-                <Pressable
-                  onPress={async () => {
-                    setMenuVisible(false);
-                    await handleToggleMute();
-                  }}
-                  style={({ pressed }) => [
-                    localStyles.menuItem,
-                    { backgroundColor: pressed ? palette.surface : 'transparent' },
-                  ]}
-                >
-                  <Text style={{ color: palette.text, fontSize: 14 }}>
-                    {isMuted ? 'Unmute notifications' : 'Mute notifications'}
-                  </Text>
-                </Pressable>
-
-                {(chat as any)?.isGroup && (
-                  <Pressable
-                    onPress={() => {
-                      setMenuVisible(false);
-                      setGroupRoleInput('member');
-                      setGroupAction('add');
-                    }}
-                    style={({ pressed }) => [
-                      localStyles.menuItem,
-                      { backgroundColor: pressed ? palette.surface : 'transparent' },
-                    ]}
-                  >
-                    <Text style={{ color: palette.text, fontSize: 14 }}>
-                      Add member
-                    </Text>
-                  </Pressable>
-                )}
-
-                {(chat as any)?.isGroup && (
-                  <Pressable
-                    onPress={() => {
-                      setMenuVisible(false);
-                      setGroupAction('remove');
-                    }}
-                    style={({ pressed }) => [
-                      localStyles.menuItem,
-                      { backgroundColor: pressed ? palette.surface : 'transparent' },
-                    ]}
-                  >
-                    <Text style={{ color: palette.text, fontSize: 14 }}>
-                      Remove member
-                    </Text>
-                  </Pressable>
-                )}
-
-                {(chat as any)?.isGroup && (
-                  <Pressable
-                    onPress={() => {
-                      setMenuVisible(false);
-                      setGroupRoleInput('admin');
-                      setGroupAction('role');
-                    }}
-                    style={({ pressed }) => [
-                      localStyles.menuItem,
-                      { backgroundColor: pressed ? palette.surface : 'transparent' },
-                    ]}
-                  >
-                    <Text style={{ color: palette.text, fontSize: 14 }}>
-                      Set member role
-                    </Text>
-                  </Pressable>
-                )}
-
-                <Pressable
-                  onPress={() => {
-                    setMenuVisible(false);
-                    const convId = String(conversationId ?? chat?.id ?? '');
-                    Handlers.handleArchiveRequest(convId, !(chat as any)?.isArchived);
-                  }}
-                  style={({ pressed }) => [
-                    localStyles.menuItem,
-                    { backgroundColor: pressed ? palette.surface : 'transparent' },
-                  ]}
-                >
-                  <Text style={{ color: palette.text, fontSize: 14 }}>
-                    {(chat as any)?.isArchived ? 'Unarchive chat' : 'Archive chat'}
-                  </Text>
-                </Pressable>
-
-                <Pressable
-                  onPress={() => {
-                    setMenuVisible(false);
-                    setSearchVisible(true);
-                    setSearchQuery('');
-                    setSearchResults([]);
-                    setSearchBefore(null);
-                    setSearchHasMore(true);
-                  }}
-                  style={({ pressed }) => [
-                    localStyles.menuItem,
-                    { backgroundColor: pressed ? palette.surface : 'transparent' },
-                  ]}
-                >
-                  <Text style={{ color: palette.text, fontSize: 14 }}>
-                    Search messages
-                  </Text>
-                </Pressable>
-              </View>
-            </>
-          )}
-        </View>
-      )}
-
-      <Modal
-        transparent
-        animationType="fade"
-        visible={groupAction != null}
-        onRequestClose={() => setGroupAction(null)}
-      >
-        <Pressable
-          style={[
-            localStyles.modalOverlay,
-            { backgroundColor: 'rgba(0,0,0,0.35)' },
-          ]}
-          onPress={() => setGroupAction(null)}
-        >
-          <View
-            style={[
-              localStyles.modalCard,
-              { backgroundColor: palette.card ?? palette.surface },
-            ]}
-            onStartShouldSetResponder={() => true}
-          >
-            <Text style={[localStyles.modalTitle, { color: palette.text }]}>
-              {groupAction === 'add'
-                ? 'Add member'
-                : groupAction === 'remove'
-                ? 'Remove member'
-                : 'Set member role'}
-            </Text>
-
-            <TextInput
-              value={groupUserIdInput}
-              onChangeText={setGroupUserIdInput}
-              placeholder="User ID"
-              placeholderTextColor={palette.subtext}
-              style={[
-                localStyles.modalInput,
-                { color: palette.text, borderColor: palette.inputBorder },
-              ]}
-              autoCapitalize="none"
-            />
-
-            {groupAction !== 'remove' && (
-              <TextInput
-                value={groupRoleInput}
-                onChangeText={setGroupRoleInput}
-                placeholder="Role (member/admin/owner)"
-                placeholderTextColor={palette.subtext}
-                style={[
-                  localStyles.modalInput,
-                  { color: palette.text, borderColor: palette.inputBorder },
-                ]}
-                autoCapitalize="none"
-              />
-            )}
-
-            <View style={localStyles.modalActions}>
-              <Pressable
-                onPress={() => setGroupAction(null)}
-                style={[
-                  localStyles.modalButton,
-                  { borderColor: palette.inputBorder },
-                ]}
-              >
-                <Text style={{ color: palette.text }}>Cancel</Text>
-              </Pressable>
-              <Pressable
-                onPress={handleGroupActionSubmit}
-                style={[
-                  localStyles.modalButton,
-                  { backgroundColor: palette.primary, borderColor: palette.primary },
-                ]}
-              >
-                <Text style={{ color: palette.onPrimary ?? '#fff' }}>
-                  Confirm
-                </Text>
-              </Pressable>
-            </View>
-          </View>
-        </Pressable>
-      </Modal>
-
-      <Modal
-        transparent
-        animationType="fade"
-        visible={searchVisible}
-        onRequestClose={() => setSearchVisible(false)}
-      >
-        <Pressable
-          style={[
-            localStyles.modalOverlay,
-            { backgroundColor: 'rgba(0,0,0,0.35)' },
-          ]}
-          onPress={() => setSearchVisible(false)}
-        >
-          <View
-            style={[
-              localStyles.modalCard,
-              { backgroundColor: palette.card ?? palette.surface, width: '90%' },
-            ]}
-            onStartShouldSetResponder={() => true}
-          >
-            <Text style={[localStyles.modalTitle, { color: palette.text }]}>
-              Search messages
-            </Text>
-
-            <TextInput
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-              placeholder="Type keywords..."
-              placeholderTextColor={palette.subtext}
-              style={[
-                localStyles.modalInput,
-                { color: palette.text, borderColor: palette.inputBorder },
-              ]}
-              autoCapitalize="none"
-            />
-
-            <Pressable
-              onPress={() => runSearch(true)}
-              style={[
-                localStyles.modalButton,
-                { backgroundColor: palette.primary, borderColor: palette.primary, alignSelf: 'flex-end' },
-              ]}
-            >
-              <Text style={{ color: palette.onPrimary ?? '#fff' }}>
-                Search
-              </Text>
-            </Pressable>
-
-            <ScrollView style={{ marginTop: 12, maxHeight: 260 }}>
-              {searchResults.map((item) => {
-                const id = item?.id ?? item?._id;
-                const text = item?.text ?? item?.previewText ?? '';
-                const snippet = buildSearchSnippet(text, searchQuery);
-                const at = item?.createdAt ?? '';
-                return (
-                  <Pressable
-                    key={String(id)}
-                    onPress={() => {
-                      setSearchVisible(false);
-                      if (id) {
-                        messageLocator?.scrollToMessage(String(id));
-                        messageLocator?.highlightMessage(String(id));
-                        setAutoScrollEnabled(false);
-                      }
-                    }}
-                    style={({ pressed }) => [
-                      {
-                        paddingVertical: 8,
-                        borderBottomWidth: 1,
-                        borderBottomColor: palette.inputBorder,
-                        opacity: pressed ? 0.7 : 1,
-                      },
-                    ]}
-                  >
-                    <Text numberOfLines={2} style={{ color: palette.text }}>
-                      {snippet.prefix}
-                      {snippet.match ? (
-                        <Text style={{ color: palette.primary, fontWeight: '700' }}>
-                          {snippet.match}
-                        </Text>
-                      ) : null}
-                      {snippet.suffix || (!snippet.match ? (text || '[no text]') : '')}
-                    </Text>
-                    {at ? (
-                      <Text style={{ color: palette.subtext, fontSize: 12 }}>
-                        {new Date(at).toLocaleString()}
-                      </Text>
-                    ) : null}
-                  </Pressable>
-                );
-              })}
-              {!searchResults.length && searchQuery.trim().length > 0 && (
-                <Text style={{ color: palette.subtext, marginTop: 8 }}>
-                  No results yet.
-                </Text>
-              )}
-            </ScrollView>
-
-            {searchHasMore && searchResults.length > 0 && (
-              <Pressable
-                onPress={() => runSearch(false)}
-                style={[
-                  localStyles.modalButton,
-                  { borderColor: palette.inputBorder, alignSelf: 'center' },
-                ]}
-              >
-                <Text style={{ color: palette.text }}>
-                  {searchLoading ? 'Loading...' : 'Load more'}
-                </Text>
-              </Pressable>
-            )}
-          </View>
-        </Pressable>
-      </Modal>
-
-      <KeyboardAvoidingView
-        style={styles.keyboardWrapper}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
-        <MessageList
-          messages={messages}
+        <ChatRoomOverlays
           palette={palette}
-          isEmpty={!chat}
-          currentUserId={currentUserId}
-          selectionMode={selectionMode}
-          selectedMessageIds={selectedIds}
-          onReplyToMessage={setReplyTo}
-          onEditMessage={setEditing}
-          onPressMessage={toggleSelectMessage}
-          onLongPressMessage={enterSelectionMode}
-          onReactMessage={handleReactMessage}
-          onRetryMessage={retryMessage}
-          onMessageLocatorReady={setMessageLocator}
-          autoScrollEnabled={autoScrollEnabled}
-          startAtBottom={startAtBottom}
-          onVisibleMessageIds={handleVisibleMessageIds}
-        />
-
-        {isChannel && !canPost ? (
-          <View
-            style={{
-              padding: 14,
-              borderTopWidth: 1,
-              borderTopColor: palette.inputBorder,
-              backgroundColor: palette.card,
-            }}
-          >
-            <Text style={{ color: palette.subtext, textAlign: 'center' }}>
-              Only channel admins can post. Subscribe to receive updates.
-            </Text>
-          </View>
-        ) : (
-          <MessageComposer
-            value={draft}
-            onChangeText={handleChangeDraft}
-            onSend={handleSend}
-            canSend={canSend}
-            palette={palette}
-            disabled={!chat}
-            onSendVoice={handleSendVoice}
-            onOpenStickerEditor={() => setOpenStickerEditor(true)}
-            onChooseTextBackground={setTextCardBg}
-            onSendSticker={handleSendSticker}
-            stickerVersion={stickerLibraryVersion}
-            replyTo={replyTo}
-            onClearReply={() => setReplyTo(null)}
-            editing={editing}
-            onCancelEditing={() => setEditing(null)}
-            onSendAttachment={handleSendAttachment}
-            onSendContacts={handleSendContacts}
-            onCreatePoll={handleCreatePoll}
-            onCreateEvent={handleCreateEvent}
-          />
-        )}
-      </KeyboardAvoidingView>
-
-      {textCardBg && (
-        <TextCardComposer
-          palette={palette}
-          backgroundColor={textCardBg}
-          onClose={() => setTextCardBg(null)}
-          onSend={(payload: TextCardPayload) =>
-            Handlers.handleSendStyledText?.({
-              payload,
-              chat,
-              currentUserId,
-              ensureConversationId,
-              sendRichMessage,
-              setTextCardBg,
-            })
-          }
-        />
-      )}
-
-      {openStickerEditor && (
-        <StickerEditor
-          palette={palette}
-          onClose={() => setOpenStickerEditor(false)}
-          onSaveSticker={() => {
-            setStickerLibraryVersion((v) => v + 1);
-            setOpenStickerEditor(false);
+          chat={chat}
+          menuVisible={menuVisible}
+          onCloseMenu={() => setMenuVisible(false)}
+          dmRole={dmRole}
+          requestStateEffective={requestStateEffective}
+          isLocked={isLocked}
+          isMuted={isMuted}
+          conversationId={conversationId}
+          onAcceptRequest={handleAcceptRequest}
+          onBlockChat={handleBlockChat}
+          onToggleMute={handleToggleMute}
+          onOpenSearch={() => {
+            setSearchVisible(true);
+            setSearchQuery('');
+            setSearchResults([]);
+            setSearchBefore(null);
+            setSearchHasMore(true);
           }}
+          onOpenAddMember={() => {
+            setGroupRoleInput('member');
+            setGroupAction('add');
+          }}
+          onOpenRemoveMember={() => setGroupAction('remove')}
+          onOpenSetRole={() => {
+            setGroupRoleInput('admin');
+            setGroupAction('role');
+          }}
+          groupAction={groupAction}
+          groupUserIdInput={groupUserIdInput}
+          groupRoleInput={groupRoleInput}
+          onChangeGroupUserId={setGroupUserIdInput}
+          onChangeGroupRole={setGroupRoleInput}
+          onCloseGroupAction={() => setGroupAction(null)}
+          onSubmitGroupAction={handleGroupActionSubmit}
+          searchVisible={searchVisible}
+          searchQuery={searchQuery}
+          onChangeSearchQuery={setSearchQuery}
+          onCloseSearch={() => setSearchVisible(false)}
+          onRunSearch={runSearch}
+          searchResults={searchResults}
+          searchHasMore={searchHasMore}
+          searchLoading={searchLoading}
+          onSelectSearchResult={(id) => {
+            messageLocator?.scrollToMessage(String(id));
+            messageLocator?.highlightMessage(String(id));
+            setAutoScrollEnabled(false);
+          }}
+          buildSearchSnippet={buildSearchSnippet}
         />
       )}
-
-      <PinnedMessagesSheet
-        visible={pinnedSheetVisible}
-        onClose={() => setPinnedSheetVisible(false)}
-        roomId={String(storageRoomId)}
-        pinnedMessages={pinnedMessages}
+      <ChatRoomBody
+        chat={chat}
+        messages={messages}
         palette={palette}
+        isChannel={isChannel}
+        canPost={canPost}
+        draft={draft}
+        selectionMode={selectionMode}
+        selectedIds={selectedIds}
+        currentUserId={currentUserId}
+        autoScrollEnabled={autoScrollEnabled}
+        startAtBottom={startAtBottom}
+        stickerLibraryVersion={stickerLibraryVersion}
+        replyTo={replyTo}
+        editing={editing}
+        onReplyToMessage={setReplyTo}
+        onEditMessage={setEditing}
+        onPressMessage={toggleSelectMessage}
+        onLongPressMessage={enterSelectionMode}
+        onReactMessage={handleReactMessage}
+        onRetryMessage={retryMessage}
+        onMessageLocatorReady={setMessageLocator}
+        onVisibleMessageIds={handleVisibleMessageIds}
+        onChangeDraft={handleChangeDraft}
+        onSend={handleSend}
+        onSendVoice={handleSendVoice}
+        onOpenStickerEditor={() => setOpenStickerEditor(true)}
+        onChooseTextBackground={setTextCardBg}
+        onSendSticker={handleSendSticker}
+        onClearReply={() => setReplyTo(null)}
+        onCancelEditing={() => setEditing(null)}
+        onSendAttachment={handleSendAttachment}
+        onSendContacts={handleSendContacts}
+        onCreatePoll={handleCreatePoll}
+        onCreateEvent={handleCreateEvent}
+        canSend={canSend}
+      />
+
+      <ChatRoomEditors
+        palette={palette}
+        textCardBg={textCardBg}
+        onCloseTextCard={() => setTextCardBg(null)}
+        onSendTextCard={(payload: TextCardPayload) =>
+          Handlers.handleSendStyledText?.({
+            payload,
+            chat,
+            currentUserId,
+            ensureConversationId,
+            sendRichMessage,
+            setTextCardBg,
+          })
+        }
+        openStickerEditor={openStickerEditor}
+        onCloseStickerEditor={() => setOpenStickerEditor(false)}
+        onSaveSticker={() => {
+          setStickerLibraryVersion((v) => v + 1);
+          setOpenStickerEditor(false);
+        }}
+      />
+
+      <ChatRoomSheets
+        palette={palette}
+        roomId={String(storageRoomId)}
+        forwardSheetVisible={forwardSheetVisible}
+        onCloseForward={() => setForwardSheetVisible(false)}
+        onConfirmForward={handleForwardConfirm}
+        forwardTargets={forwardTargets}
+        pinnedSheetVisible={pinnedSheetVisible}
+        onClosePinned={() => setPinnedSheetVisible(false)}
+        pinnedMessages={pinnedMessages}
         onJumpToMessage={(messageId) => {
           setPinnedSheetVisible(false);
           messageLocator?.scrollToMessage(messageId);
           messageLocator?.highlightMessage(messageId);
         }}
-      />
-
-      <SubRoomsSheet
-        visible={subRoomsSheetVisible}
-        onClose={() => setSubRoomsSheetVisible(false)}
-        parentRoomId={String(storageRoomId)}
+        subRoomsSheetVisible={subRoomsSheetVisible}
+        onCloseSubRooms={() => setSubRoomsSheetVisible(false)}
         subRooms={subRooms}
-        palette={palette}
-      />
-
-      <ForwardChatSheet
-        visible={forwardSheetVisible}
-        onClose={() => setForwardSheetVisible(false)}
-        onConfirm={handleForwardConfirm}
-        chats={forwardTargets}
-        palette={palette}
       />
     </View>
   );
 };
-
-const localStyles = StyleSheet.create({
-  menuRoot: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    zIndex: 10,
-  },
-  menuOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-  },
-  menuBox: {
-    position: 'absolute',
-    right: 12,
-    top: 60,
-    borderRadius: 12,
-    borderWidth: 1,
-    paddingVertical: 6,
-    width: 220,
-  },
-  menuItem: {
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-  },
-  modalOverlay: {
-    flex: 1,
-    justifyContent: 'center',
-    padding: 16,
-  },
-  modalCard: {
-    borderRadius: 16,
-    padding: 16,
-  },
-  modalTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    marginBottom: 12,
-  },
-  modalInput: {
-    borderWidth: 1,
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    marginBottom: 10,
-  },
-  modalActions: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    gap: 10,
-  },
-  modalButton: {
-    borderWidth: 1,
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-  },
-});
 
 export default ChatRoomPage;

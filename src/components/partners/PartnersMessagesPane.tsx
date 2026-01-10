@@ -1,24 +1,29 @@
 // src/screens/tabs/PartnersMessagesPane.tsx
 import React, { useMemo } from 'react';
-import { Animated, Text, View } from 'react-native';
+import { Animated, Pressable, Text, View } from 'react-native';
 import styles from './partnersStyles';
 import { useKISTheme } from '../../theme/useTheme';
-import { Partner, PartnerCommunity, PartnerGroup } from './partnersTypes';
+import { Partner, PartnerChannel, PartnerCommunity, PartnerGroup } from './partnersTypes';
 import ChatRoomPage from '@/Module/ChatRoom/ChatRoomPage';
 import PartnerFeedPage from './PartnerFeedPage';
 import CommunityFeedPage from '@/Module/Community/CommunityFeedPage';
+import { KISIcon } from '@/constants/kisIcons';
 
 type Props = {
   width: number;
   messagesOffsetAnim: Animated.Value;
   isMessagesExpanded: boolean;
   toggleMessagesPane: () => void;
+  closeMessagesPane: () => void;
   selectedGroupId: string | null;
+  selectedChannelId: string | null;
   selectedFeed: 'general' | null;
   groupsForPartner: PartnerGroup[];
+  channelsForPartner: PartnerChannel[];
   selectedCommunityFeedId: string | null;
   communitiesForPartner: PartnerCommunity[];
   selectedPartner?: Partner;
+  onOpenInfo?: (payload: { chat: any; currentUserId: string | null }) => void;
 };
 
 export default function PartnersMessagesPane({
@@ -26,12 +31,16 @@ export default function PartnersMessagesPane({
   messagesOffsetAnim,
   isMessagesExpanded, // kept for future, even if not used directly now
   toggleMessagesPane,
+  closeMessagesPane,
   selectedGroupId,
+  selectedChannelId,
   selectedFeed,
   groupsForPartner,
+  channelsForPartner,
   selectedCommunityFeedId,
   communitiesForPartner,
   selectedPartner,
+  onOpenInfo,
 }: Props) {
   const { palette } = useKISTheme();
 
@@ -43,6 +52,14 @@ export default function PartnersMessagesPane({
     [selectedGroupId, groupsForPartner],
   );
 
+  const selectedChannel = useMemo(
+    () =>
+      selectedChannelId
+        ? channelsForPartner.find((c) => c.id === selectedChannelId) || null
+        : null,
+    [selectedChannelId, channelsForPartner],
+  );
+
   const selectedCommunity = useMemo(
     () =>
       selectedCommunityFeedId
@@ -52,19 +69,35 @@ export default function PartnersMessagesPane({
   );
 
   // ✅ Build a minimal "chat" object for ChatRoomPage
-  const chatForGroup = useMemo(
-    () =>
-      selectedGroup
-        ? ({
-            id: selectedGroup.conversation_id ?? selectedGroup.id,
-            conversationId: selectedGroup.conversation_id ?? selectedGroup.id,
-            title: selectedGroup.name,
-            name: selectedGroup.name,
-            partnerId: selectedPartner?.id,
-            partnerName: selectedPartner?.name,
-          } as any)
-        : null,
-    [selectedGroup, selectedPartner],
+  const chatForGroup = useMemo(() => {
+    if (!selectedGroup?.conversation_id) return null;
+    return {
+      id: selectedGroup.conversation_id,
+      conversationId: selectedGroup.conversation_id,
+      title: selectedGroup.name,
+      name: selectedGroup.name,
+      partnerId: selectedPartner?.id,
+      partnerName: selectedPartner?.name,
+    } as any;
+  }, [selectedGroup, selectedPartner]);
+
+  const chatForChannel = useMemo(() => {
+    if (!selectedChannel?.conversation_id) return null;
+    return {
+      id: selectedChannel.conversation_id,
+      conversationId: selectedChannel.conversation_id,
+      title: selectedChannel.name,
+      name: selectedChannel.name,
+      partnerId: selectedPartner?.id,
+      partnerName: selectedPartner?.name,
+    } as any;
+  }, [selectedChannel, selectedPartner]);
+
+  const hasDestination = Boolean(
+    selectedFeed ||
+      selectedCommunity ||
+      selectedGroupId ||
+      selectedChannelId,
   );
 
   return (
@@ -79,18 +112,54 @@ export default function PartnersMessagesPane({
         },
       ]}
     >
+      {!hasDestination ? (
+        <View style={[styles.messagesHeader, { borderBottomColor: palette.divider }]}>
+          <Pressable
+            onPress={() =>
+              isMessagesExpanded ? closeMessagesPane() : toggleMessagesPane()
+            }
+            style={({ pressed }) => [
+              styles.toggleButton,
+              { backgroundColor: palette.surface, opacity: pressed ? 0.7 : 1 },
+            ]}
+          >
+            <KISIcon
+              name="arrow-left"
+              size={18}
+              color={palette.text}
+              style={isMessagesExpanded ? { transform: [{ rotate: '180deg' }] } : undefined}
+            />
+          </Pressable>
+          <View style={styles.messagesTitleWrap}>
+            <Text style={[styles.messagesTitle, { color: palette.text }]}>
+              Messages
+            </Text>
+            <Text style={[styles.messagesSubtitle, { color: palette.subtext }]}>
+              Tap the arrow to toggle
+            </Text>
+          </View>
+        </View>
+      ) : null}
       {selectedFeed && selectedPartner ? (
-        <PartnerFeedPage partner={selectedPartner} onBack={toggleMessagesPane} />
+        <PartnerFeedPage partner={selectedPartner} onBack={closeMessagesPane} />
       ) : selectedCommunity ? (
         <CommunityFeedPage
           community={{ id: selectedCommunity.id, name: selectedCommunity.name }}
-          onBack={toggleMessagesPane}
+          onBack={closeMessagesPane}
+        />
+      ) : selectedChannelId && chatForChannel ? (
+        <ChatRoomPage
+          chat={chatForChannel}
+          onBack={closeMessagesPane}
+          allChats={[]}
+          onOpenInfo={onOpenInfo}
         />
       ) : selectedGroupId && chatForGroup ? (
         <ChatRoomPage
           chat={chatForGroup}
-          onBack={toggleMessagesPane}
+          onBack={closeMessagesPane}
           allChats={[]}
+          onOpenInfo={onOpenInfo}
         />
       ) : (
         <View style={[styles.messagesBody, { paddingHorizontal: 10 }]}>
@@ -108,7 +177,7 @@ export default function PartnersMessagesPane({
               { color: palette.subtext },
             ]}
           >
-            Choose the partner feed or a group to open it here.
+            Choose the partner feed, a group, or a channel to open it here.
           </Text>
         </View>
       )}

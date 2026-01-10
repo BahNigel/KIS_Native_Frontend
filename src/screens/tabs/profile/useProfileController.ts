@@ -15,6 +15,7 @@ import { CacheConfig } from '@/network/cacheKeys';
 import { DraftProfile, ItemType, PickedImage, PrefsDraft, ProfilePayload, SheetType } from './profile.types';
 import { makeUUID, parseCsv } from './profile.utils';
 import { profileLayout } from './profile.styles';
+import { tierMetaFor } from './profile/tierMeta';
 
 export const useProfileController = (opts: { setAuth: (v: boolean) => void; setPhone?: (v: any) => void }) => {
   const { setAuth, setPhone } = opts;
@@ -22,6 +23,12 @@ export const useProfileController = (opts: { setAuth: (v: boolean) => void; setP
   const [profile, setProfile] = useState<ProfilePayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [walletLedger, setWalletLedger] = useState<any[]>([]);
+  const [billingHistory, setBillingHistory] = useState<any>({
+    ledger: [],
+    transactions: [],
+    subscription: null,
+    usage: null,
+  });
   const [activeSheet, setActiveSheet] = useState<SheetType | null>(null);
   const [showCreatePartner, setShowCreatePartner] = useState(false);
 
@@ -55,6 +62,7 @@ export const useProfileController = (opts: { setAuth: (v: boolean) => void; setP
     provider: 'flutterwave',
     amount: '',
     credits: '',
+    points: '',
     recipient: '',
     promo: '',
   });
@@ -102,6 +110,7 @@ export const useProfileController = (opts: { setAuth: (v: boolean) => void; setP
   const openSheet = (type: SheetType) => {
     setActiveSheet(type);
     Animated.timing(sheetY, { toValue: 0, duration: 260, useNativeDriver: true }).start();
+    if (type === 'upgrade') loadBillingHistory();
   };
 
   const closeSheet = () => {
@@ -125,6 +134,18 @@ export const useProfileController = (opts: { setAuth: (v: boolean) => void; setP
   const loadWalletLedger = useCallback(async () => {
     const res = await getRequest(ROUTES.wallet.ledger);
     if (res.success) setWalletLedger(res.data?.results || res.data?.data?.results || []);
+  }, []);
+
+  const loadBillingHistory = useCallback(async () => {
+    const res = await getRequest(ROUTES.wallet.billingHistory);
+    if (res?.success) {
+      setBillingHistory({
+        ledger: res.data?.ledger || [],
+        transactions: res.data?.transactions || [],
+        subscription: res.data?.subscription || null,
+        usage: res.data?.usage || null,
+      });
+    }
   }, []);
 
   const loadProfile = useCallback(async () => {
@@ -415,13 +436,35 @@ export const useProfileController = (opts: { setAuth: (v: boolean) => void; setP
     const tier = tiers.find((t: any) => String(t?.id) === String(tierId));
     const tierName = String(tier?.name || tier?.code || tier?.slug || '').toLowerCase();
     const isPartnerTier = tierName.includes('partner');
+    const priceCents = Number(tier?.price_cents || 0);
+    const currentTier = profile?.tier || profile?.subscription?.tier;
+    const currentRank = tierMetaFor(currentTier || {}).tierRank ?? 0;
+    const targetRank = tierMetaFor(tier || {}).tierRank ?? 0;
+
+    if (targetRank < currentRank) {
+      await downgradeTier(tierId);
+      return;
+    }
 
     setSaving(true);
-    const res = await postRequest(ROUTES.wallet.upgrade, { tier: tierId });
+    const res = await postRequest(ROUTES.wallet.upgrade, {
+      tier: tierId,
+      payment_method: priceCents > 0 ? 'flutterwave' : 'free',
+    });
     setSaving(false);
 
     if (!res?.success) {
       Alert.alert('Upgrade', res?.message || 'Could not upgrade');
+      return;
+    }
+
+    const paymentUrl = res?.data?.payment_url;
+    if (paymentUrl) {
+      Alert.alert('Complete payment', 'Open Flutterwave to finish your upgrade.', [
+        { text: 'Later', style: 'cancel' },
+        { text: 'Open', onPress: () => Linking.openURL(paymentUrl) },
+      ]);
+      closeSheet();
       return;
     }
 
@@ -430,9 +473,59 @@ export const useProfileController = (opts: { setAuth: (v: boolean) => void; setP
     if (isPartnerTier) openCreatePartner();
   };
 
+  const cancelSubscription = async (immediate = false) => {
+    setSaving(true);
+    const res = await postRequest(ROUTES.wallet.subscriptionCancel, { immediate });
+    setSaving(false);
+    if (!res?.success) {
+      Alert.alert('Subscription', res?.message || 'Unable to cancel subscription.');
+      return;
+    }
+    loadBillingHistory();
+    loadProfile();
+  };
+
+  const resumeSubscription = async () => {
+    setSaving(true);
+    const res = await postRequest(ROUTES.wallet.subscriptionResume, {});
+    setSaving(false);
+    if (!res?.success) {
+      Alert.alert('Subscription', res?.message || 'Unable to resume subscription.');
+      return;
+    }
+    loadBillingHistory();
+    loadProfile();
+  };
+
+  const downgradeTier = async (tierId: string) => {
+    setSaving(true);
+    const res = await postRequest(ROUTES.wallet.subscriptionDowngrade, { tier: tierId });
+    setSaving(false);
+    if (!res?.success) {
+      Alert.alert('Downgrade', res?.message || 'Unable to schedule downgrade.');
+      return;
+    }
+    loadBillingHistory();
+  };
+
+  const retryTransaction = async (txRef: string) => {
+    setSaving(true);
+    const res = await postRequest(ROUTES.wallet.transactionRetry, { tx_ref: txRef });
+    setSaving(false);
+    if (!res?.success) {
+      Alert.alert('Payment', res?.message || 'Unable to retry payment.');
+      return;
+    }
+    const paymentUrl = res?.data?.payment_url;
+    if (paymentUrl) {
+      Linking.openURL(paymentUrl);
+    }
+  };
+
   const submitWalletAction = async () => {
     const amount = Number(walletForm.amount || 0);
     const credits = Number(walletForm.credits || 0);
+    const points = Number(walletForm.points || 0);
 
     setSaving(true);
     let res: any = null;
@@ -444,6 +537,8 @@ export const useProfileController = (opts: { setAuth: (v: boolean) => void; setP
       res = await postRequest(ROUTES.wallet.convert, { direction: 'cash_to_credits', amount_usd: amount });
     } else if (walletForm.mode === 'credits_to_cash') {
       res = await postRequest(ROUTES.wallet.convert, { direction: 'credits_to_cash', credits });
+    } else if (walletForm.mode === 'points_to_credits') {
+      res = await postRequest(ROUTES.wallet.convert, { direction: 'points_to_credits', points });
     } else if (walletForm.mode === 'transfer') {
       res = await postRequest(ROUTES.wallet.transfer, {
         recipient_id: walletForm.recipient,
@@ -498,6 +593,7 @@ export const useProfileController = (opts: { setAuth: (v: boolean) => void; setP
     profile,
     loading,
     walletLedger,
+    billingHistory,
     activeSheet,
     showCreatePartner,
     draftProfile,
@@ -531,6 +627,10 @@ export const useProfileController = (opts: { setAuth: (v: boolean) => void; setP
     saveItem,
     deleteItem,
     upgradeTier,
+    cancelSubscription,
+    resumeSubscription,
+    downgradeTier,
+    retryTransaction,
     submitWalletAction,
     openCreatePartner,
     closeCreatePartner,

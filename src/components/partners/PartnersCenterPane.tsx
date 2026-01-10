@@ -1,24 +1,36 @@
 // src/screens/tabs/PartnersCenterPane.tsx
-import React from 'react';
-import { FlatList, Pressable, ScrollView, Text, View } from 'react-native';
+import React, { useMemo, useState } from 'react';
+import { Pressable, ScrollView, Text, View } from 'react-native';
 import styles from './partnersStyles';
 import { useKISTheme } from '../../theme/useTheme';
 import {
   Partner,
+  PartnerChannel,
   PartnerCommunity,
   PartnerGroup,
   RIGHT_PEEK_WIDTH,
 } from './partnersTypes';
+import PartnerAdminsStrip from './center/PartnerAdminsStrip';
+import PartnerChannelsSection from './center/PartnerChannelsSection';
+import PartnerCommunitiesSection from './center/PartnerCommunitiesSection';
+import PartnerCoursesSection from './center/PartnerCoursesSection';
+import PartnerGroupsSection from './center/PartnerGroupsSection';
+import PartnerHeaderSection from './center/PartnerHeaderSection';
+import { KISIcon } from '@/constants/kisIcons';
 
 type Props = {
   selectedPartner: Partner;
+  isReadOnly?: boolean;
   selectedGroupId: string | null;
+  selectedChannelId: string | null;
   rootGroups: PartnerGroup[];
+  rootChannels: PartnerChannel[];
   groupsForPartner: PartnerGroup[];
   communitiesForPartner: PartnerCommunity[];
   expandedCommunities: Record<string, boolean>;
   onToggleCommunity: (communityId: string) => void;
   onGroupPress: (groupId: string) => void;
+  onChannelPress: (channelId: string) => void;
   onFeedPress: () => void;
   onCommunityFeedPress: (communityId: string) => void;
   onPartnerHeaderPress: () => void;
@@ -26,18 +38,44 @@ type Props = {
 
 export default function PartnersCenterPane({
   selectedPartner,
+  isReadOnly,
   selectedGroupId,
+  selectedChannelId,
   rootGroups,
+  rootChannels,
   groupsForPartner,
   communitiesForPartner,
   expandedCommunities,
   onToggleCommunity,
   onGroupPress,
+  onChannelPress,
   onFeedPress,
   onCommunityFeedPress,
   onPartnerHeaderPress,
 }: Props) {
   const { palette } = useKISTheme();
+  const [collapsed, setCollapsed] = useState({
+    feed: false,
+    courses: false,
+    channels: false,
+    groups: false,
+    communities: false,
+  });
+
+  const sectionHeaders = useMemo(
+    () => ({
+      feed: { title: 'General feed', meta: isReadOnly ? 'Subscriber view' : null },
+      courses: { title: 'Courses', meta: 'Lessons & enrollments' },
+      channels: { title: 'Channels', meta: `${rootChannels.length} channels` },
+      groups: { title: 'Groups', meta: `${rootGroups.length} groups` },
+      communities: { title: 'Communities', meta: `${communitiesForPartner.length} communities` },
+    }),
+    [communitiesForPartner.length, isReadOnly, rootChannels.length, rootGroups.length],
+  );
+
+  const toggleSection = (key: keyof typeof collapsed) => {
+    setCollapsed((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
 
   return (
     <View
@@ -45,6 +83,7 @@ export default function PartnersCenterPane({
         styles.centerPane,
         {
           marginRight: RIGHT_PEEK_WIDTH,
+          backgroundColor: palette.surface,
         },
       ]}
     >
@@ -53,387 +92,192 @@ export default function PartnersCenterPane({
         contentContainerStyle={styles.centerScrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* Partner header */}
-        <View style={styles.partnerHeader}>
-          <Pressable
-            onPress={onPartnerHeaderPress}
-            style={({ pressed }) => [
-              styles.partnerHeaderRow,
-              { opacity: pressed ? 0.8 : 1 },
-            ]}
-          >
-            <Text
-              style={[
-                styles.partnerName,
-                {
-                  color: palette.text,
-                },
-              ]}
-              numberOfLines={1}
-            >
-              {selectedPartner?.name}
-            </Text>
-            <Text
-              style={{
-                color: palette.subtext,
-                fontSize: 20,
-              }}
-            >
-              ⚙
-            </Text>
-          </Pressable>
-          <Text
-            style={[styles.partnerTagline, { color: palette.subtext }]}
-            numberOfLines={2}
-          >
-            {selectedPartner?.tagline}
-          </Text>
-        </View>
-
-        {/* Admins horizontal strip */}
-        {selectedPartner?.admins?.length ? (
-          <View style={styles.adminsSection}>
-            <Text style={[styles.adminsLabel, { color: palette.subtext }]}>
-              Admins
-            </Text>
-            <FlatList
-              data={selectedPartner.admins}
-              keyExtractor={(a) => a.id}
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.adminsList}
-              renderItem={({ item }) => (
-                <View style={styles.adminCard}>
-                  <View
-                    style={[
-                      styles.adminAvatar,
-                      {
-                        backgroundColor: palette.avatarBg,
-                        borderColor: palette.borderMuted,
-                      },
-                    ]}
-                  >
-                    <Text
-                      style={{
-                        color: palette.onAvatar,
-                        fontSize: 13,
-                        fontWeight: '700',
-                      }}
-                    >
-                      {item.initials}
-                    </Text>
-                  </View>
-                  <Text
-                    numberOfLines={1}
-                    style={{
-                      color: palette.text,
-                      fontSize: 11,
-                      fontWeight: '600',
-                      marginTop: 2,
-                    }}
-                  >
-                    {item.name}
-                  </Text>
-                  <Text
-                    numberOfLines={1}
-                    style={{
-                      color: palette.subtext,
-                      fontSize: 10,
-                      marginTop: 1,
-                    }}
-                  >
-                    {item.position}
-                  </Text>
-                </View>
-              )}
-            />
-          </View>
-        ) : null}
+        <PartnerHeaderSection
+          partner={selectedPartner}
+          onPress={onPartnerHeaderPress}
+        />
+        <PartnerAdminsStrip admins={selectedPartner?.admins ?? []} />
 
         {/* General feed */}
-        <View style={styles.sectionHeaderRow}>
-          <Text
-            style={[
-              styles.sectionHeaderText,
-              { color: palette.text },
-            ]}
-          >
-            General feed
-          </Text>
-        </View>
-
         <Pressable
-          onPress={onFeedPress}
-          style={({ pressed }) => [
-            styles.groupRow,
-            { opacity: pressed ? 0.8 : 1 },
-          ]}
+          onPress={() => toggleSection('feed')}
+          style={styles.sectionHeaderRow}
         >
-          <View style={styles.groupHash}>
-            <Text
-              style={{
-                color: palette.subtext,
-                fontSize: 15,
-                fontWeight: '700',
-              }}
-            >
-              📰
-            </Text>
-          </View>
-          <Text
-            style={{
-              flex: 1,
-              color: palette.text,
-              fontSize: 14,
-              fontWeight: '600',
-            }}
-            numberOfLines={1}
-          >
-            {selectedPartner?.name} feed
+          <Text style={[styles.sectionHeaderText, { color: palette.text }]}>
+            {sectionHeaders.feed.title}
           </Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            {sectionHeaders.feed.meta ? (
+              <Text style={[styles.sectionHeaderMeta, { color: palette.subtext }]}>
+                {sectionHeaders.feed.meta}
+              </Text>
+            ) : null}
+            <KISIcon
+              name="chevron-down"
+              size={16}
+              color={palette.subtext}
+              style={{ transform: [{ rotate: collapsed.feed ? '180deg' : '0deg' }] }}
+            />
+          </View>
         </Pressable>
 
-        {/* Standalone groups */}
-        <View style={styles.sectionHeaderRow}>
-          <Text
-            style={[
-              styles.sectionHeaderText,
-              { color: palette.text },
+        {!collapsed.feed ? (
+          <Pressable
+            onPress={onFeedPress}
+            style={({ pressed }) => [
+              styles.groupRow,
+              {
+                backgroundColor: palette.surfaceElevated ?? palette.surface,
+                borderColor: palette.borderMuted,
+                opacity: pressed ? 0.8 : 1,
+              },
             ]}
           >
-            Groups
-          </Text>
-          <Text
-            style={[
-              styles.sectionHeaderMeta,
-              { color: palette.subtext },
-            ]}
-          >
-            {rootGroups.length} groups
-          </Text>
-        </View>
-
-        {rootGroups.length === 0 ? (
-          <Text
-            style={{
-              color: palette.subtext,
-              fontSize: 13,
-              marginBottom: 8,
-            }}
-          >
-            No standalone groups yet.
-          </Text>
-        ) : (
-          rootGroups.map((item) => {
-            const isSelected = item.id === selectedGroupId;
-            return (
-              <Pressable
-                key={item.id}
-                onPress={() => onGroupPress(item.id)}
-                style={({ pressed }) => [
-                  styles.groupRow,
-                  {
-                    backgroundColor: isSelected
-                      ? palette.primarySoft
-                      : 'transparent',
-                    opacity: pressed ? 0.8 : 1,
-                  },
-                ]}
-              >
-                <View style={styles.groupHash}>
-                  <Text
-                    style={{
-                      color: palette.subtext,
-                      fontSize: 15,
-                      fontWeight: '700',
-                    }}
-                  >
-                    #
-                  </Text>
-                </View>
-                <Text
-                  style={{
-                    flex: 1,
-                    color: isSelected
-                      ? palette.primaryStrong
-                      : palette.text,
-                    fontSize: 14,
-                    fontWeight: isSelected ? '700' : '400',
-                  }}
-                  numberOfLines={1}
-                >
-                  {item.name.replace(/^#\s*/i, '')}
-                </Text>
-              </Pressable>
-            );
-          })
-        )}
-
-        {/* Communities */}
-        {communitiesForPartner.length > 0 && (
-          <>
-            <View style={[styles.sectionHeaderRow, { marginTop: 12 }]}>
+            <View style={styles.groupHash}>
               <Text
-                style={[
-                  styles.sectionHeaderText,
-                  { color: palette.text },
-                ]}
+                style={{
+                  color: palette.subtext,
+                  fontSize: 15,
+                  fontWeight: '700',
+                }}
               >
-                Communities
-              </Text>
-              <Text
-                style={[
-                  styles.sectionHeaderMeta,
-                  { color: palette.subtext },
-                ]}
-              >
-                {communitiesForPartner.length} communities
+                📰
               </Text>
             </View>
+            <Text
+              style={{
+                flex: 1,
+                color: palette.text,
+                fontSize: 14,
+                fontWeight: '600',
+              }}
+              numberOfLines={1}
+            >
+              {selectedPartner?.name} feed
+            </Text>
+          </Pressable>
+        ) : null}
 
-            {communitiesForPartner.map((community) => {
-              const isExpanded = expandedCommunities[community.id] ?? true;
-              const communityGroups = groupsForPartner.filter(
-                (g) => g.community === community.id
-              );
+        <Pressable
+          onPress={() => toggleSection('courses')}
+          style={[styles.sectionHeaderRow, { marginTop: 12 }]}
+        >
+          <Text style={[styles.sectionHeaderText, { color: palette.text }]}>
+            {sectionHeaders.courses.title}
+          </Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <Text style={[styles.sectionHeaderMeta, { color: palette.subtext }]}>
+              {sectionHeaders.courses.meta}
+            </Text>
+            <KISIcon
+              name="chevron-down"
+              size={16}
+              color={palette.subtext}
+              style={{ transform: [{ rotate: collapsed.courses ? '180deg' : '0deg' }] }}
+            />
+          </View>
+        </Pressable>
 
-              return (
-                <View
-                  key={community.id}
-                  style={[
-                    styles.communityCard,
-                    {
-                      backgroundColor: palette.surface,
-                      borderColor: palette.borderMuted,
-                    },
-                  ]}
-                >
-                  <Pressable
-                    onPress={() => onToggleCommunity(community.id)}
-                    style={({ pressed }) => [
-                      styles.communityHeaderRow,
-                      { opacity: pressed ? 0.8 : 1 },
-                    ]}
-                  >
-                    <View style={{ flex: 1 }}>
-                      <Text
-                        style={{
-                          color: palette.text,
-                          fontSize: 14,
-                          fontWeight: '700',
-                        }}
-                        numberOfLines={1}
-                      >
-                        {community.name}
-                      </Text>
-                      {community.description ? (
-                        <Text
-                          style={{
-                            color: palette.subtext,
-                            fontSize: 12,
-                            marginTop: 2,
-                          }}
-                          numberOfLines={2}
-                        >
-                          {community.description}
-                        </Text>
-                      ) : null}
-                    </View>
-                    <Text
-                      style={{
-                        color: palette.subtext,
-                        fontSize: 16,
-                        marginLeft: 8,
-                      }}
-                    >
-                      {isExpanded ? '⌄' : '›'}
-                    </Text>
-                  </Pressable>
+        {!collapsed.courses ? (
+          <PartnerCoursesSection partner={selectedPartner} />
+        ) : null}
 
-                  {isExpanded &&
-                    (
-                      <>
-                        <Pressable
-                          onPress={() => onCommunityFeedPress(community.id)}
-                          style={({ pressed }) => [
-                            styles.communityGroupRow,
-                            {
-                              backgroundColor: 'transparent',
-                              opacity: pressed ? 0.8 : 1,
-                            },
-                          ]}
-                        >
-                          <View style={styles.groupHash}>
-                            <Text
-                              style={{
-                                color: palette.subtext,
-                                fontSize: 15,
-                                fontWeight: '700',
-                              }}
-                            >
-                              📰
-                            </Text>
-                          </View>
-                          <Text
-                            style={{
-                              flex: 1,
-                              color: palette.text,
-                              fontSize: 14,
-                              fontWeight: '600',
-                            }}
-                            numberOfLines={1}
-                          >
-                            Feed
-                          </Text>
-                        </Pressable>
-                        {communityGroups.map((group) => {
-                          const isSelected = group.id === selectedGroupId;
-                          return (
-                            <Pressable
-                              key={group.id}
-                              onPress={() => onGroupPress(group.id)}
-                              style={({ pressed }) => [
-                                styles.communityGroupRow,
-                                {
-                                  backgroundColor: isSelected
-                                    ? palette.primarySoft
-                                    : 'transparent',
-                                  opacity: pressed ? 0.8 : 1,
-                                },
-                              ]}
-                            >
-                              <View style={styles.groupHash}>
-                                <Text
-                                  style={{
-                                    color: palette.subtext,
-                                    fontSize: 15,
-                                    fontWeight: '700',
-                                  }}
-                                >
-                                  #
-                                </Text>
-                              </View>
-                              <Text
-                                style={{
-                                  flex: 1,
-                                  color: isSelected
-                                    ? palette.primaryStrong
-                                    : palette.text,
-                                  fontSize: 14,
-                                  fontWeight: isSelected ? '700' : '400',
-                                }}
-                                numberOfLines={1}
-                              >
-                                {group.name.replace(/^#\s*/i, '')}
-                              </Text>
-                            </Pressable>
-                          );
-                        })}
-                      </>
-                    )}
-                </View>
-              );
-            })}
+        {isReadOnly ? (
+          <Text style={{ color: palette.subtext, fontSize: 12, marginTop: 12 }}>
+            Subscribe-only accounts can follow feeds but cannot access groups or channels.
+          </Text>
+        ) : (
+          <>
+            <Pressable
+              onPress={() => toggleSection('channels')}
+              style={[styles.sectionHeaderRow, { marginTop: 12 }]}
+            >
+              <Text style={[styles.sectionHeaderText, { color: palette.text }]}>
+                {sectionHeaders.channels.title}
+              </Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Text style={[styles.sectionHeaderMeta, { color: palette.subtext }]}>
+                  {sectionHeaders.channels.meta}
+                </Text>
+                <KISIcon
+                  name="chevron-down"
+                  size={16}
+                  color={palette.subtext}
+                  style={{ transform: [{ rotate: collapsed.channels ? '180deg' : '0deg' }] }}
+                />
+              </View>
+            </Pressable>
+
+            {!collapsed.channels ? (
+              <PartnerChannelsSection
+                rootChannels={rootChannels}
+                selectedChannelId={selectedChannelId}
+                onChannelPress={onChannelPress}
+                showHeader={false}
+              />
+            ) : null}
+
+            <Pressable
+              onPress={() => toggleSection('groups')}
+              style={[styles.sectionHeaderRow, { marginTop: 12 }]}
+            >
+              <Text style={[styles.sectionHeaderText, { color: palette.text }]}>
+                {sectionHeaders.groups.title}
+              </Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Text style={[styles.sectionHeaderMeta, { color: palette.subtext }]}>
+                  {sectionHeaders.groups.meta}
+                </Text>
+                <KISIcon
+                  name="chevron-down"
+                  size={16}
+                  color={palette.subtext}
+                  style={{ transform: [{ rotate: collapsed.groups ? '180deg' : '0deg' }] }}
+                />
+              </View>
+            </Pressable>
+
+            {!collapsed.groups ? (
+              <PartnerGroupsSection
+                rootGroups={rootGroups}
+                selectedGroupId={selectedGroupId}
+                onGroupPress={onGroupPress}
+                showHeader={false}
+              />
+            ) : null}
+
+            <Pressable
+              onPress={() => toggleSection('communities')}
+              style={[styles.sectionHeaderRow, { marginTop: 12 }]}
+            >
+              <Text style={[styles.sectionHeaderText, { color: palette.text }]}>
+                {sectionHeaders.communities.title}
+              </Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Text style={[styles.sectionHeaderMeta, { color: palette.subtext }]}>
+                  {sectionHeaders.communities.meta}
+                </Text>
+                <KISIcon
+                  name="chevron-down"
+                  size={16}
+                  color={palette.subtext}
+                  style={{ transform: [{ rotate: collapsed.communities ? '180deg' : '0deg' }] }}
+                />
+              </View>
+            </Pressable>
+
+            {!collapsed.communities ? (
+              <PartnerCommunitiesSection
+                communities={communitiesForPartner}
+                groups={groupsForPartner}
+                expandedCommunities={expandedCommunities}
+                selectedGroupId={selectedGroupId}
+                onToggleCommunity={onToggleCommunity}
+                onGroupPress={onGroupPress}
+                onCommunityFeedPress={onCommunityFeedPress}
+                showHeader={false}
+              />
+            ) : null}
           </>
         )}
       </ScrollView>

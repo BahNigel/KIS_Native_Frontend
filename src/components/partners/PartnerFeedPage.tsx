@@ -401,10 +401,23 @@ export default function PartnerFeedPage({ partner, onBack }: Props) {
             }
             const post = item.data;
             const attachment = Array.isArray(post.attachments) ? post.attachments[0] : null;
-            const attachmentUrl = attachment?.url ?? attachment?.uri ?? null;
+            const attachmentUrl =
+              (typeof attachment === 'string' ? attachment : null) ??
+              attachment?.url ??
+              attachment?.uri ??
+              attachment?.file_url ??
+              attachment?.fileUrl ??
+              attachment?.path ??
+              null;
             const thumbUrl =
-              attachment?.thumbUrl ?? attachment?.thumb_url ?? attachment?.thumbnail ?? null;
-            const kind = attachment?.kind ?? attachment?.mimeType ?? '';
+              attachment?.thumbUrl ??
+              attachment?.thumb_url ??
+              attachment?.thumbnail ??
+              attachment?.thumb ??
+              attachment?.preview_url ??
+              attachment?.previewUrl ??
+              null;
+            const kind = attachment?.kind ?? attachment?.mimeType ?? attachment?.type ?? '';
             const isVideo = String(kind).includes('video') || String(kind).includes('mp4');
             return (
               <View

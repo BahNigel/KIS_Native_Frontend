@@ -28,6 +28,8 @@ type NewCommunityFormProps = {
   onSuccess: (community: any) => void;
   selectedMemberIds: string[];
   onSelectMembers: () => void;
+  showMemberPicker?: boolean;
+  partnerId?: string | null;
 };
 
 const slugify = (value: string): string =>
@@ -42,6 +44,8 @@ export const NewCommunityForm: React.FC<NewCommunityFormProps> = ({
   onSuccess,
   selectedMemberIds,
   onSelectMembers,
+  showMemberPicker = true,
+  partnerId,
 }) => {
   const [name, setName] = useState('');
   const [slug, setSlug] = useState('');
@@ -65,7 +69,7 @@ export const NewCommunityForm: React.FC<NewCommunityFormProps> = ({
         name: trimmedName,
         slug: finalSlug,
         description: description.trim() || undefined,
-        partner: null,
+        partner: partnerId ?? null,
       };
 
       const createdCommunity = await postRequest(
@@ -219,42 +223,43 @@ export const NewCommunityForm: React.FC<NewCommunityFormProps> = ({
         </View>
       </View>
 
-      {/* Members */}
-      <View style={{ marginBottom: 16 }}>
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 }}>
-          <Text style={{ color: palette.subtext, fontSize: 13 }}>Members</Text>
-          <Text style={{ color: palette.subtext, fontSize: 12 }}>{memberCountLabel}</Text>
-        </View>
-        <View
-          style={{
-            borderRadius: 12,
-            borderWidth: 1,
-            borderColor: palette.inputBorder,
-            backgroundColor: palette.card,
-            padding: 10,
-          }}
-        >
-          <Pressable
-            onPress={onSelectMembers}
-            style={({ pressed }) => ({
-              flexDirection: 'row',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              paddingVertical: 10,
-              paddingHorizontal: 12,
-              borderRadius: 10,
+      {showMemberPicker ? (
+        <View style={{ marginBottom: 16 }}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 }}>
+            <Text style={{ color: palette.subtext, fontSize: 13 }}>Members</Text>
+            <Text style={{ color: palette.subtext, fontSize: 12 }}>{memberCountLabel}</Text>
+          </View>
+          <View
+            style={{
+              borderRadius: 12,
               borderWidth: 1,
               borderColor: palette.inputBorder,
-              backgroundColor: pressed ? palette.surface : 'transparent',
-            })}
+              backgroundColor: palette.card,
+              padding: 10,
+            }}
           >
-            <Text style={{ color: palette.text, fontSize: 13 }}>
-              Add or edit members
-            </Text>
-            <KISIcon name="chevron-right" size={16} color={palette.subtext} />
-          </Pressable>
+            <Pressable
+              onPress={onSelectMembers}
+              style={({ pressed }) => ({
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                paddingVertical: 10,
+                paddingHorizontal: 12,
+                borderRadius: 10,
+                borderWidth: 1,
+                borderColor: palette.inputBorder,
+                backgroundColor: pressed ? palette.surface : 'transparent',
+              })}
+            >
+              <Text style={{ color: palette.text, fontSize: 13 }}>
+                Add or edit members
+              </Text>
+              <KISIcon name="chevron-right" size={16} color={palette.subtext} />
+            </Pressable>
+          </View>
         </View>
-      </View>
+      ) : null}
 
       {/* Submit button */}
       <Pressable

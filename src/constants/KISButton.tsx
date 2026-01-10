@@ -12,7 +12,7 @@ import { buttonStyles } from '../theme/constants';
 import { useKISTheme } from '../theme/useTheme';
 
 type Variant = 'primary' | 'secondary' | 'outline' | 'ghost';
-type Size = 'sm' | 'md' | 'lg';
+type Size = 'xs' | 'sm' | 'md' | 'lg';
 
 type Props = {
   title?: string;

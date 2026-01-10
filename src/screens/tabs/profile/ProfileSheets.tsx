@@ -15,10 +15,11 @@ import { KISIcon } from '@/constants/kisIcons';
 
 import { styles } from './profile.styles';
 import { fieldLabels, visibilityOptions, walletModes, paymentProviders } from './profile.constants';
-import { formatMoney, tierMetaFor } from './profile.utils';
+import { formatMoney } from './profile.utils';
 import { ItemType } from './profile.types';
 import KISButton from '@/constants/KISButton';
 import KISTextInput from '@/constants/KISTextInput';
+import UpgradeSheet from './profile/sheets/UpgradeSheet';
 
 type Props = {
   palette: any;
@@ -48,6 +49,12 @@ type Props = {
   submitWalletAction: () => void;
 
   upgradeTier: (tierId: string) => void;
+  billingHistory?: any;
+  subscription?: any;
+  cancelSubscription: (immediate?: boolean) => void;
+  resumeSubscription: () => void;
+  downgradeTier: (tierId: string) => void;
+  retryTransaction: (txRef: string) => void;
 };
 
 export default function ProfileSheets(props: Props) {
@@ -79,6 +86,12 @@ export default function ProfileSheets(props: Props) {
     submitWalletAction,
 
     upgradeTier,
+    billingHistory,
+    subscription,
+    cancelSubscription,
+    resumeSubscription,
+    downgradeTier,
+    retryTransaction,
   } = props;
 
   if (!activeSheet) return null;
@@ -297,6 +310,15 @@ export default function ProfileSheets(props: Props) {
                 />
               )}
 
+              {walletForm.mode === 'points_to_credits' && (
+                <KISTextInput
+                  label="Points to convert"
+                  value={walletForm.points}
+                  onChangeText={(text) => setWalletForm((s: any) => ({ ...s, points: text }))}
+                  keyboardType="number-pad"
+                />
+              )}
+
               {walletForm.mode === 'transfer' && (
                 <>
                   <KISTextInput
@@ -333,63 +355,19 @@ export default function ProfileSheets(props: Props) {
           )}
 
           {activeSheet === 'upgrade' && (
-            <View style={{ gap: 12 }}>
-              {(profile?.tiers || []).map((tier: any) => (
-                <Pressable
-                  key={tier.id}
-                  onPress={() => upgradeTier(tier.id)}
-                  style={[styles.tierCard, { borderColor: palette.divider, backgroundColor: palette.card }]}
-                >
-                  {(() => {
-                    const meta = tierMetaFor(tier);
-                    const currentKey = String(accountTier?.id ?? accountTier?.name ?? '');
-                    const isCurrent = currentKey && currentKey === String(tier.id ?? tier.name ?? '');
-
-                    return (
-                      <>
-                        <View style={styles.tierHeader}>
-                          <View style={{ flex: 1 }}>
-                            <Text style={[styles.tierTitle, { color: palette.text }]}>{tier.name}</Text>
-                            <Text style={[styles.tierTagline, { color: palette.subtext }]}>{meta.tagline}</Text>
-                          </View>
-                          {meta.badge ? (
-                            <View style={[styles.tierBadge, { backgroundColor: palette.primarySoft }]}>
-                              <Text style={[styles.tierBadgeText, { color: palette.primaryStrong }]}>{meta.badge}</Text>
-                            </View>
-                          ) : null}
-                        </View>
-
-                        <Text style={[styles.tierPrice, { color: palette.text }]}>
-                          ${formatMoney(tier.price_cents)}/mo
-                        </Text>
-
-                        {meta.highlight ? (
-                          <Text style={[styles.tierHighlight, { color: palette.primaryStrong }]}>{meta.highlight}</Text>
-                        ) : null}
-
-                        <View style={styles.tierFeatures}>
-                          {meta.features.map((item) => (
-                            <View key={`${tier.id}-${item}`} style={styles.tierFeatureRow}>
-                              <KISIcon name="check" size={14} color={palette.primaryStrong} />
-                              <Text style={[styles.tierFeatureText, { color: palette.subtext }]}>{item}</Text>
-                            </View>
-                          ))}
-                        </View>
-
-                        <View style={styles.tierActionRow}>
-                          <KISButton
-                            title={isCurrent ? 'Current plan' : 'Choose plan'}
-                            variant={isCurrent ? 'outline' : 'primary'}
-                            onPress={() => upgradeTier(tier.id)}
-                            disabled={isCurrent || saving}
-                          />
-                        </View>
-                      </>
-                    );
-                  })()}
-                </Pressable>
-              ))}
-            </View>
+            <UpgradeSheet
+              tiers={profile?.tiers || []}
+              accountTier={accountTier}
+              saving={saving}
+              onUpgrade={upgradeTier}
+              subscription={subscription}
+              billingHistory={billingHistory}
+              usage={billingHistory?.usage || profile?.stats}
+              onCancel={cancelSubscription}
+              onResume={resumeSubscription}
+              onDowngrade={downgradeTier}
+              onRetry={retryTransaction}
+            />
           )}
         </ScrollView>
       </KeyboardAvoidingView>

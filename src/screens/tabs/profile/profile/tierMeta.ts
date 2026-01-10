@@ -3,6 +3,23 @@ export const tierMetaFor = (tier: any) => {
   const name = String(tier?.name ?? tier?.code ?? tier?.slug ?? '').toLowerCase();
   const features = tier?.features_json ?? {};
 
+  const tierRank =
+    typeof tier?.tier_rank === 'number'
+      ? tier.tier_rank
+      : name.includes('partner')
+      ? 4
+      : name.includes('business pro')
+      ? 3
+      : name.includes('business')
+      ? 2
+      : name.includes('pro')
+      ? 1
+      : 0;
+
+  const tierSegment =
+    tier?.tier_segment ||
+    (name.includes('partner') ? 'partner' : name.includes('business') ? 'business' : 'personal');
+
   const addFeature = (text: string, list: string[]) => {
     if (text && !list.includes(text)) list.push(text);
   };
@@ -85,5 +102,7 @@ export const tierMetaFor = (tier: any) => {
     tagline,
     highlight,
     features: list.slice(0, 8), // keep it clean in UI
+    tierRank,
+    tierSegment,
   };
 };

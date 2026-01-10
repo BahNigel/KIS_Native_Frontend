@@ -13,6 +13,8 @@ type UseBulkMessageActionsParams = {
   softDeleteMessage: (id: string) => Promise<void>;
   exitSelectionMode: () => void;
   isSingleSelection: boolean;
+  canBroadcast?: boolean;
+  onBroadcastMessages?: (messages: ChatMessage[]) => Promise<void> | void;
   onReportMessage?: (message: ChatMessage) => Promise<boolean> | boolean;
   onPinMessage?: (message: ChatMessage, pinned: boolean) => void;
   onContinueInSubRoom?: (message: ChatMessage) => void;
@@ -26,6 +28,8 @@ export function useBulkMessageActions({
   softDeleteMessage,
   exitSelectionMode,
   isSingleSelection,
+  canBroadcast,
+  onBroadcastMessages,
   onReportMessage,
   onPinMessage,
   onContinueInSubRoom,
@@ -105,7 +109,7 @@ export function useBulkMessageActions({
   const handleMoreSelected = useCallback(() => {
     if (!selectedMessages.length) return;
 
-    Alert.alert('More', 'Choose an action for selected messages', [
+    const actions: { text: string; onPress?: () => void; style?: 'cancel' | 'destructive' }[] = [
       {
         text: 'Copy',
         onPress: () => handleCopySelected(),
@@ -114,6 +118,17 @@ export function useBulkMessageActions({
         text: 'Pin',
         onPress: () => handlePinSelected(),
       },
+      ...(canBroadcast && onBroadcastMessages
+        ? [
+            {
+              text: 'Broadcast',
+              onPress: async () => {
+                await onBroadcastMessages(selectedMessages);
+                exitSelectionMode();
+              },
+            },
+          ]
+        : []),
       {
         text: 'Report',
         onPress: async () => {
@@ -135,11 +150,15 @@ export function useBulkMessageActions({
         },
       },
       { text: 'Cancel', style: 'cancel' },
-    ]);
+    ];
+
+    Alert.alert('More', 'Choose an action for selected messages', actions);
   }, [
     exitSelectionMode,
     handleCopySelected,
     handlePinSelected,
+    canBroadcast,
+    onBroadcastMessages,
     onReportMessage,
     selectedMessages,
   ]);

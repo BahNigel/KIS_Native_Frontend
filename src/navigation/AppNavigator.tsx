@@ -3,6 +3,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import {
+  DeviceEventEmitter,
   Platform,
   Pressable,
   StyleSheet,
@@ -320,6 +321,26 @@ export function MainTabs() {
     }).start();
   };
 
+  useEffect(() => {
+    const sub = DeviceEventEmitter.addListener('chat.open', (payload: any) => {
+      const convId = String(payload?.conversationId ?? payload?.id ?? '');
+      if (!convId) return;
+      const chat: Chat = {
+        id: convId,
+        conversationId: convId,
+        name: payload?.name ?? 'Chat',
+        kind: payload?.kind,
+        communityId: payload?.kind === 'community' ? convId : undefined,
+        isCommunityChat: payload?.kind === 'community',
+        isGroup: payload?.kind === 'channel',
+      };
+      openChat(chat);
+    });
+    return () => {
+      sub.remove();
+    };
+  }, [openChat]);
+
   const closeChat = () => {
     RNAnimated.timing(chatSlide, {
       toValue: 0,
@@ -419,7 +440,7 @@ export function MainTabs() {
           name="Partners"
           options={{ title: 'Partners' }}
         >
-          {() => <PartnersScreen setHidNav={setHidNav} />}
+          {() => <PartnersScreen setHidNav={setHidNav} onOpenInfo={openInfo} />}
         </Tabs.Screen>
 
         <Tabs.Screen

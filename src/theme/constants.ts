@@ -402,6 +402,8 @@ export const kisRadius = {
 
 export const buttonStyles = (tone: KISTone) => {
   const palette = createPalette(tone);
+  const secondarySoft =
+    tone === 'dark' ? 'rgba(108,74,242,0.22)' : 'rgba(108,74,242,0.16)';
   const base = {
     height: KIS_TOKENS.controlHeights.md,
     paddingHorizontal: 16,
@@ -419,26 +421,36 @@ export const buttonStyles = (tone: KISTone) => {
   return {
     primary: {
       container: { ...base, backgroundColor: palette.primary },
-      text: { ...textBase, color: palette.inverseText },
+      text: { ...textBase, color: palette.onPrimary },
     },
     secondary: {
-      container: { ...base, backgroundColor: palette.secondary },
-      text: { ...textBase, color: palette.inverseText },
+      container: {
+        ...base,
+        backgroundColor: secondarySoft,
+        borderWidth: 1,
+        borderColor: palette.secondary,
+      },
+      text: { ...textBase, color: palette.secondary },
     },
     outline: {
       container: {
         ...base,
         backgroundColor: 'transparent',
         borderWidth: 1,
-        borderColor: palette.border,
+        borderColor: palette.primaryStrong,
       },
-      text: { ...textBase, color: palette.text },
+      text: { ...textBase, color: palette.primaryStrong },
     },
     ghost: {
       container: { ...base, backgroundColor: 'transparent' },
-      text: { ...textBase, color: palette.primary },
+      text: { ...textBase, color: palette.primaryStrong },
     },
     sizes: {
+      xs: {
+        height: 32,
+        paddingHorizontal: 10,
+        borderRadius: KIS_TOKENS.radius.sm,
+      },
       sm: {
         height: KIS_TOKENS.controlHeights.sm,
         paddingHorizontal: 12,

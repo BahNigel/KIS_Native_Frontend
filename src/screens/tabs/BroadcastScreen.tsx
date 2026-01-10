@@ -1,13 +1,23 @@
 // src/screens/tabs/BroadcastScreen.tsx
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Alert, View, Text, StyleSheet, TextInput, ScrollView } from 'react-native';
+import {
+  Alert,
+  DeviceEventEmitter,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useKISTheme } from '../../theme/useTheme';
 import KISButton from '../../constants/KISButton';
 import Skeleton from '@/components/common/Skeleton';
+import BroadcastFeedSection from '@/components/broadcast/BroadcastFeedSection';
+import MarketStudioSection from '@/components/broadcast/MarketStudioSection';
 import { getRequest } from '@/network/get';
 import { postRequest } from '@/network/post';
-import { ROUTES } from '@/network';
+import ROUTES from '@/network';
 import { CacheConfig } from '@/network/cacheKeys';
 import {
   getCachedProfile,
@@ -25,8 +35,6 @@ export default function BroadcastScreen() {
   const [channels, setChannels] = useState<any[]>([]);
   const [loadingChannels, setLoadingChannels] = useState(false);
   const [query, setQuery] = useState('');
-  const [broadcasts, setBroadcasts] = useState<any[]>([]);
-  const [loadingBroadcasts, setLoadingBroadcasts] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -54,18 +62,7 @@ export default function BroadcastScreen() {
     return name ? name.replace(/\b\w/g, (char) => char.toUpperCase()) : 'Free';
   }, [accountTier]);
   const canUseBroadcast = isBusinessTier(accountTier);
-
-  const loadBroadcasts = useCallback(async () => {
-    setLoadingBroadcasts(true);
-    const res = await getRequest(ROUTES.broadcasts.list, {
-      errorMessage: 'Unable to load broadcasts.',
-    });
-    if (res?.success) {
-      const payload = res.data?.results ?? res.data ?? [];
-      setBroadcasts(Array.isArray(payload) ? payload : []);
-    }
-    setLoadingBroadcasts(false);
-  }, []);
+  const canUseMarket = isBusinessTier(accountTier);
 
   const loadChannels = useCallback(
     async (search: string) => {
@@ -93,10 +90,6 @@ export default function BroadcastScreen() {
     return () => clearTimeout(timer);
   }, [query, loadChannels]);
 
-  useEffect(() => {
-    loadBroadcasts();
-  }, [loadBroadcasts]);
-
   const handleSubscribe = async (channelId: string) => {
     const res = await postRequest(
       ROUTES.channels.subscribeChannel(channelId),
@@ -108,6 +101,19 @@ export default function BroadcastScreen() {
       return;
     }
     loadChannels(query);
+  };
+
+  const handleOpenChannel = (channel: any) => {
+    const conversationId =
+      channel?.conversation_id ?? channel?.conversationId ?? channel?.conversation?.id ?? null;
+    if (conversationId) {
+      DeviceEventEmitter.emit('chat.open', {
+        conversationId: String(conversationId),
+        name: channel?.name ?? 'Channel',
+        kind: 'channel',
+      });
+    }
+    navigation.navigate('Messages' as never);
   };
 
   return (
@@ -129,9 +135,7 @@ export default function BroadcastScreen() {
           </View>
         ) : (
           <View style={[styles.card, { backgroundColor: palette.card, marginTop: 16 }]}>
-            <Text style={[styles.cardTitle, { color: palette.text }]}>
-              KIS Business Broadcast Studio
-            </Text>
+            <Text style={[styles.cardTitle, { color: palette.text }]}>KIS Business Broadcast Studio</Text>
             <Text style={[styles.cardSubtitle, { color: palette.subtext }]}>
               Publish announcements, offers, and partner updates to your audience.
             </Text>
@@ -163,10 +167,7 @@ export default function BroadcastScreen() {
               />
             ) : (
               <View style={{ marginTop: 12 }}>
-                <KISButton
-                  title="Upgrade account"
-                  onPress={() => navigation.navigate('Profile' as never)}
-                />
+                <KISButton title="Upgrade account" onPress={() => navigation.navigate('Profile' as never)} />
               </View>
             )}
           </View>
@@ -193,38 +194,19 @@ export default function BroadcastScreen() {
           <Text style={[styles.cardSubtitle, { color: palette.subtext }]}>
             Broadcast items are available for up to 10 days. Channel chatrooms stay permanent.
           </Text>
-          {loadingBroadcasts ? (
-            <View style={{ marginTop: 12, gap: 10 }}>
-              <Skeleton height={52} radius={12} />
-              <Skeleton height={52} radius={12} />
-            </View>
-          ) : (
-            <View style={{ marginTop: 12, gap: 12 }}>
-              {broadcasts.length === 0 ? (
-                <Text style={{ color: palette.subtext }}>No broadcasts yet.</Text>
-              ) : (
-                broadcasts.map((item) => {
-                  const body = item.text || item.styled_text?.text || '';
-                  return (
-                  <View key={item.id} style={[styles.broadcastCard, { borderColor: palette.divider }]}>
-                    <Text style={[styles.broadcastTitle, { color: palette.text }]}>
-                      {item.title || 'Broadcast'}
-                    </Text>
-                    {body ? (
-                      <Text style={[styles.broadcastText, { color: palette.subtext }]}>
-                        {body}
-                      </Text>
-                    ) : null}
-                    <Text style={[styles.broadcastMeta, { color: palette.subtext }]}>
-                      {item.source_type ? `${item.source_type} • ` : ''}
-                      {item.created_at ? new Date(item.created_at).toLocaleString() : 'Just now'}
-                    </Text>
-                  </View>
-                  );
-                })
-              )}
-            </View>
-          )}
+          <BroadcastFeedSection onSubscribeChannel={handleSubscribe} />
+        </View>
+
+        <View style={[styles.card, { backgroundColor: palette.card, marginTop: 16 }]}>
+          <Text style={[styles.cardTitle, { color: palette.text }]}>Market studio</Text>
+          <Text style={[styles.cardSubtitle, { color: palette.subtext }]}>
+            Business stores can publish listings and broadcast items to the world.
+          </Text>
+          <MarketStudioSection
+            profile={profile}
+            canUseMarket={canUseMarket}
+            onUpgrade={() => navigation.navigate('Profile' as never)}
+          />
         </View>
 
         <View style={[styles.card, { backgroundColor: palette.card, marginTop: 16 }]}>
@@ -268,11 +250,7 @@ export default function BroadcastScreen() {
                     </View>
                     <View style={{ gap: 8 }}>
                       {channel.is_subscribed ? (
-                        <KISButton
-                          title="Open"
-                          size="sm"
-                          onPress={() => navigation.navigate('Messages' as never)}
-                        />
+                        <KISButton title="Open" size="sm" onPress={() => handleOpenChannel(channel)} />
                       ) : (
                         <KISButton
                           title="Subscribe"
@@ -324,13 +302,4 @@ const styles = StyleSheet.create({
   channelMeta: { marginTop: 4, fontSize: 13 },
   channelInvite: { marginTop: 6, fontSize: 12 },
   roleChip: { alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999 },
-  broadcastCard: {
-    borderWidth: 1,
-    borderRadius: 14,
-    padding: 12,
-    gap: 6,
-  },
-  broadcastTitle: { fontSize: 16, fontWeight: '700' },
-  broadcastText: { fontSize: 13 },
-  broadcastMeta: { fontSize: 12 },
 });

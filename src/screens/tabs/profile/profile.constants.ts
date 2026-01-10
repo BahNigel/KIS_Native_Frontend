@@ -27,6 +27,7 @@ export const walletModes = [
   { value: 'deposit', label: 'Add Money' },
   { value: 'cash_to_credits', label: 'Convert to Credits' },
   { value: 'credits_to_cash', label: 'Convert to Money' },
+  { value: 'points_to_credits', label: 'Points to Credits' },
   { value: 'transfer', label: 'Send Gift' },
   { value: 'promo', label: 'Redeem Promo' },
 ];
