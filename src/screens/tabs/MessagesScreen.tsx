@@ -118,6 +118,7 @@ useEffect(() => {
     const term = query.trim();
     if (term.length >= 2) {
       const convs = await searchConversationsFromServer(term, currentUserId ?? undefined);
+      console.log("checking if conversation is comming from the backend search: ", convs)
       if (active) setConversations(convs);
       // statuses are loaded only on explicit user action
       return;
@@ -128,6 +129,8 @@ useEffect(() => {
   })();
   return () => { active = false; };
 }, [currentUserId, query]);
+
+console.log("conversations in messages screen: ", conversations);
 
 useEffect(() => {
   const sub = DeviceEventEmitter.addListener('conversation.refresh', async () => {
@@ -1141,7 +1144,6 @@ const handleMuteSelected = () => {
           tabBar={(props) => <AnimatedTopBar {...props} />}
           screenOptions={{ swipeEnabled: true, tabBarScrollEnabled: false }}
         >
-          
           <Tab.Screen
             name="Chats"
             children={() => (
@@ -1172,11 +1174,11 @@ const handleMuteSelected = () => {
                 }}
                 onScroll={handleChatsScroll}
                 onEndReached={handleChatsEndReached}
-                onOpenChat={onOpenChat} // if you’re still using the chat room, keep this
+                onOpenChat={onOpenChat}
                 selectedChat={selectedChat}
-                setSelectedChat={setSelectedChat} 
+                setSelectedChat={setSelectedChat}
                 conversations={conversations}
-                />
+              />
             )}
           />
           <Tab.Screen

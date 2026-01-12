@@ -23,7 +23,20 @@ export const tierMetaFor = (tier: any) => {
   let list: string[] = Array.isArray(tier?.feature_list) ? [...tier.feature_list] : [];
   let highlight = tier?.feature_highlight || '';
 
-  if (!list.length && name.includes('partner')) {
+  if (!list.length && name.includes('partner pro')) {
+    tagline = 'Global partner networks & enterprise ops';
+    badge = 'Partner Pro';
+    highlight = 'Unlimited partner orgs + automation ops';
+    list = [
+      'Unlimited partner organizations',
+      'Enterprise automation & API/webhooks',
+      'Dedicated revenue & giving ops hub',
+      'Advanced analytics & forecasting',
+      'Priority compliance & governance controls',
+      'Global roles & permission teams',
+      'Concierge onboarding & migration',
+    ];
+  } else if (!list.length && name.includes('partner')) {
     tagline = 'Organizations, ministries & enterprises';
     badge = 'Partner';
     highlight = 'Multi-account orgs + revenue tools';
@@ -33,7 +46,9 @@ export const tierMetaFor = (tier: any) => {
       'Live streaming + events',
       'Donations & revenue tools',
       'Advanced analytics dashboard',
+      'Community & group management at scale',
       'Priority support',
+      'Partner webhooks & automations',
     ];
   } else if (!list.length && name.includes('business pro')) {
     tagline = 'High-impact teams and creators';
@@ -87,7 +102,17 @@ export const tierMetaFor = (tier: any) => {
   addFeature(`Communities: ${features.communities ?? 'Included'}`, list);
   addFeature(`Groups per community: ${features.groups_per_community ?? 'Included'}`, list);
   addFeature(`AI queries/day: ${features.ai_queries_per_day ?? 'Included'}`, list);
-  addFeature(`Storage: ${features.storage_gb ?? 'Included'}`, list);
+  addFeature(`Storage: ${features.storage_gb ?? 'Included'} GB`, list);
+  if (features.partner_accounts !== undefined && features.partner_accounts !== null) {
+    const raw = features.partner_accounts;
+    const label =
+      typeof raw === 'string'
+        ? raw
+        : Number.isNaN(Number(raw))
+        ? String(raw)
+        : String(raw);
+    addFeature(`Partner accounts: ${label}`, list);
+  }
 
   return { badge, tagline, highlight, features: list.slice(0, 8) };
 };

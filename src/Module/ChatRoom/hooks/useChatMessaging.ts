@@ -138,13 +138,37 @@ export function useChatMessaging({
       conversationId;
   }, [conversationId]);
 
-  
+  /* ---------------------------------------------------------------------
+   * E2EE CACHE (prevents /auth/e2ee/keys spam)
+   * ------------------------------------------------------------------ */
 
-  
+  const e2eeMetaCacheRef = useRef<Map<string, { at: number; meta: any }>>(
+    new Map(),
+  );
 
-  
+  const getCachedEncryptionMetaForRecipients = useCallback(
+    async (recipientIds: string[], payload: any) => {
+      // Cache per recipients set for a short TTL.
+      // This avoids refetching /e2ee/keys for every send/flush attempt.
+      const ttlMs = 5 * 60 * 1000; // 5 min
+      const key = [...recipientIds].sort().join(',');
 
-  
+      const hit = e2eeMetaCacheRef.current.get(key);
+      if (hit && Date.now() - hit.at < ttlMs) {
+        return hit.meta;
+      }
+
+      const meta = await encryptPayloadForRecipients(
+        String(currentUserId ?? ''),
+        recipientIds,
+        payload,
+      );
+
+      e2eeMetaCacheRef.current.set(key, { at: Date.now(), meta });
+      return meta;
+    },
+    [currentUserId],
+  );
 
   const resolveServerId = useCallback(
     (id: string) => {
@@ -312,14 +336,19 @@ export function useChatMessaging({
   );
 
   const decryptBatchIfNeeded = useCallback(
-    (incoming: ChatMessage[]) => {
+    async (incoming: ChatMessage[]) => {
       logE2EEDebug('batch:start', { count: incoming.length });
-      incoming.forEach((msg) => {
-        if (msg.encryptionMeta?.e2ee !== 'signal') return;
-        const currentDeviceId = deviceIdRef.current;
-        const recipients = Array.isArray(msg.encryptionMeta?.recipients)
-          ? msg.encryptionMeta.recipients
+
+      const currentDeviceId = deviceIdRef.current;
+
+      for (const msg of incoming) {
+        if (msg.encryptionMeta?.e2ee !== 'signal') continue;
+
+        const meta = msg.encryptionMeta;
+        const recipients = Array.isArray(meta?.recipients)
+          ? meta.recipients
           : null;
+
         logE2EEDebug('batch:message', {
           id: msg.id,
           serverId: msg.serverId,
@@ -327,59 +356,84 @@ export function useChatMessaging({
           currentUserId,
           currentDeviceId,
           recipientsCount: recipients ? recipients.length : 0,
+          hasCiphertext: !!msg.ciphertext,
         });
+
+        // Normalize senderDeviceId keys (server might store different casing)
         const senderDeviceId =
-          msg.encryptionMeta?.senderDeviceId ??
-          msg.encryptionMeta?.deviceId ??
+          meta?.senderDeviceId ??
+          (meta as any)?.sender_device_id ??
+          meta?.deviceId ??
+          (meta as any)?.device_id ??
           '';
-        const recipientCipher = recipients
-          ? recipients.find(
-              (r: any) =>
-                String(r.userId) === String(currentUserId) ||
-                String(r.deviceId) === String(currentDeviceId),
-            )
-          : null;
-        const ciphertext = recipientCipher?.ciphertext ?? msg.ciphertext;
-        const type = recipientCipher?.type ?? msg.encryptionMeta?.type ?? 1;
-        if (!senderDeviceId || !ciphertext) {
-          logE2EEDebug('batch:missingCipher', { senderDeviceId, hasCipher: !!ciphertext });
-          return;
+
+        if (!senderDeviceId) {
+          logE2EEDebug('batch:missingSenderDevice', { id: msg.id });
+          continue;
         }
-        decryptFromUser(
-          String(msg.senderId ?? ''),
-          String(senderDeviceId),
-          String(ciphertext),
-          Number(type),
-        )
-          .then((plaintext) => {
-            let parsed: any = null;
-            try {
-              parsed = JSON.parse(plaintext);
-            } catch {}
-            const next = messagesRef.current.map((m) =>
-              m.serverId === msg.serverId || m.id === msg.id
-                ? {
-                    ...m,
-                    text: parsed?.text ?? plaintext,
-                    styledText: parsed?.styledText ?? m.styledText,
-                    attachments: parsed?.attachments ?? m.attachments,
-                    contacts: parsed?.contacts ?? m.contacts,
-                    poll: parsed?.poll ?? m.poll,
-                    event: parsed?.event ?? m.event,
-                    voice: parsed?.voice ?? m.voice,
-                    sticker: parsed?.sticker ?? m.sticker,
-                    replyToId: parsed?.replyToId ?? m.replyToId,
-                    kind: parsed?.kind ?? m.kind,
-                  }
-                : m,
-            );
-            replaceMessages(next);
-          })
-          .catch((err) => {
-            console.warn('[E2EE] decrypt failed', err);
-          });
-      });
-      return Promise.resolve(incoming);
+
+        // ✅ deterministic selection:
+        // prefer deviceId match, then fallback to userId match
+        let recipientCipher: any = null;
+        if (recipients && currentDeviceId) {
+          recipientCipher =
+            recipients.find(
+              (r: any) => String(r?.deviceId) === String(currentDeviceId),
+            ) ?? null;
+        }
+        if (!recipientCipher && recipients) {
+          recipientCipher =
+            recipients.find(
+              (r: any) => String(r?.userId) === String(currentUserId),
+            ) ?? null;
+        }
+
+        const ciphertext = recipientCipher?.ciphertext ?? msg.ciphertext;
+        const type = recipientCipher?.type ?? meta?.type ?? 1;
+
+        if (!ciphertext) {
+          logE2EEDebug('batch:missingCipher', { id: msg.id });
+          continue;
+        }
+
+        try {
+          const plaintext = await decryptFromUser(
+            String(msg.senderId ?? ''),
+            String(senderDeviceId),
+            String(ciphertext),
+            Number(type),
+          );
+
+          let parsed: any = null;
+          try {
+            parsed = JSON.parse(plaintext);
+          } catch {}
+
+          const patch = {
+            text: parsed?.text ?? plaintext,
+            styledText: parsed?.styledText ?? msg.styledText,
+            attachments: parsed?.attachments ?? msg.attachments,
+            contacts: parsed?.contacts ?? msg.contacts,
+            poll: parsed?.poll ?? msg.poll,
+            event: parsed?.event ?? msg.event,
+            voice: parsed?.voice ?? (msg as any).voice,
+            sticker: parsed?.sticker ?? (msg as any).sticker,
+            replyToId: parsed?.replyToId ?? msg.replyToId,
+            kind: parsed?.kind ?? msg.kind,
+          };
+
+          const next = messagesRef.current.map((m) =>
+            m.serverId === msg.serverId || m.id === msg.id
+              ? { ...m, ...patch }
+              : m,
+          );
+          replaceMessages(next);
+        } catch (err) {
+          console.warn('[E2EE] decrypt failed', err);
+        }
+      }
+
+      return incoming;
     },
     [replaceMessages, currentUserId],
   );
@@ -653,8 +707,8 @@ export function useChatMessaging({
       let encryptedMeta: { encryptionMeta: any } | null = null;
       if (recipientIds.length) {
         try {
-          encryptedMeta = await encryptPayloadForRecipients(
-            String(currentUserId ?? ''),
+          // ✅ cached for 5min per recipient-set to reduce /e2ee/keys calls
+          encryptedMeta = await getCachedEncryptionMetaForRecipients(
             recipientIds,
             payloadForE2EE,
           );
@@ -809,6 +863,7 @@ export function useChatMessaging({
       storageRoomId,
       currentUserId,
       currentUserName,
+      getCachedEncryptionMetaForRecipients,
     ],
   );
 
@@ -924,11 +979,12 @@ export function useChatMessaging({
         msg,
       ]);
 
+      // Decrypt incoming encrypted messages using the same deterministic logic
       if (msg.encryptionMeta?.e2ee === 'signal') {
+        const meta = msg.encryptionMeta;
         const currentDeviceId = deviceIdRef.current;
-        const recipients = Array.isArray(msg.encryptionMeta?.recipients)
-          ? msg.encryptionMeta.recipients
-          : null;
+        const recipients = Array.isArray(meta?.recipients) ? meta.recipients : null;
+
         logE2EEDebug('incoming:message', {
           id: msg.id,
           serverId: msg.serverId,
@@ -937,19 +993,27 @@ export function useChatMessaging({
           currentDeviceId,
           recipientsCount: recipients ? recipients.length : 0,
         });
+
         const senderDeviceId =
-          msg.encryptionMeta?.senderDeviceId ??
-          msg.encryptionMeta?.deviceId ??
+          meta?.senderDeviceId ??
+          (meta as any)?.sender_device_id ??
+          meta?.deviceId ??
+          (meta as any)?.device_id ??
           '';
-        const recipientCipher = recipients
-          ? recipients.find(
-              (r: any) =>
-                String(r.userId) === String(currentUserId) ||
-                String(r.deviceId) === String(currentDeviceId),
-            )
-          : null;
+
+        let recipientCipher: any = null;
+        if (recipients && currentDeviceId) {
+          recipientCipher =
+            recipients.find((r: any) => String(r?.deviceId) === String(currentDeviceId)) ?? null;
+        }
+        if (!recipientCipher && recipients) {
+          recipientCipher =
+            recipients.find((r: any) => String(r?.userId) === String(currentUserId)) ?? null;
+        }
+
         const ciphertext = recipientCipher?.ciphertext ?? msg.ciphertext;
-        const type = recipientCipher?.type ?? msg.encryptionMeta?.type ?? 1;
+        const type = recipientCipher?.type ?? meta?.type ?? 1;
+
         if (senderDeviceId && ciphertext) {
           decryptFromUser(
             String(msg.senderId ?? ''),
@@ -972,8 +1036,8 @@ export function useChatMessaging({
                       contacts: parsed?.contacts ?? m.contacts,
                       poll: parsed?.poll ?? m.poll,
                       event: parsed?.event ?? m.event,
-                      voice: parsed?.voice ?? m.voice,
-                      sticker: parsed?.sticker ?? m.sticker,
+                      voice: parsed?.voice ?? (m as any).voice,
+                      sticker: parsed?.sticker ?? (m as any).sticker,
                       replyToId: parsed?.replyToId ?? m.replyToId,
                       kind: parsed?.kind ?? m.kind,
                     }
@@ -1139,6 +1203,7 @@ export function useChatMessaging({
     mapServerMessage,
     conversationId,
     normalizeReactions,
+    currentUserId,
   ]);
 
   /* ---------------------------------------------------------------------

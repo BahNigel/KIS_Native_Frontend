@@ -17,6 +17,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { useKISTheme } from '../theme/useTheme';
 import KISButton from '../constants/KISButton';
+import LinearGradient from 'react-native-linear-gradient';
+import Ionicons from 'react-native-vector-icons/Ionicons';
 
 // theme-aware hero illustrations (light/dark)
 import avatarsLight from '../assets/welcom_light.png';
@@ -30,12 +32,13 @@ import { useAuth } from '../../App';
 
 const PRIVACY_URL = 'https://christiancommunit.netlify.app';
 
+Ionicons.loadFont?.();
+
 export default function WelcomeScreen() {
   const navigation = useNavigation<any>();
   const { palette, tone } = useKISTheme();
   const { setAuth, setPhone } = useAuth(); // keep global auth in sync if we auto-redirect
   const fade = useRef(new Animated.Value(0)).current;
-  const pressing = useRef(false);
   const { width, height } = useWindowDimensions();
 
   const heroSource = tone === 'dark' ? avatarsDark : avatarsLight;
@@ -53,16 +56,56 @@ export default function WelcomeScreen() {
   const HERO_MAX = 520;      // maximum displayed size
 
   const heroSize = Math.max(HERO_MIN, Math.min(HERO_MAX, Math.round(width * HERO_SCALE)));
+  const heroOffset = Math.max(12, Math.round((width * 0.05)));
+  const sparkleScale = useRef(new Animated.Value(0.98)).current;
+
+  useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(sparkleScale, {
+          toValue: 1.05,
+          duration: 1600,
+          useNativeDriver: true,
+        }),
+        Animated.timing(sparkleScale, {
+          toValue: 0.95,
+          duration: 1600,
+          useNativeDriver: true,
+        }),
+      ])
+    ).start();
+  }, [sparkleScale]);
+  const gradientColors = [palette.card, palette.card];
+  const cardBorderWidth = tone === 'dark' ? 0 : StyleSheet.hairlineWidth;
+  const cardBorderColor = tone === 'dark' ? 'transparent' : palette.border ?? 'rgba(255,255,255,0.35)';
+
+  const highlightFeatures = [
+    {
+      title: 'Broadcast in any format',
+      subtitle: 'Short clips, lessons, and studio streams blend into one feed.',
+      icon: 'radio-outline',
+    },
+    {
+      title: 'Market studios',
+      subtitle: 'Create shops, manage products, and showcase highlights.',
+      icon: 'storefront-outline',
+    },
+    {
+      title: 'Privacy-first profiles',
+      subtitle: 'Choose who sees your photos, experiences, articles, and media.',
+      icon: 'shield-checkmark-outline',
+    },
+  ];
+
+  const quickTags = ['Live Worship', 'Partner Communities', 'Partners', 'Market Pro', 'AI Broadcast Tools'];
+  const statsData = [
+    { label: 'Live Studios', value: '180+' },
+    { label: 'Partner Cities', value: '52' },
+    { label: 'Communities', value: '78' },
+  ];
 
   const goMain = useCallback(() => {
     navigation.reset({ index: 0, routes: [{ name: 'MainTabs' }] });
-  }, [navigation]);
-
-  const handleContinueAsGuest = useCallback(() => {
-    if (pressing.current) return;
-    pressing.current = true;
-    navigation.reset({ index: 0, routes: [{ name: 'MainTabs', params: { guest: true } }] });
-    setTimeout(() => (pressing.current = false), 600);
   }, [navigation]);
 
   const openExternal = useCallback(() => {
@@ -112,82 +155,226 @@ export default function WelcomeScreen() {
   );
 
   return (
-    <SafeAreaView style={[styles.safe, { backgroundColor: palette.bg }]} edges={['top', 'bottom']}>
-      <ScrollView
-        contentContainerStyle={[
-          styles.scrollContent,
-          { paddingHorizontal: 24, paddingVertical: 32, minHeight: height },
-        ]}
-        keyboardShouldPersistTaps="handled"
-        bounces
-      >
-        <View
-          style={[
-            styles.card,
-            { backgroundColor: palette.card, width: '100%', maxWidth: 720, alignSelf: 'center' },
+    <LinearGradient colors={gradientColors} style={styles.gradientBackground}>
+      <SafeAreaView style={[styles.safe, { backgroundColor: 'transparent' }]} edges={['top', 'bottom']}>
+        <ScrollView
+          contentContainerStyle={[
+            styles.scrollContent,
+            { paddingHorizontal: 0, paddingVertical: 0, minHeight: height },
           ]}
+          keyboardShouldPersistTaps="handled"
+          bounces
         >
-          <Animated.Image
-            source={heroSource}
-            resizeMode="contain"
-            style={[
-              styles.hero,
-              {
-                width: heroSize,
-                height: heroSize,
-                opacity: fade,
-                backgroundColor: tone === 'dark' ? '#0F0D14' : '#FFFFFF',
-              },
-            ]}
-          />
+          <View style={styles.backdrop}>
+            <View
+              style={[
+                styles.card,
+                {
+                  backgroundColor: palette.card,
+                  width: '100%',
+                  maxWidth: 720,
+                  alignSelf: 'center',
+                  borderWidth: cardBorderWidth,
+                  borderColor: cardBorderColor,
+                },
+              ]}
+            >
+              <View style={styles.bubbleOverlay} pointerEvents="none">
+                {[1, 2, 3].map((i) => (
+                  <View key={i} style={[styles.bubble, styles[`bubble${i}` as keyof typeof styles]]} />
+                ))}
+              </View>
+              <View style={styles.heroWrapper}>
+                <Animated.Image
+                  source={heroSource}
+                  resizeMode="contain"
+                  style={[
+                    styles.hero,
+                    {
+                      width: heroSize,
+                      height: heroSize,
+                      opacity: fade,
+                      backgroundColor: tone === 'dark' ? '#0F0D14' : '#FFFFFF',
+                      transform: [{ scale: sparkleScale }],
+                    },
+                  ]}
+                />
+                <LinearGradient
+                  colors={['rgba(255,138,51,0.25)', 'transparent']}
+                  style={[
+                    styles.heroGlow,
+                    { top: heroOffset, right: heroOffset, width: heroSize, height: heroSize },
+                  ]}
+                />
+              </View>
 
-          <Text style={[styles.title, { color: palette.text }]}>Welcome to KIS</Text>
+            <Text style={[styles.title, { color: palette.text }]}>Welcome to KIS</Text>
 
-          <Text style={[styles.subtitle, { color: palette.subtext, padding: 15 }]}>
-            A space for believers to connect, grow, learn, and support one another.
-            Built for today’s world — rooted in faith, guided by purpose, and strengthened in community.
-          </Text>
+            <Text style={[styles.subtitle, { color: palette.subtext }]}>
+              A space for believers to connect, grow, learn, and support one another.
+              Built for today’s world — rooted in faith, guided by purpose, and strengthened in community.
+            </Text>
 
-          <KISButton
-            title="Create Account"
-            onPress={() => navigation.navigate('Register')}
-            style={{ marginTop: 24, width: '100%' }}
-          />
-          <KISButton
-            title="Log In"
-            variant="secondary"
-            onPress={() => navigation.navigate('Login')}
-            style={{ marginTop: 12, width: '100%' }}
-          />
+            <View style={styles.statsRow}>
+              {statsData.map((item) => (
+                <View key={item.label} style={styles.statCard}>
+                  <Text style={[styles.statLabel, { color: palette.subtext }]}>{item.label}</Text>
+                  <Text style={[styles.statValue, { color: palette.text }]}>{item.value}</Text>
+                </View>
+              ))}
+            </View>
 
-          <Pressable onPress={handleContinueAsGuest} style={{ marginTop: 18, paddingVertical: 8 }} hitSlop={8}>
-            <Text style={{ color: palette.subtext, textDecorationLine: 'underline' }}>Continue as guest</Text>
-          </Pressable>
+            <View style={styles.tagRow}>
+              {quickTags.map((tag) => (
+                <View key={tag} style={[styles.tag, { borderColor: palette.border }]}>
+                  <Text style={[styles.tagText, { color: palette.text }]}>{tag}</Text>
+                </View>
+              ))}
+            </View>
 
-          <Text style={[styles.legal, { color: palette.subtext }]}>
-            KIS | 2026 · <Text style={[styles.link, { color: '#FF8A33' }]} onPress={openExternal}>Privacy</Text>
-          </Text>
+            <View style={styles.featureGrid}>
+              {highlightFeatures.map((item) => (
+                <LinearGradient
+                  key={item.title}
+                  colors={
+                    tone === 'dark'
+                      ? ['rgba(255,255,255,0.04)', 'rgba(255,255,255,0.01)']
+                      : ['rgba(255,255,255,0.8)', 'rgba(255,255,255,0.2)']
+                  }
+                  style={styles.featureCard}
+                >
+                  <Ionicons
+                    name={item.icon}
+                    size={28}
+                    color={tone === 'dark' ? '#FFCC57' : '#F97316'}
+                  />
+                  <Text style={[styles.featureTitle, { color: palette.text }]}>{item.title}</Text>
+                  <Text style={[styles.featureSubtitle, { color: palette.subtext }]}>{item.subtitle}</Text>
+                </LinearGradient>
+              ))}
+            </View>
+
+            <View style={styles.buttons}>
+              <KISButton
+                title="Create Account"
+                onPress={() => navigation.navigate('Register')}
+                style={{ width: '100%' }}
+              />
+              <KISButton
+                title="Log In"
+                variant="secondary"
+                onPress={() => navigation.navigate('Login')}
+                style={{ marginTop: 12, width: '100%' }}
+              />
+            </View>
+
+            <Text style={[styles.legal, { color: palette.subtext }]}>
+              KIS | 2026 · <Text style={[styles.link, { color: '#FF8A33' }]} onPress={openExternal}>Privacy</Text>
+            </Text>
+          </View>
         </View>
-      </ScrollView>
-    </SafeAreaView>
+        </ScrollView>
+      </SafeAreaView>
+    </LinearGradient>
   );
 }
 
 const styles = StyleSheet.create({
+  gradientBackground: { flex: 1, justifyContent: 'center' },
   safe: { flex: 1 },
   scrollContent: { flexGrow: 1, justifyContent: 'center' },
-  card: {
-    borderRadius: 24,
-    padding: 24,
+  backdrop: {
+    width: '100%',
     alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
+  },
+  card: {
+    borderRadius: 28,
+    padding: 28,
+    alignItems: 'center',
+    marginBottom: 0,
     ...Platform.select({
-      ios: { shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 12, shadowOffset: { width: 0, height: 6 } },
-      android: { elevation: 6 },
+      ios: { shadowOpacity: 0, shadowRadius: 0, shadowOffset: { width: 0, height: 0 } },
+      android: { elevation: 0 },
     }),
   },
-  hero: { marginBottom: 16, borderRadius: 16, overflow: 'hidden' },
-  title: { fontSize: 28, fontWeight: '800', textAlign: 'center' },
-  subtitle: { marginTop: 8, fontSize: 15, lineHeight: 22, textAlign: 'center', maxWidth: 500, paddingHorizontal: 8 },
-  legal: { textAlign: 'center', marginTop: 18, fontSize: 12 },
+  heroWrapper: {
+    position: 'relative',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '100%',
+  },
+  hero: { marginBottom: 12, borderRadius: 20, overflow: 'hidden' },
+  heroGlow: {
+    position: 'absolute',
+    borderRadius: 220,
+    opacity: 0.7,
+  },
+  bubbleOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  bubble: {
+    position: 'absolute',
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    borderRadius: 999,
+    width: 90,
+    height: 90,
+  },
+  bubble1: { top: -30, left: -60, opacity: 0.36 },
+  bubble2: { bottom: -35, right: -65, opacity: 0.25 },
+  bubble3: { top: -5, right: -10, opacity: 0.2 },
+  title: { fontSize: 32, fontWeight: '800', textAlign: 'center' },
+  subtitle: { marginTop: 12, fontSize: 15, lineHeight: 24, textAlign: 'center', maxWidth: 520 },
+  statsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    width: '100%',
+    marginTop: 18,
+  },
+  statCard: {
+    flex: 1,
+    borderRadius: 16,
+    paddingVertical: 10,
+    marginHorizontal: 4,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.15)',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.08)',
+  },
+  statLabel: { fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5 },
+  statValue: { fontSize: 18, fontWeight: '700', marginTop: 4 },
+  tagRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    marginTop: 18,
+  },
+  tag: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    borderWidth: 1,
+    marginHorizontal: 4,
+    marginVertical: 4,
+  },
+  tagText: { fontSize: 12, letterSpacing: 0.2 },
+  featureGrid: {
+    width: '100%',
+    marginTop: 24,
+  },
+  featureCard: {
+    padding: 16,
+    borderRadius: 18,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)',
+  },
+  featureTitle: { fontSize: 16, fontWeight: '700' },
+  featureSubtitle: { fontSize: 13, lineHeight: 18 },
+  buttons: { width: '100%', marginTop: 18 },
+  legal: { textAlign: 'center', marginTop: 20, fontSize: 12 },
   link: { fontWeight: '700' },
 });

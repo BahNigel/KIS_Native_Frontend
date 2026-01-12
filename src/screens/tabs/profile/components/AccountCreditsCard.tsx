@@ -16,6 +16,8 @@ export default function AccountCreditsCard({
   onWallet,
   onUpgrade,
   walletLedger,
+  showCreatePartnerButton,
+  onCreatePartner,
 }: {
   tierName: string;
   tierPriceCents: number;
@@ -26,6 +28,8 @@ export default function AccountCreditsCard({
   onWallet: () => void;
   onUpgrade: () => void;
   walletLedger: any[];
+  showCreatePartnerButton?: boolean;
+  onCreatePartner?: () => void;
 }) {
   const { palette } = useKISTheme();
 
@@ -57,6 +61,9 @@ export default function AccountCreditsCard({
       <View style={{ gap: 10 }}>
         <KISButton title="Wallet Actions" variant="secondary" onPress={onWallet} />
         <KISButton title={`Upgrade Account (${tierName})`} variant="outline" onPress={onUpgrade} style={{ borderColor: palette.border, borderWidth: 3 }} />
+        {showCreatePartnerButton && onCreatePartner ? (
+          <KISButton title="Create partner" variant="primary" onPress={onCreatePartner} />
+        ) : null}
       </View>
 
       <View style={{ marginTop: 10, gap: 8 }}>

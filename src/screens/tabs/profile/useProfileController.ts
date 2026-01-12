@@ -445,11 +445,18 @@ export const useProfileController = (opts: { setAuth: (v: boolean) => void; setP
       await downgradeTier(tierId);
       return;
     }
+    if (targetRank === currentRank) {
+      Alert.alert('Upgrade', 'You already have this tier; no change necessary.');
+      return;
+    }
 
     setSaving(true);
     const res = await postRequest(ROUTES.wallet.upgrade, {
       tier: tierId,
-      payment_method: priceCents > 0 ? 'flutterwave' : 'free',
+      payment_method:
+        priceCents > 0 && (profile?.account?.credits_value_cents ?? 0) >= priceCents
+          ? 'credits'
+          : 'card',
     });
     setSaving(false);
 

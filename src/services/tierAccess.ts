@@ -31,6 +31,9 @@ export const isBusinessTier = (tier?: AccountTierShape | string | null) =>
 export const isPartnerTier = (tier?: AccountTierShape | string | null) =>
   normalizeTierName(tier).includes('partner');
 
+export const isPartnerProTier = (tier?: AccountTierShape | string | null) =>
+  normalizeTierName(tier).includes('partner pro');
+
 export const getCachedProfile = async () =>
   getCache(CacheConfig.userProfile.type, CacheConfig.userProfile.key);
 

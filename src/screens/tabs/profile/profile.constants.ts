@@ -14,6 +14,13 @@ export const fieldLabels: Record<string, string> = {
   recommendations: 'Recommendations',
   articles: 'Articles',
   activity: 'Activity',
+  services: 'Services',
+  highlights: 'Highlights',
+  portfolio: 'Portfolio',
+  case_study: 'Case studies',
+  testimonial: 'Testimonials',
+  certification: 'Certifications',
+  intro_video: 'Intro video',
 };
 
 export const visibilityOptions = [

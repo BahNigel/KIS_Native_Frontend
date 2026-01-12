@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, DeviceEventEmitter, Modal, Share, Text, View } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useNavigation } from '@react-navigation/native';
@@ -13,11 +13,19 @@ import ShareRenderer, { type SharePayload } from '@/components/feeds/ShareRender
 import { uploadFileToBackend } from '@/Module/ChatRoom/uploadFileToBackend';
 import ChatRoomPage from '@/Module/ChatRoom/ChatRoomPage';
 
+type SourceFilter = 'all' | 'channel' | 'community' | 'partner';
+
 type Props = {
   onSubscribeChannel: (channelId: string) => Promise<void> | void;
+  searchTerm?: string;
+  filterSource?: SourceFilter;
 };
 
-export default function BroadcastFeedSection({ onSubscribeChannel }: Props) {
+export default function BroadcastFeedSection({
+  onSubscribeChannel,
+  searchTerm = '',
+  filterSource = 'all',
+}: Props) {
   const { palette } = useKISTheme();
   const navigation = useNavigation();
   const [broadcasts, setBroadcasts] = useState<BroadcastFeedItem[]>([]);
@@ -27,6 +35,25 @@ export default function BroadcastFeedSection({ onSubscribeChannel }: Props) {
   const [commentCounts, setCommentCounts] = useState<Record<string, number>>({});
   const [sharePayload, setSharePayload] = useState<SharePayload | null>(null);
   const shareShotRef = useRef<ViewShot>(null);
+
+  const normalizedSearch = (searchTerm || '').trim().toLowerCase();
+
+  const filteredBroadcasts = useMemo(() => {
+    return broadcasts.filter((item) => {
+      let passesSource = true;
+      const sourceType = item.source?.type?.toLowerCase();
+      if (filterSource && filterSource !== 'all') {
+        passesSource = sourceType === filterSource;
+      }
+
+      if (!passesSource) return false;
+
+      if (!normalizedSearch) return true;
+      const haystack = `${item.title || ''} ${item.text || ''} ${item.source?.name || ''}`
+        .toLowerCase();
+      return haystack.includes(normalizedSearch);
+    });
+  }, [broadcasts, filterSource, normalizedSearch]);
 
   const loadBroadcasts = useCallback(async () => {
     setLoadingBroadcasts(true);
@@ -232,8 +259,10 @@ export default function BroadcastFeedSection({ onSubscribeChannel }: Props) {
         </View>
       ) : broadcasts.length === 0 ? (
         <Text style={{ color: palette.subtext }}>No broadcasts yet.</Text>
+      ) : filteredBroadcasts.length === 0 ? (
+        <Text style={{ color: palette.subtext }}>No broadcasts match this filter.</Text>
       ) : (
-        broadcasts.map((item) => (
+        filteredBroadcasts.map((item) => (
           <BroadcastFeedCard
             key={item.id}
             item={{

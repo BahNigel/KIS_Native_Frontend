@@ -8,6 +8,13 @@ import { styles } from '../../profile.styles';
 import { formatMoney } from '../../profile.utils';
 import { tierMetaFor } from '../tierMeta';
 
+const PARTNER_PRO_HIGHLIGHTS = [
+  'Unlimited partner organizations, automation, and integrations',
+  'Advanced partner analytics + compliance dashboards, exports, and access reviews',
+  'Priority partner webhooks, automation rules, and fraud insights',
+  'Partner-grade studio routing for broadcasts, lessons, and market drops',
+];
+
 export default function UpgradeSheet(props: {
   tiers: any[];
   accountTier: any;
@@ -39,6 +46,10 @@ export default function UpgradeSheet(props: {
   const currentKey = String(accountTier?.id ?? accountTier?.name ?? '');
   const currentMeta = tierMetaFor(accountTier || {});
   const currentRank = currentMeta?.tierRank ?? 0;
+  const partnerProTier = tiers.find((tier) => {
+    const key = String(tier?.name ?? tier?.code ?? tier?.slug ?? '').toLowerCase();
+    return key.includes('partner pro');
+  });
   const transactions = billingHistory?.transactions ?? [];
   const tierLimits = accountTier?.features_json ?? {};
 
@@ -174,6 +185,37 @@ export default function UpgradeSheet(props: {
           />
         </View>
       </View>
+
+      {partnerProTier && (
+        <View
+          style={{
+            borderWidth: 1,
+            borderColor: palette.divider,
+            borderRadius: 16,
+            padding: 14,
+            backgroundColor: palette.surface,
+            gap: 8,
+          }}
+        >
+          <Text style={{ color: palette.text, fontWeight: '700' }}>Partner Pro exclusive</Text>
+          <Text style={{ color: palette.subtext, fontSize: 12 }}>
+            Partner Pro gives you unlimited partner orgs, automation, integrations, analytics, and compliance controls.
+          </Text>
+          <View style={{ gap: 4 }}>
+            {PARTNER_PRO_HIGHLIGHTS.map((item) => (
+              <Text key={item} style={{ color: palette.subtext, fontSize: 12 }}>
+                • {item}
+              </Text>
+            ))}
+          </View>
+          <KISButton
+            title="Upgrade to Partner Pro"
+            variant="outline"
+            onPress={() => partnerProTier?.id && onUpgrade(partnerProTier.id)}
+            disabled={!partnerProTier?.id || saving}
+          />
+        </View>
+      )}
 
       {hasUsage && (
         <View style={{ gap: 8 }}>

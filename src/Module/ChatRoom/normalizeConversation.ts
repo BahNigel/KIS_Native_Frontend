@@ -247,6 +247,7 @@ export async function searchConversationsFromServer(
       ? res.data.results
       : [];
 
+    console.log("reqest_conversations: ", rawList);
     const normalized = rawList.map((item: any) =>
       normalizeConversation(item, currentUserId),
     );

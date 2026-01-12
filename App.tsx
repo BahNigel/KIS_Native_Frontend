@@ -35,15 +35,7 @@ type AuthCtx = {
 const AuthContext = createContext<AuthCtx>({ isAuth: false, setAuth: () => {} });
 export const useAuth = () => useContext(AuthContext);
 
-type RootStackParamList = {
-  Welcome: undefined;
-  Login: undefined;
-  Register: undefined;
-  DeviceVerification: undefined;
-  MainTabs: undefined;
-};
-
-const RootStack = createNativeStackNavigator<RootStackParamList>();
+const RootStack = createNativeStackNavigator();
 
 export default function App() {
   const scheme = useColorScheme();

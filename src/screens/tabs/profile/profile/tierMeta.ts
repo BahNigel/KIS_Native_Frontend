@@ -1,11 +1,17 @@
 // src/screens/tabs/profile/profile/tierMeta.ts
 export const tierMetaFor = (tier: any) => {
-  const name = String(tier?.name ?? tier?.code ?? tier?.slug ?? '').toLowerCase();
-  const features = tier?.features_json ?? {};
+  const candidate =
+    typeof tier === 'string'
+      ? { name: tier }
+      : tier;
+  const name = String(candidate?.name ?? candidate?.code ?? candidate?.slug ?? '').toLowerCase();
+  const features = candidate?.features_json ?? {};
 
   const tierRank =
     typeof tier?.tier_rank === 'number'
       ? tier.tier_rank
+      : name.includes('partner pro')
+      ? 5
       : name.includes('partner')
       ? 4
       : name.includes('business pro')
@@ -17,20 +23,33 @@ export const tierMetaFor = (tier: any) => {
       : 0;
 
   const tierSegment =
-    tier?.tier_segment ||
+    candidate?.tier_segment ||
     (name.includes('partner') ? 'partner' : name.includes('business') ? 'business' : 'personal');
 
   const addFeature = (text: string, list: string[]) => {
     if (text && !list.includes(text)) list.push(text);
   };
 
-  let badge = tier?.feature_badge || '';
-  let tagline = tier?.feature_tagline || 'Built for everyday growth';
-  let list: string[] = Array.isArray(tier?.feature_list) ? [...tier.feature_list] : [];
-  let highlight = tier?.feature_highlight || '';
+  let badge = candidate?.feature_badge || '';
+  let tagline = candidate?.feature_tagline || 'Built for everyday growth';
+  let list: string[] = Array.isArray(candidate?.feature_list) ? [...candidate.feature_list] : [];
+  let highlight = candidate?.feature_highlight || '';
 
   // ✅ YOUR EXACT RULES (kept)
-  if (!list.length && name.includes('partner')) {
+  if (!list.length && name.includes('partner pro')) {
+    tagline = 'Global partner networks & enterprise ops';
+    badge = 'Partner Pro';
+    highlight = 'Unlimited partner orgs + automation ops';
+    list = [
+      'Unlimited partner organizations',
+      'Enterprise automation & API/webhooks',
+      'Dedicated revenue & giving ops hub',
+      'Advanced analytics & forecasting',
+      'Priority compliance & governance controls',
+      'Global roles & permission teams',
+      'Concierge onboarding & migration',
+    ];
+  } else if (!list.length && name.includes('partner')) {
     tagline = 'Organizations, ministries & enterprises';
     badge = 'Partner';
     highlight = 'Multi-account orgs + revenue tools';
@@ -40,7 +59,9 @@ export const tierMetaFor = (tier: any) => {
       'Live streaming + events',
       'Donations & revenue tools',
       'Advanced analytics dashboard',
+      'Community & group management at scale',
       'Priority support',
+      'Partner webhooks & automations',
     ];
   } else if (!list.length && name.includes('business pro')) {
     tagline = 'High-impact teams and creators';
@@ -96,6 +117,16 @@ export const tierMetaFor = (tier: any) => {
   addFeature(`Groups per community: ${features.groups_per_community ?? 'Included'}`, list);
   addFeature(`AI queries/day: ${features.ai_queries_per_day ?? 'Included'}`, list);
   addFeature(`Storage: ${features.storage_gb ?? 'Included'} GB`, list);
+  if (features.partner_accounts !== undefined && features.partner_accounts !== null) {
+    const raw = features.partner_accounts;
+    const label =
+      typeof raw === 'string'
+        ? raw
+        : Number.isNaN(Number(raw))
+        ? String(raw)
+        : String(raw);
+    addFeature(`Partner accounts: ${label}`, list);
+  }
 
   return {
     badge,

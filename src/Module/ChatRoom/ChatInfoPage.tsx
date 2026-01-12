@@ -88,6 +88,8 @@ export const ChatInfoPage: React.FC<ChatInfoPageProps> = ({
   const isGroup =
     chat.isGroupChat || chat.isGroup || chat.kind === 'group';
 
+  console.log('ChatInfoPage rendered for chat:', chat);
+
   const participants = useMemo(() => {
     if (!Array.isArray(chat.participants)) return [];
     return chat.participants as ParticipantWire[];
@@ -326,6 +328,165 @@ export const ChatInfoPage: React.FC<ChatInfoPageProps> = ({
     };
   }, [isGroup, contactUserId]);
 
+  const contactUser = publicProfile?.user ?? null;
+  const fallbackContactName =
+    directContact?.display_name ||
+    resolveUserName(directContact?.user) ||
+    chat.name;
+  const contactName = contactUser?.display_name || fallbackContactName;
+  const hasPublicContact = Boolean(publicProfile?.user);
+  const contactPhoneValue = hasPublicContact
+    ? contactUser?.phone ?? 'Hidden by privacy'
+    : resolveUserPhone(directContact?.user) || '—';
+  const contactEmailValue = hasPublicContact
+    ? contactUser?.email ?? 'Hidden by privacy'
+    : (directContact?.user as any)?.email || '—';
+
+
+  const profileSections = publicProfile?.sections ?? {};
+  const experienceItems = profileSections.experiences ?? [];
+  const educationItems = profileSections.educations ?? [];
+  const projectItems = profileSections.projects ?? [];
+  const skillItems = profileSections.skills ?? [];
+  const recommendationItems = profileSections.recommendations ?? [];
+  const articleItems = profileSections.articles ?? [];
+  const activityItems = profileSections.activity ?? [];
+  const serviceItems = publicProfile?.preferences?.services ?? [];
+  const highlightItems = publicProfile?.preferences?.highlights ?? [];
+  const showcaseSections = profileSections.showcases ?? {};
+  const portfolioItems = showcaseSections.portfolio ?? [];
+  const caseStudyItems = showcaseSections.case_study ?? [];
+  const testimonialItems = showcaseSections.testimonial ?? [];
+  const certificationItems = showcaseSections.certification ?? [];
+  const introVideoItems = showcaseSections.intro_video ?? [];
+
+  const getShowcaseLink = (item: any) => item?.payload?.url || item?.file_url;
+  const openShowcaseLink = (item: any) => {
+    const url = getShowcaseLink(item);
+    if (!url) return;
+    Linking.openURL(url).catch(() => {});
+  };
+
+  const renderSummaryList = (
+    title: string,
+    items: any[],
+    getPrimary: (item: any) => string,
+    getSecondary?: (item: any) => string | null,
+  ) => {
+    if (!items?.length) return null;
+    const limited = items.slice(0, 3);
+    return (
+      <View style={styles.section}>
+        <Text style={[styles.sectionTitle, { color: palette.text }]}>{title}</Text>
+        <View style={[styles.sectionCard, { borderColor: palette.divider, backgroundColor: palette.card }]}>
+          {limited.map((item, index) => (
+            <View
+              key={`${title}-${item.id ?? index}`}
+              style={[
+                styles.summaryRow,
+                index < limited.length - 1 && {
+                  borderBottomWidth: StyleSheet.hairlineWidth,
+                  borderBottomColor: palette.divider,
+                },
+              ]}
+            >
+              <Text style={[styles.summaryTitle, { color: palette.text }]} numberOfLines={1}>
+                {getPrimary(item) || '—'}
+              </Text>
+              {getSecondary ? (
+                <Text style={[styles.summaryDesc, { color: palette.subtext }]} numberOfLines={2}>
+                  {getSecondary(item)}
+                </Text>
+              ) : null}
+            </View>
+          ))}
+        </View>
+      </View>
+    );
+  };
+
+  const renderShowcaseList = (
+    title: string,
+    items: any[],
+    options?: { renderAction?: (item: any) => React.ReactNode },
+  ) => {
+    if (!items?.length) return null;
+    const limited = items.slice(0, 3);
+    return (
+      <View style={styles.section}>
+        <Text style={[styles.sectionTitle, { color: palette.text }]}>{title}</Text>
+        <View style={[styles.sectionCard, { borderColor: palette.divider, backgroundColor: palette.card }]}>
+          {limited.map((item, index) => {
+            const description = item.summary || item.payload?.summary || '';
+            return (
+              <View
+                key={`${title}-${item.id ?? index}`}
+                style={[
+                  styles.showcaseRow,
+                  index < limited.length - 1 && {
+                    borderBottomWidth: StyleSheet.hairlineWidth,
+                    borderBottomColor: palette.divider,
+                  },
+                ]}
+              >
+                {item.file_url ? (
+                  <Image source={{ uri: item.file_url }} style={styles.showcaseThumb} />
+                ) : (
+                  <View
+                    style={[
+                      styles.showcaseThumb,
+                      { backgroundColor: palette.surfaceSoft ?? palette.surface },
+                    ]}
+                  />
+                )}
+                <View style={styles.showcaseDetails}>
+                  <Text style={[styles.summaryTitle, { color: palette.text }]} numberOfLines={1}>
+                    {item.title || 'Untitled'}
+                  </Text>
+                  {description ? (
+                    <Text style={[styles.summaryDesc, { color: palette.subtext }]} numberOfLines={2}>
+                      {description}
+                    </Text>
+                  ) : null}
+                </View>
+            {options?.renderAction?.(item) ?? null}
+          </View>
+        );
+      })}
+    </View>
+  </View>
+);
+  };
+
+  const renderIntroVideoAction = (item: any) => {
+    const url = getShowcaseLink(item);
+    if (!url) return null;
+    return (
+      <Pressable
+        onPress={() => openShowcaseLink(item)}
+        style={[
+          styles.showcaseAction,
+          { borderColor: palette.divider, backgroundColor: palette.surface },
+        ]}
+      >
+        <KISIcon name="play" size={14} color={palette.primary} />
+        <Text style={[styles.showcaseActionText, { color: palette.primary }]}>Watch</Text>
+      </Pressable>
+    );
+  };
+
+  const formatActivitySecondary = (item: any) => {
+    if (item?.meta?.detail) return item.meta.detail;
+    if (item?.created_at) {
+      try {
+        return new Date(item.created_at).toLocaleDateString();
+      } catch {
+        return item.created_at;
+      }
+    }
+    return '';
+  };
+
   return (
     <View style={[styles.root, { backgroundColor: palette.bg, paddingTop: insets.top }]}>
       <View style={[styles.header, { borderBottomColor: palette.divider }]}>
@@ -416,33 +577,31 @@ export const ChatInfoPage: React.FC<ChatInfoPageProps> = ({
             <Text style={[styles.sectionTitle, { color: palette.text }]}>
               Contact
             </Text>
-            {directContact ? (
-              <View
-                style={[
-                  styles.card,
-                  { borderColor: palette.divider, backgroundColor: palette.card },
-                ]}
-              >
-                <Text style={[styles.detailLabel, { color: palette.subtext }]}>
-                  Name
-                </Text>
-                <Text style={[styles.detailValue, { color: palette.text }]}>
-                  {directContact.display_name ||
-                    resolveUserName(directContact.user) ||
-                    chat.name}
-                </Text>
-                <Text style={[styles.detailLabel, { color: palette.subtext, marginTop: 10 }]}>
-                  Phone
-                </Text>
-                <Text style={[styles.detailValue, { color: palette.text }]}>
-                  {directContact.user ? resolveUserPhone(directContact.user) || '—' : '—'}
+            <View
+              style={[
+                styles.sectionCard,
+                { borderColor: palette.divider, backgroundColor: palette.card },
+              ]}
+            >
+              <View style={styles.infoRow}>
+                <Text style={[styles.infoLabel, { color: palette.subtext }]}>Name</Text>
+                <Text style={[styles.infoValue, { color: palette.text }]} numberOfLines={1}>
+                  {contactName}
                 </Text>
               </View>
-            ) : (
-              <Text style={[styles.emptyText, { color: palette.subtext }]}>
-                Contact details not available.
-              </Text>
-            )}
+              <View style={styles.infoRow}>
+                <Text style={[styles.infoLabel, { color: palette.subtext }]}>Phone</Text>
+                <Text style={[styles.infoValue, { color: palette.text }]} numberOfLines={1}>
+                  {contactPhoneValue}
+                </Text>
+              </View>
+              <View style={styles.infoRow}>
+                <Text style={[styles.infoLabel, { color: palette.subtext }]}>Email</Text>
+                <Text style={[styles.infoValue, { color: palette.text }]} numberOfLines={1}>
+                  {contactEmailValue}
+                </Text>
+              </View>
+            </View>
           </View>
         )}
 
@@ -459,6 +618,9 @@ export const ChatInfoPage: React.FC<ChatInfoPageProps> = ({
               </View>
             ) : publicProfile ? (
               <View style={[styles.profileCard, { borderColor: palette.divider, backgroundColor: palette.card }]}>
+                {publicProfile?.profile?.cover_url ? (
+                  <Image source={{ uri: publicProfile.profile.cover_url }} style={styles.profileCover} />
+                ) : null}
                 <View style={styles.profileHeader}>
                   {publicProfile?.profile?.avatar_url ? (
                     <Image source={{ uri: publicProfile.profile.avatar_url }} style={styles.profileAvatar} />
@@ -469,9 +631,11 @@ export const ChatInfoPage: React.FC<ChatInfoPageProps> = ({
                     <Text style={[styles.profileName, { color: palette.text }]} numberOfLines={1}>
                       {publicProfile?.user?.display_name || 'Profile'}
                     </Text>
-                    <Text style={[styles.profileHeadline, { color: palette.subtext }]} numberOfLines={2}>
-                      {publicProfile?.profile?.headline || '—'}
-                    </Text>
+                    {publicProfile?.profile?.headline ? (
+                      <Text style={[styles.profileHeadline, { color: palette.subtext }]} numberOfLines={2}>
+                        {publicProfile.profile.headline}
+                      </Text>
+                    ) : null}
                     {publicProfile?.profile?.industry ? (
                       <Text style={[styles.profileMeta, { color: palette.subtext }]} numberOfLines={1}>
                         {publicProfile.profile.industry}
@@ -486,11 +650,27 @@ export const ChatInfoPage: React.FC<ChatInfoPageProps> = ({
                   </Text>
                 ) : null}
 
-                {(publicProfile?.preferences?.highlights || []).length > 0 && (
+                {serviceItems.length > 0 && (
+                  <>
+                    <Text style={[styles.profileSubTitle, { color: palette.text }]}>Services</Text>
+                    {serviceItems.slice(0, 3).map((svc: any, idx: number) => (
+                      <View key={`${svc?.title ?? 'service'}-${idx}`} style={styles.profileLine}>
+                        <Text style={[styles.profileLineTitle, { color: palette.text }]} numberOfLines={1}>
+                          {svc.title || 'Service'}
+                        </Text>
+                        <Text style={[styles.profileLineMeta, { color: palette.subtext }]}>
+                          {svc.price || 'Request quote'}
+                        </Text>
+                      </View>
+                    ))}
+                  </>
+                )}
+
+                {highlightItems.length > 0 && (
                   <>
                     <Text style={[styles.profileSubTitle, { color: palette.text }]}>Highlights</Text>
                     <View style={styles.chipRow}>
-                      {publicProfile.preferences.highlights.map((item: string, idx: number) => (
+                      {highlightItems.map((item: string, idx: number) => (
                         <View
                           key={`${item}_${idx}`}
                           style={[styles.chip, { backgroundColor: palette.primarySoft }]}
@@ -502,28 +682,15 @@ export const ChatInfoPage: React.FC<ChatInfoPageProps> = ({
                   </>
                 )}
 
-                {(publicProfile?.preferences?.services || []).length > 0 && (
+                {portfolioItems.length > 0 && (
                   <>
-                    <Text style={[styles.profileSubTitle, { color: palette.text }]}>Services</Text>
-                    {publicProfile.preferences.services.slice(0, 3).map((svc: any, idx: number) => (
-                      <View key={`${svc.title}_${idx}`} style={styles.profileLine}>
-                        <Text style={[styles.profileLineTitle, { color: palette.text }]} numberOfLines={1}>
-                          {svc.title}
-                        </Text>
-                        <Text style={[styles.profileLineMeta, { color: palette.subtext }]}>
-                          {svc.price || 'Request quote'}
-                        </Text>
-                      </View>
-                    ))}
-                  </>
-                )}
-
-                {(publicProfile?.sections?.showcases?.portfolio || []).length > 0 && (
-                  <>
-                    <Text style={[styles.profileSubTitle, { color: palette.text }]}>Portfolio</Text>
+                    <Text style={[styles.profileSubTitle, { color: palette.text }]}>Portfolio gallery</Text>
                     <View style={styles.portfolioRow}>
-                      {publicProfile.sections.showcases.portfolio.slice(0, 4).map((item: any) => (
-                        <View key={item.id} style={[styles.portfolioThumb, { backgroundColor: palette.surface }]}>
+                      {portfolioItems.slice(0, 4).map((item: any, idx: number) => (
+                        <View
+                          key={`${item.id ?? idx}`}
+                          style={[styles.portfolioThumb, { backgroundColor: palette.surface }]}
+                        >
                           {item.file_url ? (
                             <Image source={{ uri: item.file_url }} style={styles.portfolioThumbImg} />
                           ) : (
@@ -541,6 +708,74 @@ export const ChatInfoPage: React.FC<ChatInfoPageProps> = ({
               </Text>
             )}
           </View>
+        )}
+
+        {!isGroup && (
+          <>
+            {renderSummaryList(
+              'Experience',
+              experienceItems,
+              (item) => item.title || 'Experience',
+              (item) => item.description || item.company || '',
+            )}
+            {renderSummaryList(
+              'Education',
+              educationItems,
+              (item) => item.school || 'Education',
+              (item) => item.description || '',
+            )}
+            {renderSummaryList(
+              'Projects',
+              projectItems,
+              (item) => item.name || 'Project',
+              (item) => item.description || item.project_url || '',
+            )}
+            {skillItems.length > 0 && (
+              <View style={styles.section}>
+                <Text style={[styles.sectionTitle, { color: palette.text }]}>Skills</Text>
+                <View style={[styles.sectionCard, { borderColor: palette.divider, backgroundColor: palette.card }]}>
+                  <View style={styles.chipRow}>
+                    {skillItems.slice(0, 8).map((skill: any, idx: number) => (
+                      <View
+                        key={`${skill.id ?? skill.skill_id ?? idx}`}
+                        style={[styles.chip, { backgroundColor: palette.primarySoft }]}
+                      >
+                        <Text style={{ color: palette.primaryStrong, fontSize: 12 }}>
+                          {skill.description || skill.skill_id || 'Skill'}
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
+                </View>
+              </View>
+            )}
+            {renderSummaryList(
+              'Recommendations',
+              recommendationItems,
+              (item) => item.content || 'Recommendation',
+              (item) => item.recommender_user?.display_name || '',
+            )}
+            {renderSummaryList(
+              'Articles',
+              articleItems,
+              (item) => item.title || 'Article',
+              (item) => item.summary || '',
+            )}
+            {renderSummaryList(
+              'Recent activity',
+              activityItems,
+              (item) => item.action || 'Activity',
+              (item) => formatActivitySecondary(item),
+            )}
+            {renderShowcaseList('Case studies', caseStudyItems)}
+            {renderShowcaseList('Testimonials', testimonialItems)}
+            {renderShowcaseList('Certifications', certificationItems)}
+            {renderShowcaseList(
+              'Intro videos',
+              introVideoItems,
+              { renderAction: renderIntroVideoAction },
+            )}
+          </>
         )}
 
         {isGroup && (
@@ -706,11 +941,16 @@ const styles = StyleSheet.create({
   editButtonText: { fontSize: 12, fontWeight: '600' },
   section: { paddingHorizontal: 16, paddingTop: 16 },
   sectionTitle: { fontSize: 15, fontWeight: '600', marginBottom: 8 },
+  sectionCard: { borderWidth: 1, borderRadius: 12, padding: 12, gap: 10 },
   card: { borderWidth: 1, borderRadius: 12, padding: 12 },
+  infoRow: { paddingVertical: 6 },
+  infoLabel: { fontSize: 12 },
+  infoValue: { fontSize: 14, fontWeight: '600' },
   detailLabel: { fontSize: 12, marginBottom: 4 },
   detailValue: { fontSize: 14, fontWeight: '600' },
   emptyText: { fontSize: 13 },
   profileCard: { borderWidth: 1, borderRadius: 12, padding: 12, gap: 12 },
+  profileCover: { width: '100%', height: 110, borderRadius: 12, marginBottom: 8 },
   profileHeader: { flexDirection: 'row', gap: 12, alignItems: 'center' },
   profileAvatar: { width: 56, height: 56, borderRadius: 18 },
   profileName: { fontSize: 16, fontWeight: '700' },
@@ -726,6 +966,22 @@ const styles = StyleSheet.create({
   portfolioRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   portfolioThumb: { width: 52, height: 52, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   portfolioThumbImg: { width: 52, height: 52, borderRadius: 12 },
+  summaryRow: { paddingVertical: 10 },
+  summaryTitle: { fontSize: 14, fontWeight: '600' },
+  summaryDesc: { fontSize: 12, marginTop: 4 },
+  showcaseRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10 },
+  showcaseThumb: { width: 56, height: 56, borderRadius: 12 },
+  showcaseDetails: { flex: 1 },
+  showcaseAction: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+  showcaseActionText: { fontSize: 11, fontWeight: '700' },
   memberRow: {
     flexDirection: 'row',
     alignItems: 'center',

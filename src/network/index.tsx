@@ -331,11 +331,22 @@ const ROUTES = {
     react: (id: string) => `${API_BASE_URL}/api/v1/broadcasts/${id}/react/`,
     commentRoom: (id: string) => `${API_BASE_URL}/api/v1/broadcasts/${id}/comment-room/`,
     channelMessages: `${API_BASE_URL}/api/v1/broadcasts/channel-messages/`,
+    features: `${API_BASE_URL}/api/v1/broadcasts/features/`,
+    channelFeatures: (channelId: string) =>
+      `${API_BASE_URL}/api/v1/broadcasts/channels/${channelId}/features/`,
+    videos: (type?: string) =>
+      `${API_BASE_URL}/api/v1/broadcasts/videos/${type ? `?type=${encodeURIComponent(type)}` : ''}`,
+    lessons: `${API_BASE_URL}/api/v1/broadcasts/lessons/`,
+    lessonEnrollments: `${API_BASE_URL}/api/v1/broadcasts/lessons/enrollments/`,
+    lessonEnroll: (lessonId: string) =>
+      `${API_BASE_URL}/api/v1/broadcasts/lessons/${lessonId}/enroll/`,
   },
   commerce: {
     shops: `${API_BASE_URL}/api/v1/commerce/shops/`,
     products: `${API_BASE_URL}/api/v1/commerce/products/`,
     productBroadcast: (id: string) => `${API_BASE_URL}/api/v1/commerce/products/${id}/broadcast/`,
+    productSubscribe: (id: string) => `${API_BASE_URL}/api/v1/commerce/products/${id}/subscribe/`,
+    shopJoin: (id: string) => `${API_BASE_URL}/api/v1/commerce/shops/${id}/join/`,
   },
   statuses: {
     list: `${API_BASE_URL}/api/v1/statuses/`,

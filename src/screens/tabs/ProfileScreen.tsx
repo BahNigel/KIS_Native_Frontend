@@ -22,53 +22,15 @@ import { styles } from './profile/profile.styles';
 import { useProfileController } from './profile/useProfileController';
 import { formatMoney } from './profile/profile.utils';
 import UpgradeSheet from './profile/profile/sheets/UpgradeSheet';
+import { fieldLabels, visibilityOptions, walletModes, paymentProviders } from './profile/profile.constants';
 
 import HeroHeader from './profile/components/HeroHeader';
 import AccountCreditsCard from './profile/components/AccountCreditsCard';
 import SectionCard from './profile/components/SectionCard';
+import { isPartnerTier } from '@/services/tierAccess';
 
 import BottomSheet from './profile/sheets/BottomSheet';
 import SheetHeader from './profile/sheets/SheetHeader';
-
-
-const fieldLabels: Record<string, string> = {
-  avatar: 'Profile photo',
-  cover: 'Cover photo',
-  headline: 'Headline',
-  bio: 'Bio',
-  industry: 'Industry',
-  contact_phone: 'Phone',
-  contact_email: 'Email',
-  experience: 'Experience',
-  education: 'Education',
-  projects: 'Projects',
-  skills: 'Skills',
-  recommendations: 'Recommendations',
-  articles: 'Articles',
-  activity: 'Activity',
-};
-
-const visibilityOptions = [
-  { value: 'public', label: 'Public' },
-  { value: 'contacts', label: 'Contacts (allowlist)' },
-  { value: 'custom', label: 'Custom list' },
-  { value: 'private', label: 'Only me' },
-];
-
-const walletModes = [
-  { value: 'deposit', label: 'Add Money' },
-  { value: 'cash_to_credits', label: 'Convert to Credits' },
-  { value: 'credits_to_cash', label: 'Convert to Money' },
-  { value: 'points_to_credits', label: 'Points to Credits' },
-  { value: 'transfer', label: 'Send Gift' },
-  { value: 'promo', label: 'Redeem Promo' },
-];
-
-const paymentProviders = [
-  { value: 'flutterwave', label: 'Flutterwave' },
-  { value: 'mobilemoney_mtn', label: 'MTN MoMo' },
-  { value: 'mobilemoney_orange', label: 'Orange Money' },
-];
 
 export default function ProfileScreen() {
   const { palette } = useKISTheme();
@@ -81,6 +43,8 @@ export default function ProfileScreen() {
   const credits = c.profile?.account?.credits ?? 0;
   const creditsValue = c.profile?.account?.credits_value_cents ?? 0;
   const points = c.profile?.account?.points ?? 0;
+  const currentTier = accountTier || c.profile?.tier || c.profile?.subscription?.tier;
+  const showCreatePartnerButton = isPartnerTier(currentTier);
 
   const sheetTitle = useMemo(() => {
     if (c.activeSheet === 'editProfile') return 'Edit Profile';
@@ -188,6 +152,8 @@ export default function ProfileScreen() {
               points={points}
               onWallet={() => c.openSheet('wallet')}
               onUpgrade={() => c.openSheet('upgrade')}
+              showCreatePartnerButton={showCreatePartnerButton}
+              onCreatePartner={c.openCreatePartner}
               walletLedger={c.walletLedger}
             />
 
@@ -562,7 +528,7 @@ export default function ProfileScreen() {
                 {c.walletForm.mode === 'transfer' && (
                   <>
                     <KISTextInput
-                      label="Recipient user ID"
+                      label="Recipient phone number with country code"
                       value={c.walletForm.recipient}
                       onChangeText={(t) => c.setWalletForm((s: any) => ({ ...s, recipient: t }))}
                     />
