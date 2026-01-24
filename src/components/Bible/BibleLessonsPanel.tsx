@@ -233,7 +233,7 @@ const styles = StyleSheet.create({
   title: { fontSize: 18, fontWeight: '800' },
   sectionTitle: { fontSize: 16, fontWeight: '700', marginTop: 12 },
   sectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  courseCard: { borderWidth: 1, borderRadius: 16, padding: 14, gap: 2 },
+  courseCard: { borderWidth: 2, borderRadius: 16, padding: 14, gap: 2 },
   cardHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
   badgeRow: { flexDirection: 'row', gap: 6, flexWrap: 'wrap', marginTop: 10 },
   badge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999, fontSize: 11 },

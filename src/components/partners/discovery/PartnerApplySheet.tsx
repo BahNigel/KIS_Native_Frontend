@@ -52,7 +52,7 @@ export default function PartnerApplySheet({
         placeholderTextColor={palette.subtext}
         style={{
           marginTop: 8,
-          borderWidth: 1,
+          borderWidth: 2,
           borderColor: palette.borderMuted,
           borderRadius: 10,
           paddingHorizontal: 10,
@@ -76,7 +76,7 @@ export default function PartnerApplySheet({
                     paddingHorizontal: 10,
                     paddingVertical: 6,
                     borderRadius: 999,
-                    borderWidth: 1,
+                    borderWidth: 2,
                     borderColor: palette.borderMuted,
                     backgroundColor: isSelected ? palette.primarySoft : 'transparent',
                     marginRight: 8,
@@ -96,7 +96,7 @@ export default function PartnerApplySheet({
                 paddingHorizontal: 10,
                 paddingVertical: 6,
                 borderRadius: 999,
-                borderWidth: 1,
+                borderWidth: 2,
                 borderColor: palette.borderMuted,
                 backgroundColor: selectedJobId ? 'transparent' : palette.primarySoft,
                 marginRight: 8,
@@ -144,7 +144,7 @@ export default function PartnerApplySheet({
         multiline
         style={{
           marginTop: 8,
-          borderWidth: 1,
+          borderWidth: 2,
           borderColor: palette.borderMuted,
           borderRadius: 10,
           paddingHorizontal: 10,
@@ -161,7 +161,7 @@ export default function PartnerApplySheet({
             paddingHorizontal: 12,
             paddingVertical: 8,
             borderRadius: 10,
-            borderWidth: 1,
+            borderWidth: 2,
             borderColor: palette.borderMuted,
           }}
         >

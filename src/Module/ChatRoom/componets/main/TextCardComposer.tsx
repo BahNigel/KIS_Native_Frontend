@@ -191,7 +191,7 @@ export const TextCardComposer: React.FC<TextCardComposerProps> = ({
                       paddingHorizontal: 10,
                       paddingVertical: 6,
                       borderRadius: 16,
-                      borderWidth: 1,
+                      borderWidth: 2,
                       borderColor: selected
                         ? fontColor
                         : 'rgba(255,255,255,0.7)',
@@ -277,7 +277,7 @@ export const TextCardComposer: React.FC<TextCardComposerProps> = ({
                       paddingHorizontal: 10,
                       paddingVertical: 6,
                       borderRadius: 16,
-                      borderWidth: 1,
+                      borderWidth: 2,
                       borderColor: selected
                         ? fontColor
                         : 'rgba(255,255,255,0.7)',

@@ -89,5 +89,5 @@ export default function BibleFeatureVaultPanel() {
 const styles = StyleSheet.create({
   title: { fontSize: 18, fontWeight: '800' },
   grid: { gap: 10, marginTop: 12 },
-  item: { borderWidth: 1, borderRadius: 10, padding: 10 },
+  item: { borderWidth: 2, borderRadius: 10, padding: 10 },
 });

@@ -238,14 +238,14 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   input: {
-    borderWidth: 1,
+    borderWidth: 2,
     borderRadius: 10,
     paddingHorizontal: 12,
     paddingVertical: 10,
     fontSize: 16,
   },
   avatarPicker: {
-    borderWidth: 1,
+    borderWidth: 2,
     borderRadius: 12,
     minHeight: 120,
     alignItems: 'center',

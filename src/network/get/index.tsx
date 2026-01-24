@@ -30,7 +30,16 @@ export const getRequest = async (
 
     const headers = { ...baseHeaders, ...(options.headers ?? {}) };
 
-    const response = await apiService.get(url, headers);
+    const queryParams = new URLSearchParams();
+    if (options.params) {
+      Object.entries(options.params).forEach(([key, value]) => {
+        if (value === undefined || value === null) return;
+        queryParams.set(key, String(value));
+      });
+    }
+    const queryString = queryParams.toString();
+    const finalUrl = queryString ? `${url}?${queryString}` : url;
+    const response = await apiService.get(finalUrl, headers);
     const responseData = await response.json().catch(() => ({}));
 
     if (response.ok) {

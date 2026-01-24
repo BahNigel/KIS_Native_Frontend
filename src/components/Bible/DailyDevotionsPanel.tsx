@@ -55,10 +55,10 @@ const styles = StyleSheet.create({
   highlight: {
     padding: 14,
     borderRadius: 12,
-    borderWidth: 1,
+    borderWidth: 2,
   },
   item: {
-    borderWidth: 1,
+    borderWidth: 2,
     borderRadius: 12,
     padding: 10,
   },

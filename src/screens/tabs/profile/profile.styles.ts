@@ -1,5 +1,7 @@
 // src/screens/tabs/profile/ProfileStyles.ts
 import { StyleSheet, Dimensions, Platform } from 'react-native';
+import { FONT_WEIGHTS } from '@/theme/foundations/fonts';
+import { TYPOGRAPHY_PRESETS } from '@/theme/foundations/typography';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -26,14 +28,52 @@ export const styles = StyleSheet.create({
     gap: 12,
     borderWidth: 3,
   },
+  broadcastProfileCard: {
+    borderRadius: 16,
+    padding: 14,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  broadcastProfileRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  broadcastProfileIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  broadcastProfileInfo: {
+    flex: 1,
+    gap: 4,
+  },
+  broadcastProfileTitle: {
+    ...TYPOGRAPHY_PRESETS.title,
+    fontWeight: FONT_WEIGHTS.bold,
+  },
+  broadcastProfileSubtitle: {
+    ...TYPOGRAPHY_PRESETS.helper,
+    fontWeight: FONT_WEIGHTS.regular,
+  },
+  broadcastProfileMeta: {
+    ...TYPOGRAPHY_PRESETS.helper,
+    fontWeight: FONT_WEIGHTS.semibold,
+  },
+  partnerRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
 
   /** ─────────────────────────
    *  Hero
    *  ───────────────────────── */
-  heroCard: { borderRadius: 26, overflow: 'hidden' },
+  heroCard: { height: 320, borderRadius: 26, overflow: 'hidden' },
 
   // gradient/top bar area (HeroHeader uses these)
-  heroTop: { height: 132, position: 'relative' },
+  heroTop: { height: 320, position: 'relative' },
 
   // subtle glows like the mock (orange/purple)
   heroCoverImg: {
@@ -43,7 +83,7 @@ export const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     width: '100%',
-    height: '300%',
+    height: '100%',
     resizeMode: 'cover',
     },
 
@@ -80,6 +120,8 @@ export const styles = StyleSheet.create({
     gap: 14,
     padding: 16,
     alignItems: 'center',
+    position: 'relative',
+    marginTop: -180,
   },
 
   avatarWrap: {
@@ -92,9 +134,20 @@ export const styles = StyleSheet.create({
   },
   avatarImg: { width: 94, height: 94, borderRadius: 30 },
 
-  heroName: { fontSize: 22, fontWeight: '800' },
-  heroHandle: { fontSize: 12, marginTop: 2 },
-  heroHeadline: { fontSize: 13, marginTop: 6, lineHeight: 18 },
+  heroName: {
+    ...TYPOGRAPHY_PRESETS.h1,
+    fontWeight: FONT_WEIGHTS.extrabold,
+  },
+  heroHandle: {
+    ...TYPOGRAPHY_PRESETS.helper,
+    marginTop: 2,
+    letterSpacing: 0.3,
+  },
+  heroHeadline: {
+    ...TYPOGRAPHY_PRESETS.body,
+    marginTop: 6,
+    lineHeight: 20,
+  },
 
   badgeRow: {
     flexDirection: 'row',
@@ -104,7 +157,10 @@ export const styles = StyleSheet.create({
   },
 
   pill: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999 },
-  pillText: { fontSize: 12, fontWeight: '800' },
+  pillText: {
+    ...TYPOGRAPHY_PRESETS.helper,
+    fontWeight: FONT_WEIGHTS.semibold,
+  },
 
   /** ─────────────────────────
    *  Stats chips (mock-like)
@@ -134,9 +190,159 @@ export const styles = StyleSheet.create({
     }),
   },
 
-  statLabel: { fontSize: 12, fontWeight: '700' },
-  statValue: { fontSize: 20, fontWeight: '900' },
-  statMeta: { fontSize: 12 },
+  statLabel: {
+    ...TYPOGRAPHY_PRESETS.helper,
+    fontWeight: FONT_WEIGHTS.semibold,
+  },
+  statValue: {
+    ...TYPOGRAPHY_PRESETS.h2,
+    fontWeight: FONT_WEIGHTS.extrabold,
+  },
+  statMeta: {
+    ...TYPOGRAPHY_PRESETS.helper,
+    fontWeight: FONT_WEIGHTS.regular,
+  },
+
+  managementPanel: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    right: 0,
+    width: profileLayout.SCREEN_WIDTH,
+    elevation: 20,
+  },
+  managementPanelHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 16,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  managementClose: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    padding: 6,
+  },
+  managementCloseText: {
+    fontSize: 12,
+    fontWeight: FONT_WEIGHTS.semibold,
+  },
+  managementPanelTitle: {
+    ...TYPOGRAPHY_PRESETS.title,
+    fontWeight: FONT_WEIGHTS.extrabold,
+  },
+  managementPanelSubtitle: {
+    ...TYPOGRAPHY_PRESETS.helper,
+    fontSize: 12,
+    marginTop: 4,
+  },
+  managementPanelBody: {
+    padding: 16,
+    gap: 12,
+  },
+  managementStatsRow: {
+    flexDirection: 'row',
+    gap: 10,
+    justifyContent: 'space-between',
+  },
+  managementStat: {
+    flex: 1,
+    borderWidth: 2,
+    borderRadius: 14,
+    padding: 10,
+  },
+  managementStatValue: {
+    ...TYPOGRAPHY_PRESETS.title,
+    fontWeight: FONT_WEIGHTS.extrabold,
+  },
+  managementStatLabel: {
+    ...TYPOGRAPHY_PRESETS.helper,
+    fontSize: 12,
+    marginTop: 4,
+  },
+  managementItemCard: {
+    borderWidth: 2,
+    borderRadius: 16,
+    padding: 12,
+    gap: 6,
+  },
+  managementItemTitle: {
+    fontWeight: FONT_WEIGHTS.bold,
+  },
+  managementItemMeta: {
+    ...TYPOGRAPHY_PRESETS.helper,
+    fontSize: 12,
+  },
+  managementForm: {
+    gap: 10,
+  },
+  managementAssetRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  managementAssetInfo: {
+    flex: 1,
+    marginLeft: 12,
+    borderWidth: 2,
+    borderRadius: 12,
+    padding: 8,
+    gap: 4,
+  },
+  managementFormLabel: {
+    fontWeight: FONT_WEIGHTS.bold,
+  },
+  managementFormHint: {
+    fontSize: 12,
+    fontWeight: FONT_WEIGHTS.regular,
+  },
+  managementTypePill: {
+    borderWidth: 2,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  managementFeatureList: {
+    borderWidth: 2,
+    borderRadius: 14,
+    padding: 12,
+    gap: 6,
+  },
+  managementFeatureItem: {
+    fontSize: 12,
+  },
+  managementAttachments: {
+    borderWidth: 2,
+    borderRadius: 14,
+    padding: 12,
+    gap: 8,
+  },
+  managementAssetItem: {
+    borderWidth: 2,
+    borderRadius: 12,
+    padding: 10,
+    gap: 4,
+  },
+  managementAssetImage: {
+    width: '100%',
+    height: 140,
+    borderRadius: 12,
+    resizeMode: 'cover',
+  },
+  managementAssetPlaceholder: {
+    width: '100%',
+    height: 140,
+    borderWidth: 2,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  managementActionRow: {
+    flexDirection: 'row',
+    gap: 10,
+    flexWrap: 'wrap',
+  },
 
   /** ─────────────────────────
    *  Section headers
@@ -148,8 +354,14 @@ export const styles = StyleSheet.create({
     gap: 10,
   },
 
-  title: { fontSize: 18, fontWeight: '900' },
-  link: { fontWeight: '900' },
+  title: {
+    ...TYPOGRAPHY_PRESETS.title,
+    fontWeight: FONT_WEIGHTS.extrabold,
+  },
+  link: {
+    ...TYPOGRAPHY_PRESETS.title,
+    fontWeight: FONT_WEIGHTS.extrabold,
+  },
 
   /** ─────────────────────────
    *  Rows / Items
@@ -164,9 +376,15 @@ export const styles = StyleSheet.create({
 
   itemInfo: { flex: 1, gap: 4 },
 
-  itemTitle: { fontSize: 14, fontWeight: '800' },
+  itemTitle: {
+    ...TYPOGRAPHY_PRESETS.body,
+    fontWeight: FONT_WEIGHTS.semibold,
+  },
 
-  subtext: { fontSize: 12 },
+  subtext: {
+    ...TYPOGRAPHY_PRESETS.helper,
+    fontWeight: FONT_WEIGHTS.regular,
+  },
 
   thumb: { width: 48, height: 48, borderRadius: 14 },
 
@@ -227,7 +445,7 @@ export const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 7,
     borderRadius: 999,
-    borderWidth: 1,
+    borderWidth: 2,
   },
 
   /** ─────────────────────────
@@ -239,7 +457,7 @@ export const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 7,
     borderRadius: 999,
-    borderWidth: 1,
+    borderWidth: 2,
   },
 
   /** ─────────────────────────
@@ -248,7 +466,7 @@ export const styles = StyleSheet.create({
   tierCard: {
     padding: 14,
     borderRadius: 18,
-    borderWidth: 1,
+    borderWidth: 2,
     gap: 10,
   },
 

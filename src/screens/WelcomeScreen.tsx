@@ -2,7 +2,6 @@
 import React, { useEffect, useRef, useCallback } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   Pressable,
   Animated,
@@ -19,6 +18,7 @@ import { useKISTheme } from '../theme/useTheme';
 import KISButton from '../constants/KISButton';
 import LinearGradient from 'react-native-linear-gradient';
 import Ionicons from 'react-native-vector-icons/Ionicons';
+import KISText from '@/components/common/KISText';
 
 // theme-aware hero illustrations (light/dark)
 import avatarsLight from '../assets/welcom_light.png';
@@ -208,18 +208,24 @@ export default function WelcomeScreen() {
                 />
               </View>
 
-            <Text style={[styles.title, { color: palette.text }]}>Welcome to KIS</Text>
+            <KISText preset="h1" color={palette.text} style={styles.title}>
+              Welcome to KIS
+            </KISText>
 
-            <Text style={[styles.subtitle, { color: palette.subtext }]}>
+            <KISText preset="body" color={palette.subtext} style={styles.subtitle}>
               A space for believers to connect, grow, learn, and support one another.
               Built for today’s world — rooted in faith, guided by purpose, and strengthened in community.
-            </Text>
+            </KISText>
 
             <View style={styles.statsRow}>
               {statsData.map((item) => (
                 <View key={item.label} style={styles.statCard}>
-                  <Text style={[styles.statLabel, { color: palette.subtext }]}>{item.label}</Text>
-                  <Text style={[styles.statValue, { color: palette.text }]}>{item.value}</Text>
+                  <KISText preset="helper" color={palette.subtext} style={styles.statLabel}>
+                    {item.label}
+                  </KISText>
+                  <KISText preset="h3" color={palette.text} style={styles.statValue}>
+                    {item.value}
+                  </KISText>
                 </View>
               ))}
             </View>
@@ -227,7 +233,9 @@ export default function WelcomeScreen() {
             <View style={styles.tagRow}>
               {quickTags.map((tag) => (
                 <View key={tag} style={[styles.tag, { borderColor: palette.border }]}>
-                  <Text style={[styles.tagText, { color: palette.text }]}>{tag}</Text>
+                  <KISText preset="helper" color={palette.text} style={styles.tagText}>
+                    {tag}
+                  </KISText>
                 </View>
               ))}
             </View>
@@ -248,8 +256,12 @@ export default function WelcomeScreen() {
                     size={28}
                     color={tone === 'dark' ? '#FFCC57' : '#F97316'}
                   />
-                  <Text style={[styles.featureTitle, { color: palette.text }]}>{item.title}</Text>
-                  <Text style={[styles.featureSubtitle, { color: palette.subtext }]}>{item.subtitle}</Text>
+                  <KISText preset="title" color={palette.text} style={styles.featureTitle}>
+                    {item.title}
+                  </KISText>
+                  <KISText preset="label" color={palette.subtext} style={styles.featureSubtitle}>
+                    {item.subtitle}
+                  </KISText>
                 </LinearGradient>
               ))}
             </View>
@@ -268,9 +280,12 @@ export default function WelcomeScreen() {
               />
             </View>
 
-            <Text style={[styles.legal, { color: palette.subtext }]}>
-              KIS | 2026 · <Text style={[styles.link, { color: '#FF8A33' }]} onPress={openExternal}>Privacy</Text>
-            </Text>
+            <KISText preset="helper" color={palette.subtext} style={styles.legal}>
+              KIS | 2026 ·{' '}
+              <KISText preset="helper" color="#FF8A33" style={styles.link} onPress={openExternal}>
+                Privacy
+              </KISText>
+            </KISText>
           </View>
         </View>
         </ScrollView>
@@ -339,7 +354,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     paddingVertical: 10,
     marginHorizontal: 4,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: 'rgba(255,255,255,0.15)',
     alignItems: 'center',
     backgroundColor: 'rgba(255,255,255,0.08)',
@@ -356,7 +371,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 999,
-    borderWidth: 1,
+    borderWidth: 2,
     marginHorizontal: 4,
     marginVertical: 4,
   },
@@ -369,7 +384,7 @@ const styles = StyleSheet.create({
     padding: 16,
     borderRadius: 18,
     marginBottom: 12,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: 'rgba(255,255,255,0.2)',
   },
   featureTitle: { fontSize: 16, fontWeight: '700' },

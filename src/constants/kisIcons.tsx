@@ -1,6 +1,8 @@
 import React from 'react';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
+import { useKISTheme } from '@/theme/useTheme';
+import { ICON_SIZES, getIconColor, IconTone } from '@/theme/foundations/icons';
 
 export type KISIconName =
   | 'people'
@@ -240,22 +242,28 @@ export interface KISIconProps {
   color?: string;
   focused?: boolean;
   style?: any;
+  tone?: IconTone;
 }
 
 export const KISIcon: React.FC<KISIconProps> = ({
   name,
-  size = 22,
-  color = '#999',
+  size,
+  color,
   focused = false,
   style,
+  tone,
 }) => {
+  const { palette } = useKISTheme();
+  const resolvedSize = size ?? ICON_SIZES.medium;
+  const iconColor = color ?? getIconColor(palette, tone);
+
   // Material icon overrides
   if (name === 'keyboard') {
     return (
       <MaterialCommunityIcons
         name="keyboard-outline"
-        size={size}
-        color={color}
+        size={resolvedSize}
+        color={iconColor}
         style={style}
       />
     );
@@ -265,8 +273,8 @@ export const KISIcon: React.FC<KISIconProps> = ({
     return (
       <MaterialCommunityIcons
         name="rotate-left"
-        size={size}
-        color={color}
+        size={resolvedSize}
+        color={iconColor}
         style={style}
       />
     );
@@ -276,8 +284,8 @@ export const KISIcon: React.FC<KISIconProps> = ({
     return (
       <MaterialCommunityIcons
         name="rotate-right"
-        size={size}
-        color={color}
+        size={resolvedSize}
+        color={iconColor}
         style={style}
       />
     );
@@ -288,8 +296,8 @@ export const KISIcon: React.FC<KISIconProps> = ({
     return (
       <MaterialCommunityIcons
         name="file-pdf-box"
-        size={size}
-        color={color}
+        size={resolvedSize}
+        color={iconColor}
         style={style}
       />
     );
@@ -299,8 +307,8 @@ export const KISIcon: React.FC<KISIconProps> = ({
     return (
       <MaterialCommunityIcons
         name="file-word-outline"
-        size={size}
-        color={color}
+        size={resolvedSize}
+        color={iconColor}
         style={style}
       />
     );
@@ -310,8 +318,8 @@ export const KISIcon: React.FC<KISIconProps> = ({
     return (
       <MaterialCommunityIcons
         name="file-excel-outline"
-        size={size}
-        color={color}
+        size={resolvedSize}
+        color={iconColor}
         style={style}
       />
     );
@@ -321,8 +329,8 @@ export const KISIcon: React.FC<KISIconProps> = ({
     return (
       <MaterialCommunityIcons
         name="file-powerpoint-outline"
-        size={size}
-        color={color}
+        size={resolvedSize}
+        color={iconColor}
         style={style}
       />
     );
@@ -332,8 +340,8 @@ export const KISIcon: React.FC<KISIconProps> = ({
     return (
       <MaterialCommunityIcons
         name="file-document-outline"
-        size={size}
-        color={color}
+        size={resolvedSize}
+        color={iconColor}
         style={style}
       />
     );
@@ -343,8 +351,8 @@ export const KISIcon: React.FC<KISIconProps> = ({
     return (
       <MaterialCommunityIcons
         name="folder-zip-outline"
-        size={size}
-        color={color}
+        size={resolvedSize}
+        color={iconColor}
         style={style}
       />
     );
@@ -357,8 +365,8 @@ export const KISIcon: React.FC<KISIconProps> = ({
   return (
     <Ionicons
       name={iconName}
-      size={size}
-      color={color}
+      size={resolvedSize}
+      color={iconColor}
       style={style}
     />
   );

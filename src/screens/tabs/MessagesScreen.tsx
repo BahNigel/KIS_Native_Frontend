@@ -49,6 +49,8 @@ import {
 } from '@/Module/ChatRoom/messagesUtils';
 import { fetchConversationsForCurrentUser, searchConversationsFromServer } from '@/Module/ChatRoom/normalizeConversation';
 import { mapBackendToChatMessage } from '@/Module/ChatRoom/componets/chatMapping';
+import { MessageStatus } from '@/Module/ChatRoom/chatTypes';
+import { decryptConversationPayload, ENCRYPTION_VERSION } from '@/security/customE2EE';
 
 const Tab = createMaterialTopTabNavigator();
 type MessagesScreenProps = {
@@ -57,6 +59,33 @@ type MessagesScreenProps = {
 };
 
 type LocalQuick = QuickChip;
+
+const getMessagePreviewText = (message: any): string => {
+  if (!message) return '';
+
+  const text = typeof message.text === 'string' ? message.text.trim() : '';
+  if (text.length) return text;
+  if (message?.styledText?.text) return message.styledText.text;
+  if (message?.voice) return 'Voice message';
+  if (message?.sticker) return 'Sticker';
+  if (Array.isArray(message?.attachments) && message.attachments.length) {
+    return message.attachments.length > 1 ? 'Attachments' : 'Attachment';
+  }
+  if (Array.isArray(message?.contacts) && message.contacts.length) {
+    return 'Contact';
+  }
+  if (message?.poll) return 'Poll';
+  if (message?.event) return 'Event';
+  return '';
+};
+
+type ConversationMetaEntry = {
+  lastMessage?: string;
+  lastAt?: string;
+  unreadCount?: number;
+  lastStatus?: MessageStatus;
+  lastMessageFromMe?: boolean;
+};
 
 /**
  * Changes in this file focus on animation smoothness & robustness:
@@ -94,7 +123,7 @@ const [selectCount, setSelectCount] = useState<number | null>(null);
 
 const [conversations, setConversations] = useState<Chat[]>([]);
 const [contactNameByPhone, setContactNameByPhone] = useState<Record<string, string>>({});
-const [conversationMeta, setConversationMeta] = useState<Record<string, { lastMessage?: string; lastAt?: string; unreadCount?: number }>>({});
+const [conversationMeta, setConversationMeta] = useState<Record<string, ConversationMetaEntry>>({});
 const [communityByConversationId, setCommunityByConversationId] = useState<Record<string, { id: string; name: string }>>({});
 const [communityGroupConversationIds, setCommunityGroupConversationIds] = useState<Set<string>>(new Set());
 const [statusByUserId, setStatusByUserId] = useState<Record<string, { hasStatus: boolean; hasUnseen: boolean }>>({});
@@ -103,6 +132,72 @@ const [avatarPreviewFull, setAvatarPreviewFull] = useState(false);
 const avatarAnim = useRef(new Animated.Value(0)).current;
 const tabRef = useRef<any>(null);
 
+const mountedRef = useRef(true);
+const metaRefreshQueue = useRef(new Set<string>());
+const metaRefreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+useEffect(() => {
+  return () => {
+    mountedRef.current = false;
+    if (metaRefreshTimer.current) {
+      clearTimeout(metaRefreshTimer.current);
+      metaRefreshTimer.current = null;
+    }
+  };
+}, []);
+
+const refreshConversationMeta = useCallback(
+  async (convId: string) => {
+    if (!convId) return;
+    try {
+      const messages = await loadMessages(convId);
+      if (!mountedRef.current) return;
+      if (!messages.length) {
+        setConversationMeta((prev) => {
+          if (!prev[convId]) return prev;
+          const next = { ...prev };
+          delete next[convId];
+          return next;
+        });
+        return;
+      }
+      const last = messages[messages.length - 1];
+      const preview = getMessagePreviewText(last);
+      const unread = messages.filter((m) => !m.fromMe && m.status !== 'read').length;
+      setConversationMeta((prev) => ({
+        ...prev,
+        [convId]: {
+          lastMessage: preview,
+          lastAt: last.createdAt,
+          unreadCount: unread,
+          lastStatus: last.fromMe ? last.status : undefined,
+          lastMessageFromMe: !!last.fromMe,
+        },
+      }));
+    } catch (error) {
+      console.warn('[MessagesScreen] refresh meta failed', error);
+    }
+  },
+  [],
+);
+
+const queueMetaRefresh = useCallback(
+  (convId: string) => {
+    if (!convId) return;
+    metaRefreshQueue.current.add(convId);
+    if (metaRefreshTimer.current) return;
+    metaRefreshTimer.current = setTimeout(() => {
+      const toRefresh = Array.from(metaRefreshQueue.current);
+      metaRefreshQueue.current.clear();
+      metaRefreshTimer.current = null;
+      Promise.all(toRefresh.map((id) => refreshConversationMeta(id))).catch((err) => {
+        console.warn('[MessagesScreen] queued meta refresh failed', err);
+      });
+    }, 150);
+  },
+  [refreshConversationMeta],
+);
+
 const deviceIdRef = useRef<string>('');
 const joinedRoomsRef = useRef<Set<string>>(new Set());
 const { socket, isConnected, typingByConversation, currentUserId, presenceByUser } = useSocket();
@@ -110,7 +205,10 @@ const { socket, isConnected, typingByConversation, currentUserId, presenceByUser
 const refreshConversations = useCallback(async (force?: boolean) => {
   const convs = await fetchConversationsForCurrentUser([], currentUserId ?? undefined, !!force);
   setConversations(convs);
-}, [currentUserId]);
+  if (force) {
+    loadCommunities();
+  }
+}, [currentUserId, loadCommunities]);
 
 useEffect(() => {
   let active = true;
@@ -118,19 +216,16 @@ useEffect(() => {
     const term = query.trim();
     if (term.length >= 2) {
       const convs = await searchConversationsFromServer(term, currentUserId ?? undefined);
-      console.log("checking if conversation is comming from the backend search: ", convs)
       if (active) setConversations(convs);
-      // statuses are loaded only on explicit user action
       return;
     }
     const convs = await fetchConversationsForCurrentUser([], currentUserId ?? undefined);
-    console.log("checking if conversation is comming from the backend: ", convs)
     if (active) setConversations(convs);
   })();
-  return () => { active = false; };
+  return () => {
+    active = false;
+  };
 }, [currentUserId, query]);
-
-console.log("conversations in messages screen: ", conversations);
 
 useEffect(() => {
   const sub = DeviceEventEmitter.addListener('conversation.refresh', async () => {
@@ -169,71 +264,94 @@ useEffect(() => {
   }).start();
 }, [avatarPreview, avatarAnim]);
 
-useEffect(() => {
-  if (!currentUserId) return;
-  let active = true;
-  const loadCommunities = async () => {
-    try {
-      const res = await getRequest(ROUTES.community.list, {
-        errorMessage: 'Failed to load communities',
-      });
-      const list = Array.isArray(res?.data?.results)
-        ? res.data.results
-        : Array.isArray(res?.results)
-        ? res.results
-        : res?.data ?? res ?? [];
-      if (!active || !Array.isArray(list)) return;
-      const map: Record<string, { id: string; name: string }> = {};
-      const groupConvIds = new Set<string>();
-      await Promise.all(
-        list.map(async (c: any) => {
-          const communityId = c?.id;
-          const mainId = c?.main_conversation_id ?? c?.mainConversationId;
-          const postsId = c?.posts_conversation_id ?? c?.postsConversationId;
-          const name = String(c.name ?? c.title ?? 'Community');
-          if (mainId) {
-            map[String(mainId)] = { id: String(c.id), name };
+const communitiesMountedRef = useRef(true);
+const loadCommunities = useCallback(async () => {
+  if (!currentUserId) {
+    setCommunityByConversationId({});
+    setCommunityGroupConversationIds(new Set());
+    return;
+  }
+
+  try {
+    const res = await getRequest(ROUTES.community.list, {
+      errorMessage: 'Failed to load communities',
+    });
+    const list = Array.isArray(res?.data?.results)
+      ? res.data.results
+      : Array.isArray(res?.results)
+      ? res.results
+      : res?.data ?? res ?? [];
+    if (!Array.isArray(list)) throw new Error('Unexpected communities payload');
+    const map: Record<string, { id: string; name: string }> = {};
+    const groupConvIds = new Set<string>();
+    await Promise.all(
+      list.map(async (c: any) => {
+        const communityId = c?.id;
+        const mainId = c?.main_conversation_id ?? c?.mainConversationId;
+        const postsId = c?.posts_conversation_id ?? c?.postsConversationId;
+        const name = String(c.name ?? c.title ?? 'Community');
+        const register = (key: any) => {
+          if (!key) return;
+          map[String(key)] = {
+            id: communityId ? String(communityId) : String(key),
+            name,
+          };
+        };
+        register(mainId);
+        register(postsId);
+        if (!communityId) return;
+        try {
+          const groupsRes = await getRequest(`${ROUTES.groups.list}?community=${communityId}`);
+          const groupsList = Array.isArray(groupsRes?.data?.results)
+            ? groupsRes.data.results
+            : Array.isArray(groupsRes?.results)
+            ? groupsRes.results
+            : groupsRes?.data ?? groupsRes ?? [];
+          if (Array.isArray(groupsList)) {
+            groupsList.forEach((g: any) => {
+              const convId = g?.conversation_id ?? g?.conversationId;
+              if (convId) groupConvIds.add(String(convId));
+            });
           }
-          if (postsId) {
-            map[String(postsId)] = { id: String(c.id), name };
-          }
-          if (!communityId) return;
-          try {
-            const groupsRes = await getRequest(`${ROUTES.groups.list}?community=${communityId}`);
-            const groupsList = Array.isArray(groupsRes?.data?.results)
-              ? groupsRes.data.results
-              : Array.isArray(groupsRes?.results)
-              ? groupsRes.results
-              : groupsRes?.data ?? groupsRes ?? [];
-            if (Array.isArray(groupsList)) {
-              groupsList.forEach((g: any) => {
-                const convId = g?.conversation_id ?? g?.conversationId;
-                if (convId) groupConvIds.add(String(convId));
-              });
-            }
-          } catch {
-            // ignore group fetch errors per community
-          }
-        }),
-      );
+        } catch {
+          // ignore group fetch errors per community
+        }
+      }),
+    );
+
+    if (communitiesMountedRef.current) {
       setCommunityByConversationId(map);
       setCommunityGroupConversationIds(groupConvIds);
-    } catch {
-      if (active) setCommunityByConversationId({});
-      if (active) setCommunityGroupConversationIds(new Set());
     }
-  };
+  } catch {
+    if (communitiesMountedRef.current) {
+      setCommunityByConversationId({});
+      setCommunityGroupConversationIds(new Set());
+    }
+  }
+}, [currentUserId]);
+
+useEffect(() => {
+  communitiesMountedRef.current = true;
   loadCommunities();
   return () => {
-    active = false;
+    communitiesMountedRef.current = false;
   };
-}, [currentUserId]);
+}, [loadCommunities]);
+
+useEffect(() => {
+  const sub = DeviceEventEmitter.addListener('community.refresh', () => {
+    loadCommunities();
+  });
+  return () => sub.remove();
+}, [loadCommunities]);
 
 useEffect(() => {
   const sub = DeviceEventEmitter.addListener('conversation.read', (payload: any) => {
     const convId = String(payload?.conversationId ?? '');
     const readCount = typeof payload?.readCount === 'number' ? payload.readCount : 0;
     if (!convId || readCount <= 0) return;
+    queueMetaRefresh(convId);
     setConversationMeta((prev) => {
       const prevUnread = prev[convId]?.unreadCount ?? 0;
       return {
@@ -248,7 +366,32 @@ useEffect(() => {
   return () => {
     sub.remove();
   };
-}, []);
+}, [queueMetaRefresh]);
+
+useEffect(() => {
+  const sub = DeviceEventEmitter.addListener('message.status', (payload: any) => {
+    const convId = String(payload?.conversationId ?? '');
+    const status = payload?.status as MessageStatus | undefined;
+    const fromMe = !!payload?.fromMe;
+    if (!convId) return;
+    queueMetaRefresh(convId);
+    if (!status || !fromMe) return;
+    setConversationMeta((prev) => {
+      const existing = prev[convId] ?? {};
+      return {
+        ...prev,
+        [convId]: {
+          ...existing,
+          lastStatus: status,
+          lastMessageFromMe: true,
+        },
+      };
+    });
+  });
+  return () => {
+    sub.remove();
+  };
+}, [queueMetaRefresh]);
 
 useEffect(() => {
   const CONTACTS_CACHE_KEY = 'kis.contacts.cache.v1';
@@ -269,29 +412,27 @@ useEffect(() => {
 }, []);
 
 useEffect(() => {
-  let active = true;
-  const loadMeta = async () => {
-    const next: Record<string, { lastMessage?: string; lastAt?: string; unreadCount?: number }> = {};
-    for (const c of conversations) {
-      const convId = String((c as any)?.conversation_id ?? (c as any)?.conversationId ?? (c as any)?.id);
-      if (!convId) continue;
-      const messages = await loadMessages(convId);
-      if (!active) return;
-      if (messages.length) {
-        const last = messages[messages.length - 1];
-        const unread = messages.filter((m) => !m.fromMe && m.status !== 'read').length;
-        next[convId] = {
-          lastMessage: last.text ?? '',
-          lastAt: last.createdAt,
-          unreadCount: unread,
-        };
+  const convIds = Array.from(
+    new Set(
+      conversations
+        .map((c) => String((c as any)?.conversation_id ?? (c as any)?.conversationId ?? (c as any)?.id ?? ''))
+        .filter(Boolean),
+    ),
+  );
+
+  convIds.forEach((id) => queueMetaRefresh(id));
+
+  setConversationMeta((prev) => {
+    const next = { ...prev };
+    const keep = new Set(convIds);
+    Object.keys(next).forEach((key) => {
+      if (!keep.has(key)) {
+        delete next[key];
       }
-    }
-    if (active) setConversationMeta(next);
-  };
-  loadMeta();
-  return () => { active = false; };
-}, [conversations]);
+    });
+    return next;
+  });
+}, [conversations, queueMetaRefresh]);
 
 useEffect(() => {
   if (deviceIdRef.current) return;
@@ -307,23 +448,28 @@ useEffect(() => {
   const onMessage = (payload: any) => {
     const convId = String(payload?.conversationId ?? payload?.conversation_id ?? '');
     if (!convId) return;
-    const encMeta = payload?.encryptionMeta ?? payload?.encryption_meta ?? undefined;
+    const encMeta = payload?.encryptionMeta ?? payload?.encryption_meta;
     const hasEncrypted = !!(encMeta || payload?.ciphertext);
-    let lastMessage = payload?.text ?? '';
-    if (!lastMessage && hasEncrypted) lastMessage = 'Encrypted message';
     const lastAt = payload?.createdAt ?? new Date().toISOString();
     const senderId =
       payload?.senderId != null ? String(payload.senderId) : '';
-    const inc = senderId && senderId !== String(currentUserId) ? 1 : 0;
+    const isFromMe = senderId && senderId === String(currentUserId);
+    const previewText =
+      payload?.text ??
+      getMessagePreviewText(payload) ??
+      (hasEncrypted ? 'Encrypted message' : '');
 
     setConversationMeta((prev) => {
       const prevUnread = prev[convId]?.unreadCount ?? 0;
+      const increment = isFromMe ? 0 : 1;
       return {
         ...prev,
         [convId]: {
-          lastMessage,
+          lastMessage: previewText,
           lastAt,
-          unreadCount: prevUnread + inc,
+          unreadCount: Math.max(prevUnread + increment, 0),
+          lastStatus: isFromMe ? (payload?.status ?? 'sent') : prev[convId]?.lastStatus,
+          lastMessageFromMe: isFromMe,
         },
       };
     });
@@ -336,6 +482,8 @@ useEffect(() => {
       );
       upsertMessage(convId, mapped).catch(() => {});
     } catch {}
+
+    queueMetaRefresh(convId);
 
     if (encMeta?.e2ee === 'signal') {
       const senderDeviceId = encMeta?.senderDeviceId ?? encMeta?.deviceId ?? '';
@@ -371,28 +519,84 @@ useEffect(() => {
                 unreadCount: prev[convId]?.unreadCount ?? 0,
               },
             }));
-            const mapped = mapBackendToChatMessage(
+            const mappedInner = mapBackendToChatMessage(
               payload,
               String(currentUserId ?? ''),
               convId,
             );
             const patched = {
-              ...mapped,
+              ...mappedInner,
               text: textValue,
-              styledText: parsed?.styledText ?? mapped.styledText,
-              attachments: parsed?.attachments ?? mapped.attachments,
-              contacts: parsed?.contacts ?? mapped.contacts,
-              poll: parsed?.poll ?? mapped.poll,
-              event: parsed?.event ?? mapped.event,
-              voice: parsed?.voice ?? mapped.voice,
-              sticker: parsed?.sticker ?? mapped.sticker,
-              replyToId: parsed?.replyToId ?? mapped.replyToId,
-              kind: parsed?.kind ?? mapped.kind,
+              styledText: parsed?.styledText ?? mappedInner.styledText,
+              attachments: parsed?.attachments ?? mappedInner.attachments,
+              contacts: parsed?.contacts ?? mappedInner.contacts,
+              poll: parsed?.poll ?? mappedInner.poll,
+              event: parsed?.event ?? mappedInner.event,
+              voice: parsed?.voice ?? mappedInner.voice,
+              sticker: parsed?.sticker ?? mappedInner.sticker,
+              replyToId: parsed?.replyToId ?? mappedInner.replyToId,
+              kind: parsed?.kind ?? mappedInner.kind,
             };
             upsertMessage(convId, patched).catch(() => {});
           })
           .catch(() => {});
       }
+    }
+
+    if (
+      payload?.encryptionVersion === ENCRYPTION_VERSION &&
+      payload?.encrypted &&
+      payload?.ciphertext &&
+      payload?.iv &&
+      payload?.tag
+    ) {
+      void (async () => {
+        try {
+          const plaintext = await decryptConversationPayload(
+            convId,
+            payload.ciphertext,
+            payload.iv,
+            payload.tag,
+            payload.aad,
+            payload.encryptionKeyVersion,
+          );
+          let parsed: any = null;
+          try {
+            parsed = JSON.parse(plaintext);
+          } catch {}
+          const textValue = parsed?.text ?? plaintext;
+          setConversationMeta((prev) => ({
+            ...prev,
+            [convId]: {
+              ...prev[convId],
+              lastMessage: textValue,
+              lastAt,
+              unreadCount: prev[convId]?.unreadCount ?? 0,
+            },
+          }));
+          const mappedInner = mapBackendToChatMessage(
+            payload,
+            String(currentUserId ?? ''),
+            convId,
+          );
+          const patched = {
+            ...mappedInner,
+            text: textValue,
+            styledText: parsed?.styledText ?? mappedInner.styledText,
+            attachments: parsed?.attachments ?? mappedInner.attachments,
+            contacts: parsed?.contacts ?? mappedInner.contacts,
+            poll: parsed?.poll ?? mappedInner.poll,
+            event: parsed?.event ?? mappedInner.event,
+            voice: parsed?.voice ?? mappedInner.voice,
+            sticker: parsed?.sticker ?? mappedInner.sticker,
+            replyToId: parsed?.replyToId ?? mappedInner.replyToId,
+            kind: parsed?.kind ?? mappedInner.kind,
+          };
+          upsertMessage(convId, patched).catch(() => {});
+        } catch (error) {
+          console.warn('[customE2EE] decrypt fallback failed', error);
+        }
+      })();
     }
   };
   socket.on('chat.message', onMessage);
@@ -400,6 +604,17 @@ useEffect(() => {
     socket.off('chat.message', onMessage);
   };
 }, [socket, isConnected, currentUserId]);
+
+useEffect(() => {
+  const sub = DeviceEventEmitter.addListener('message.status', (payload: any) => {
+    const convId = String(payload?.conversationId ?? '');
+    if (!convId) return;
+    queueMetaRefresh(convId);
+  });
+  return () => {
+    sub.remove();
+  };
+}, [queueMetaRefresh]);
 
 useEffect(() => {
   if (!socket || !isConnected) return;
@@ -595,6 +810,7 @@ const handleMuteSelected = () => {
   const lastTsRef = useRef(0);
   const animatingRef = useRef<null | 'show' | 'hide'>(null);
 
+  const animationRef = useRef<Animated.CompositeAnimation | null>(null);
   const runSpring = useCallback(
     (toValue: 0 | 1) => {
       if (reduceMotionRef.current) {
@@ -602,18 +818,18 @@ const handleMuteSelected = () => {
         animatingRef.current = null;
         return;
       }
-      animatingRef.current = toValue ? 'hide' : 'show';
-      Animated.spring(hideProgress, {
+      const nextState = toValue ? 'hide' : 'show';
+      animatingRef.current = nextState;
+      animationRef.current?.stop();
+      animationRef.current = Animated.timing(hideProgress, {
         toValue,
-        stiffness: 220,
-        damping: 26,
-        mass: 0.9,
+        duration: 220,
+        easing: Easing.inOut(Easing.ease),
         useNativeDriver: false, // we still animate layout margins
-        // prevent tiny oscillations
-        restDisplacementThreshold: 0.5,
-        restSpeedThreshold: 0.5,
-      }).start(() => {
+      });
+      animationRef.current.start(() => {
         animatingRef.current = null;
+        animationRef.current = null;
       });
     },
     [hideProgress]

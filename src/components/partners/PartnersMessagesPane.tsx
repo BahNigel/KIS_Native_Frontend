@@ -5,8 +5,8 @@ import styles from './partnersStyles';
 import { useKISTheme } from '../../theme/useTheme';
 import { Partner, PartnerChannel, PartnerCommunity, PartnerGroup } from './partnersTypes';
 import ChatRoomPage from '@/Module/ChatRoom/ChatRoomPage';
-import PartnerFeedPage from './PartnerFeedPage';
-import CommunityFeedPage from '@/Module/Community/CommunityFeedPage';
+import PartnerFeedScreen from '@/components/feeds/PartnerFeedScreen';
+import CommunityFeedScreen from '@/components/feeds/CommunityFeedScreen';
 import { KISIcon } from '@/constants/kisIcons';
 
 type Props = {
@@ -141,9 +141,9 @@ export default function PartnersMessagesPane({
         </View>
       ) : null}
       {selectedFeed && selectedPartner ? (
-        <PartnerFeedPage partner={selectedPartner} onBack={closeMessagesPane} />
+        <PartnerFeedScreen partner={selectedPartner} onBack={closeMessagesPane} />
       ) : selectedCommunity ? (
-        <CommunityFeedPage
+        <CommunityFeedScreen
           community={{ id: selectedCommunity.id, name: selectedCommunity.name }}
           onBack={closeMessagesPane}
         />

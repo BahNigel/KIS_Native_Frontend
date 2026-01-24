@@ -203,7 +203,6 @@ export const handleSendVoice = async ({
         type: 'audio/m4a',
       },
       authToken,
-      baseUrl: NEST_API_BASE_URL,
       conversationId: String(convId),
     });
   } catch {}
@@ -255,7 +254,6 @@ export const handleSendSticker = async ({
         type: 'image/png',
       },
       authToken,
-      baseUrl: NEST_API_BASE_URL,
       conversationId: String(convId),
     });
   } catch {}
@@ -307,7 +305,6 @@ export const handleSendAttachment = async ({
         return await uploadFileToBackend({
           file,
           authToken,
-          baseUrl: NEST_API_BASE_URL,
           conversationId: String(convId),
           onProgress: (progress) => {
             if (file?.uri) {

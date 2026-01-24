@@ -63,5 +63,5 @@ export default function BibleStatsPanel() {
 const styles = StyleSheet.create({
   title: { fontSize: 18, fontWeight: '800' },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
-  statCard: { borderWidth: 1, borderRadius: 12, padding: 12, width: '47%', gap: 6 },
+  statCard: { borderWidth: 2, borderRadius: 12, padding: 12, width: '47%', gap: 6 },
 });

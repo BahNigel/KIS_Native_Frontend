@@ -20,6 +20,7 @@ import {
   useWindowDimensions,
   TextInput,
   Linking,
+  DeviceEventEmitter,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -325,6 +326,11 @@ export const AddContactsPage: React.FC<AddContactsPageProps> = ({
     description: '',
     channelId: null as string | null,
   });
+  const [communityDraft, setCommunityDraft] = useState({
+    name: '',
+    slug: '',
+    description: '',
+  });
   const [groupContext, setGroupContext] = useState<{ communityId?: string | null; communityName?: string | null } | null>(
     initialGroupContext ?? null,
   );
@@ -577,7 +583,11 @@ export const AddContactsPage: React.FC<AddContactsPageProps> = ({
       } as Chat;
 
       setSelectedCommunityMemberIds(new Set());
+      setCommunityDraft({ name: '', slug: '', description: '' });
       onClose();
+
+      DeviceEventEmitter.emit('conversation.refresh');
+      DeviceEventEmitter.emit('community.refresh');
 
       setTimeout(() => {
         onOpenChat(chat);
@@ -850,7 +860,7 @@ export const AddContactsPage: React.FC<AddContactsPageProps> = ({
               style={{
                 marginTop: 16,
                 borderRadius: 999,
-                borderWidth: 1,
+                borderWidth: 2,
                 borderColor: palette.inputBorder,
                 backgroundColor: palette.card,
                 flexDirection: 'row',
@@ -1119,6 +1129,18 @@ export const AddContactsPage: React.FC<AddContactsPageProps> = ({
                   onSuccess={handleCommunityCreated}
                   selectedMemberIds={Array.from(selectedCommunityMemberIds)}
                   onSelectMembers={onOpenSelectCommunityMembers}
+                  name={communityDraft.name}
+                  slug={communityDraft.slug}
+                  description={communityDraft.description}
+                  onChangeName={(value) =>
+                    setCommunityDraft((prev) => ({ ...prev, name: value }))
+                  }
+                  onChangeSlug={(value) =>
+                    setCommunityDraft((prev) => ({ ...prev, slug: value }))
+                  }
+                  onChangeDescription={(value) =>
+                    setCommunityDraft((prev) => ({ ...prev, description: value }))
+                  }
                 />
               ) : mode === 'addChannel' ? (
                 <NewChannelForm

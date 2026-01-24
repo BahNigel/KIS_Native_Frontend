@@ -29,6 +29,7 @@ import {
   otherParticipantPhone,
 } from '../messagesUtils';
 import { normalizeConversation } from '../normalizeConversation';
+import { MessageStatus } from '../chatTypes';
 
 
 type ChatsTabProps = {
@@ -40,7 +41,16 @@ type ChatsTabProps = {
   typingByConversation?: Record<string, Record<string, number>>;
   presenceByUser?: Record<string, { isOnline: boolean; at: number }>;
   currentUserId?: string;
-  conversationMeta?: Record<string, { lastMessage?: string; lastAt?: string; unreadCount?: number }>;
+  conversationMeta?: Record<
+    string,
+    {
+      lastMessage?: string;
+      lastAt?: string;
+      unreadCount?: number;
+      lastStatus?: MessageStatus;
+      lastMessageFromMe?: boolean;
+    }
+  >;
   contactNameByPhone?: Record<string, string>;
   communityByConversationId?: Record<string, { id: string; name: string }>;
   communityGroupConversationIds?: Set<string>;
@@ -79,6 +89,16 @@ export function ChatsTab({
   setSelectedChat,
 }: ChatsTabProps) {
   const { palette } = useKISTheme();
+
+  const getStatusSymbol = (status?: MessageStatus) => {
+    if (!status) return '';
+    if (status === 'local_only' || status === 'pending' || status === 'sending') return '⏳';
+    if (status === 'sent') return '✓';
+    if (status === 'delivered') return '✓✓';
+    if (status === 'read') return '✓✓';
+    if (status === 'failed') return '!';
+    return '';
+  };
 
   /* ------------------------------------------------------------
    * NORMALIZE RAW BACKEND CONVERSATIONS → SAFE Chat objects
@@ -401,17 +421,64 @@ export function ChatsTab({
                 )}
               </View>
 
-              <Text
-                style={{ color: palette.subtext }}
-                numberOfLines={1}
-              >
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                 {(() => {
                   const typingUsers = typingByConversation?.[String(convId)] ?? {};
                   const otherTyping = Object.keys(typingUsers).filter((u) => u !== currentUserId);
-                  if (otherTyping.length > 0) return 'typing...';
-                  return displayLastMessage || '';
+                  const isTyping = otherTyping.length > 0;
+                  const meta = conversationMeta?.[convId];
+                  const statusSymbol =
+                    meta?.lastMessageFromMe && meta?.lastStatus
+                      ? getStatusSymbol(meta.lastStatus)
+                      : '';
+                  const statusColor =
+                    meta?.lastStatus === 'read'
+                      ? palette.readStatus ?? palette.primary
+                      : meta?.lastStatus === 'delivered'
+                      ? palette.primary ?? palette.subtext
+                      : palette.subtext;
+
+                  if (isTyping) {
+                    return (
+                      <>
+                        <View
+                          style={{
+                            width: 6,
+                            height: 6,
+                            borderRadius: 3,
+                            backgroundColor: palette.primary,
+                          }}
+                        />
+                        <Text style={{ color: palette.primary }}>
+                          typing...
+                        </Text>
+                      </>
+                    );
+                  }
+
+                  return (
+                    <>
+                      {statusSymbol ? (
+                        <Text
+                          style={{
+                            color: statusColor,
+                            fontSize: 12,
+                            marginRight: 4,
+                          }}
+                        >
+                          {statusSymbol}
+                        </Text>
+                      ) : null}
+                      <Text
+                        style={{ color: palette.subtext }}
+                        numberOfLines={1}
+                      >
+                        {displayLastMessage || ''}
+                      </Text>
+                    </>
+                  );
                 })()}
-              </Text>
+              </View>
             </View>
 
             {/* RIGHT SIDE INFO */}

@@ -21,10 +21,10 @@ import ImagePlaceholder from '@/components/common/ImagePlaceholder';
 import Skeleton from '@/components/common/Skeleton';
 import FeedComposerSheet, { FeedComposerPayload } from '@/components/feeds/FeedComposerSheet';
 import FeedPostActionsSheet from '@/components/feeds/FeedPostActionsSheet';
-import ChatRoomPage from '@/Module/ChatRoom/ChatRoomPage';
+import { InlineCommentSheet, formatCommentContextLabel } from '@/components/feeds/FeedScreen';
 import ShareRenderer, { type SharePayload } from '@/components/feeds/ShareRenderer';
 import { uploadFileToBackend } from '@/Module/ChatRoom/uploadFileToBackend';
-import { NEST_API_BASE_URL } from '@/network';
+import { prepareBroadcastVideoPayload } from '@/components/feeds/videoAttachmentHelpers';
 
 type Community = {
   id: string;
@@ -64,12 +64,23 @@ export default function CommunityFeedPage({
   const [composerVisible, setComposerVisible] = useState(false);
   const [actionsVisible, setActionsVisible] = useState(false);
   const [activePost, setActivePost] = useState<Post | null>(null);
-  const [commentChatVisible, setCommentChatVisible] = useState(false);
-  const [commentChat, setCommentChat] = useState<{ post: Post; chat: any } | null>(null);
+  const [commentSheetVisible, setCommentSheetVisible] = useState(false);
+  const [commentThread, setCommentThread] = useState<
+    { post: Post; conversationId: string; context?: Record<string, any> } | null
+  >(null);
   const [commentCounts, setCommentCounts] = useState<Record<string, number>>({});
   const [likeCounts, setLikeCounts] = useState<Record<string, number>>({});
   const [likedPostIds, setLikedPostIds] = useState<Record<string, boolean>>({});
   const likedPostIdsRef = useRef<Record<string, boolean>>({});
+
+  const handleCommentMessageCountChange = useCallback(
+    (count: number) => {
+      const postId = commentThread?.post.id;
+      if (!postId) return;
+      setCommentCounts((prev) => ({ ...prev, [postId]: count }));
+    },
+    [commentThread?.post?.id],
+  );
   const shareShotRef = useRef<any>(null);
   const [sharePayload, setSharePayload] = useState<SharePayload | null>(null);
   const listRef = useRef<FlatList<FeedItem>>(null);
@@ -127,9 +138,15 @@ export default function CommunityFeedPage({
   }, [posts]);
 
   const handleCreate = async (payload: FeedComposerPayload) => {
+    const prepared = await prepareBroadcastVideoPayload(payload);
+    if (!prepared) return;
+    const requestPayload = { ...prepared };
+    delete requestPayload.textPlain;
+    delete requestPayload.textPreview;
+    delete requestPayload.composerType;
     const res = await postRequest(
       ROUTES.community.posts,
-      { community: community.id, ...payload },
+      { community: community.id, ...requestPayload },
       { errorMessage: 'Unable to post to community feed.' },
     );
     if (res?.success) {
@@ -175,7 +192,6 @@ export default function CommunityFeedPage({
         type: 'image/png',
       },
       authToken: token,
-      baseUrl: NEST_API_BASE_URL,
     });
     return attachment?.url ?? null;
   };
@@ -248,20 +264,15 @@ export default function CommunityFeedPage({
       Alert.alert('Comments', 'Unable to open comment thread.');
       return;
     }
-    setCommentChat({
+    setCommentThread({
       post,
-      chat: {
-        id: conversationId,
-        conversationId,
-        name: 'Comments',
-        title: 'Comments',
-        isGroup: true,
-        kind: 'group',
+      conversationId,
+      context: {
         communityId: community.id,
         communityName: community.name,
       },
     });
-    setCommentChatVisible(true);
+    setCommentSheetVisible(true);
   };
 
   const handleDelete = async (postId: string) => {
@@ -338,7 +349,7 @@ export default function CommunityFeedPage({
   }, [activePost, feedItems]);
 
   const handleOpenPostFromChat = useCallback(() => {
-    setCommentChatVisible(false);
+    setCommentSheetVisible(false);
     setTimeout(() => {
       scrollToActivePost();
     }, 250);
@@ -585,29 +596,20 @@ export default function CommunityFeedPage({
         ].filter((action) => action.key !== 'delete' || activePost?.id)}
       />
 
-      <Modal
-        visible={commentChatVisible}
-        animationType="slide"
-        onRequestClose={() => setCommentChatVisible(false)}
-      >
-        {commentChat ? (
-          <ChatRoomPage
-            chat={commentChat.chat}
-            onBack={() => setCommentChatVisible(false)}
-            allChats={[]}
-            headerContextLabel={`Feed: ${
-              commentChat.post.text ?? commentChat.post.styled_text?.text ?? community.name
-            }`}
-            onPressHeaderContext={handleOpenPostFromChat}
-            safeAreaTopInsetOverride={insets.top}
-            showMessageCount
-            messageCountLabel="comments"
-            onMessageCountChange={(count) => {
-              setCommentCounts((prev) => ({ ...prev, [commentChat.post.id]: count }));
-            }}
-          />
-        ) : null}
-      </Modal>
+      <InlineCommentSheet
+        visible={commentSheetVisible}
+        conversationId={commentThread?.conversationId}
+        headerLabel={`Feed: ${
+          commentThread?.post?.text ?? commentThread?.post?.styled_text?.text ?? community.name
+        }`}
+        contextLabel={formatCommentContextLabel(commentThread?.context)}
+        onClose={() => {
+          setCommentSheetVisible(false);
+          setCommentThread(null);
+        }}
+        onMessageCountChange={handleCommentMessageCountChange}
+        onPressContext={handleOpenPostFromChat}
+      />
     </View>
   );
 }
@@ -629,17 +631,17 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 20 },
-  postCard: { borderWidth: 1, borderRadius: 14, padding: 14, marginBottom: 14 },
+  postCard: { borderWidth: 2, borderRadius: 14, padding: 14, marginBottom: 14 },
   postHeader: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   avatar: { width: 36, height: 36, borderRadius: 18 },
   moreButton: { padding: 6 },
   postActions: { flexDirection: 'row', gap: 8, marginTop: 12, flexWrap: 'wrap' },
   actionPill: { flexDirection: 'row', alignItems: 'center', paddingVertical: 6, paddingHorizontal: 10, borderRadius: 999 },
-  adCard: { borderWidth: 1, borderRadius: 14, padding: 14, marginBottom: 14 },
+  adCard: { borderWidth: 2, borderRadius: 14, padding: 14, marginBottom: 14 },
   mediaWrap: { marginTop: 10 },
   media: { width: '100%', height: 180, borderRadius: 12 },
   mediaFallback: {
-    borderWidth: 1,
+    borderWidth: 2,
     alignItems: 'center',
     justifyContent: 'center',
     gap: 4,

@@ -96,6 +96,7 @@ export type FilesType = {
   name: string;
   type: string | null;
   size?: number | null;
+  durationMs?: number | null;
 };
 
 export type AttachmentFilePayload = {
@@ -421,6 +422,12 @@ export const ChatRoomPage: React.FC<ExtendedChatRoomPageProps> = ({
         messageId: String(messageId),
         reason: 'user_reported',
       });
+    },
+    onEditMessage: (message) => {
+      setEditing(message);
+    },
+    onDeleteForEveryone: async (message) => {
+      await softDeleteMessage(message.id);
     },
     onPinMessage: (message, pinned) => {
       const convId =

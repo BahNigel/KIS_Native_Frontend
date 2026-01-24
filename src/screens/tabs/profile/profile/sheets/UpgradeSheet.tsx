@@ -3,6 +3,7 @@ import React from 'react';
 import { Linking, Pressable, Text, View } from 'react-native';
 import { useKISTheme } from '@/theme/useTheme';
 import KISButton from '@/constants/KISButton';
+import KISText from '@/components/common/KISText';
 import { KISIcon } from '@/constants/kisIcons';
 import { styles } from '../../profile.styles';
 import { formatMoney } from '../../profile.utils';
@@ -58,6 +59,8 @@ export default function UpgradeSheet(props: {
     if (valueMb >= 1024) return `${(valueMb / 1024).toFixed(1)} GB`;
     return `${Math.round(valueMb)} MB`;
   };
+
+  console.log('Transactions:', transactions);
 
   const resolveUsage = (key: string, fallbackKeys: string[] = []) => {
     const direct = usage?.[key];
@@ -189,7 +192,7 @@ export default function UpgradeSheet(props: {
       {partnerProTier && (
         <View
           style={{
-            borderWidth: 1,
+            borderWidth: 2,
             borderColor: palette.divider,
             borderRadius: 16,
             padding: 14,
@@ -245,7 +248,7 @@ export default function UpgradeSheet(props: {
                   styles.tierFeatureRow,
                   {
                     justifyContent: 'space-between',
-                    borderWidth: 1,
+                    borderWidth: 2,
                     borderColor: palette.borderMuted,
                     borderRadius: 10,
                     paddingHorizontal: 10,
@@ -350,14 +353,25 @@ export default function UpgradeSheet(props: {
           </View>
         ))}
 
-      <View style={{ gap: 8 }}>
-        <Text style={{ color: palette.text, fontSize: 14, fontWeight: '700' }}>
-          Billing history
-        </Text>
+      <View style={{ gap: 10 }}>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+          <KISText preset="title" weight="700" style={{ color: palette.text }}>
+            Billing history
+          </KISText>
+          {billingHistory?.invoice_pdf_url ? (
+            <KISButton
+              title="Download invoice"
+              size="xs"
+              variant="outline"
+              left={<KISIcon name="document" size={14} color={palette.text} />}
+              onPress={() => Linking.openURL(billingHistory.invoice_pdf_url as string)}
+            />
+          ) : null}
+        </View>
         {transactions.length === 0 ? (
-          <Text style={{ color: palette.subtext, fontSize: 12 }}>
+          <KISText preset="helper" color={palette.subtext}>
             No billing activity yet.
-          </Text>
+          </KISText>
         ) : (
           transactions.slice(0, 6).map((tx: any) => (
             <View
@@ -366,7 +380,7 @@ export default function UpgradeSheet(props: {
                 styles.tierFeatureRow,
                 {
                   justifyContent: 'space-between',
-                  borderWidth: 1,
+                  borderWidth: 2,
                   borderColor: palette.borderMuted,
                   borderRadius: 10,
                   paddingHorizontal: 10,
@@ -375,61 +389,36 @@ export default function UpgradeSheet(props: {
               ]}
             >
               <View style={{ flex: 1, paddingRight: 8 }}>
-                <Text style={{ color: palette.text, fontSize: 12, fontWeight: '700' }}>
+                <KISText preset="body" weight="700" style={{ color: palette.text }}>
                   {tx.meta?.intent === 'tier_upgrade' ? 'Upgrade payment' : tx.kind || 'Payment'}
-                </Text>
-                <Text style={{ color: palette.subtext, fontSize: 11 }}>
+                </KISText>
+                <KISText preset="helper" color={palette.subtext}>
                   {tx.status || 'pending'} · ${formatMoney(tx.amount_cents || 0)}
-                </Text>
+                </KISText>
               </View>
-              <View style={{ flexDirection: 'row', gap: 6 }}>
-                {tx.receipt_url ? (
-                  <Pressable
+              <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
+                {tx.receipt_pdf_url ? (
+                  <KISButton
+                    title="Receipt"
+                    size="xs"
+                    variant="outline"
+                    onPress={() => Linking.openURL(tx.receipt_pdf_url)}
+                  />
+                ) : tx.receipt_url ? (
+                  <KISButton
+                    title="Receipt"
+                    size="xs"
+                    variant="outline"
                     onPress={() => Linking.openURL(tx.receipt_url)}
-                    style={{
-                      paddingHorizontal: 8,
-                      paddingVertical: 6,
-                      borderRadius: 999,
-                      borderWidth: 1,
-                      borderColor: palette.borderMuted,
-                    }}
-                  >
-                    <Text style={{ color: palette.text, fontSize: 11, fontWeight: '700' }}>
-                      Receipt
-                    </Text>
-                  </Pressable>
-                ) : null}
-                {tx.invoice_url ? (
-                  <Pressable
-                    onPress={() => Linking.openURL(tx.invoice_url)}
-                    style={{
-                      paddingHorizontal: 8,
-                      paddingVertical: 6,
-                      borderRadius: 999,
-                      borderWidth: 1,
-                      borderColor: palette.borderMuted,
-                    }}
-                  >
-                    <Text style={{ color: palette.text, fontSize: 11, fontWeight: '700' }}>
-                      Invoice
-                    </Text>
-                  </Pressable>
+                  />
                 ) : null}
                 {tx.status === 'failed' ? (
-                  <Pressable
+                  <KISButton
+                    title="Retry"
+                    size="xs"
+                    variant="ghost"
                     onPress={() => onRetry?.(tx.tx_ref)}
-                    style={{
-                      paddingHorizontal: 10,
-                      paddingVertical: 6,
-                      borderRadius: 999,
-                      borderWidth: 1,
-                      borderColor: palette.borderMuted,
-                    }}
-                  >
-                    <Text style={{ color: palette.text, fontSize: 11, fontWeight: '700' }}>
-                      Retry
-                    </Text>
-                  </Pressable>
+                  />
                 ) : null}
               </View>
             </View>

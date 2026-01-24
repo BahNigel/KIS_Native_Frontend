@@ -3,7 +3,7 @@ import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { Alert, Animated, Linking } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect } from '@react-navigation/native';
-import { launchImageLibrary } from 'react-native-image-picker';
+import { Asset, launchImageLibrary } from 'react-native-image-picker';
 
 import { postRequest } from '@/network/post';
 import { getRequest } from '@/network/get';
@@ -17,6 +17,8 @@ import { makeUUID, parseCsv } from './profile.utils';
 import { profileLayout } from './profile.styles';
 import { tierMetaFor } from './profile/tierMeta';
 
+type FeedMediaType = 'video' | 'audio' | 'image' | 'file' | 'text';
+
 export const useProfileController = (opts: { setAuth: (v: boolean) => void; setPhone?: (v: any) => void }) => {
   const { setAuth, setPhone } = opts;
 
@@ -29,8 +31,10 @@ export const useProfileController = (opts: { setAuth: (v: boolean) => void; setP
     subscription: null,
     usage: null,
   });
+  const [broadcastProfiles, setBroadcastProfiles] = useState<Record<string, any> | null>(null);
   const [activeSheet, setActiveSheet] = useState<SheetType | null>(null);
   const [showCreatePartner, setShowCreatePartner] = useState(false);
+  const [partnerActionId, setPartnerActionId] = useState<string | null>(null);
 
   const [draftProfile, setDraftProfile] = useState<DraftProfile>({
     display_name: '',
@@ -144,9 +148,123 @@ export const useProfileController = (opts: { setAuth: (v: boolean) => void; setP
         transactions: res.data?.transactions || [],
         subscription: res.data?.subscription || null,
         usage: res.data?.usage || null,
+        invoice_url: res.data?.invoice_url,
+        invoice_pdf_url: res.data?.invoice_pdf_url,
       });
     }
   }, []);
+
+  const loadBroadcastProfiles = useCallback(async () => {
+    const res = await getRequest(ROUTES.broadcasts.createProfile);
+    if (res?.success) {
+      setBroadcastProfiles(res.data?.profiles ?? {});
+    }
+  }, []);
+
+  const uploadProfileAttachment = useCallback(
+    async (asset: Asset, context?: string) => {
+      if (!asset?.uri) throw new Error('No asset supplied.');
+      const form = new FormData();
+      form.append('attachment', {
+        uri: asset.uri,
+        name: asset.fileName || `attachment-${Date.now()}`,
+        type: asset.type || 'application/octet-stream',
+      } as any);
+      if (context) form.append('context', context);
+      const res = await postRequest(ROUTES.broadcasts.profileAttachment, form);
+      if (!res?.success) throw new Error(res?.message || 'Upload failed.');
+      return res.data?.attachment ?? null;
+    },
+    [],
+  );
+
+  type BroadcastAttachmentPayload = { uri: string; name: string; type: string };
+
+  const appendBroadcastAttachments = (form: FormData, files?: BroadcastAttachmentPayload[]) => {
+    (files ?? []).forEach((file) => {
+      if (file?.uri) {
+        form.append('attachments', {
+          uri: file.uri,
+          name: file.name,
+          type: file.type,
+        } as any);
+      }
+    });
+  };
+
+  const manageProfileSection = useCallback(
+    async (profileType: 'health_profile' | 'market_profile' | 'education_profile', updates: Record<string, any>) => {
+      const res = await postRequest(ROUTES.broadcasts.profileManage, {
+        profile_type: profileType,
+        updates,
+      });
+      if (!res?.success) throw new Error(res?.message || 'Unable to update profile.');
+      await loadBroadcastProfiles();
+      return res.data?.profile ?? null;
+    },
+    [loadBroadcastProfiles],
+  );
+
+  const addBroadcastFeedEntry = useCallback(
+    async (
+      title: string,
+      summary: string,
+      mediaType: FeedMediaType,
+      attachments?: BroadcastAttachmentPayload[],
+    ) => {
+      const form = new FormData();
+      form.append('title', title);
+      form.append('summary', summary);
+      form.append('media_type', mediaType);
+      appendBroadcastAttachments(form, attachments);
+      const res = await postRequest(ROUTES.broadcasts.feedProfile, form);
+      if (res?.success) {
+        await loadBroadcastProfiles();
+        return res.data?.feed ?? null;
+      }
+      throw new Error(res?.message || 'Unable to add broadcast item.');
+    },
+    [loadBroadcastProfiles],
+  );
+
+  const updateBroadcastFeedEntry = useCallback(
+    async (
+      id: string,
+      title: string,
+      summary: string,
+      mediaType: FeedMediaType,
+      attachments?: BroadcastAttachmentPayload[],
+      retainAttachments?: any[],
+    ) => {
+      const form = new FormData();
+      form.append('title', title);
+      form.append('summary', summary);
+      form.append('media_type', mediaType);
+      appendBroadcastAttachments(form, attachments);
+      if (retainAttachments?.length) {
+        form.append('retain_attachments', JSON.stringify(retainAttachments));
+      }
+      const res = await patchRequest(ROUTES.broadcasts.feedEntry(id), form);
+      if (res?.success) {
+        await loadBroadcastProfiles();
+        return res.data?.feed ?? null;
+      }
+      throw new Error(res?.message || 'Unable to update broadcast item.');
+    },
+    [loadBroadcastProfiles],
+  );
+
+  const deleteBroadcastFeedEntry = useCallback(
+    async (id: string) => {
+      const res = await deleteRequest(ROUTES.broadcasts.feedEntry(id));
+      if (res?.success) {
+        await loadBroadcastProfiles();
+        return true;
+      }
+      throw new Error(res?.message || 'Unable to delete broadcast item.');
+    },
+    [loadBroadcastProfiles],
+  );
 
   const loadProfile = useCallback(async () => {
     const now = Date.now();
@@ -175,6 +293,7 @@ export const useProfileController = (opts: { setAuth: (v: boolean) => void; setP
         const payload = res.data as ProfilePayload;
         applyProfilePayload(payload);
         loadWalletLedger();
+        await loadBroadcastProfiles();
         await AsyncStorage.setItem(cacheKey, JSON.stringify(payload));
       } else {
         setProfile(null);
@@ -187,7 +306,7 @@ export const useProfileController = (opts: { setAuth: (v: boolean) => void; setP
       setLoading(false);
       loadingRef.current = false;
     }
-  }, [applyProfilePayload, loadWalletLedger, profile]);
+  }, [applyProfilePayload, loadWalletLedger, profile, loadBroadcastProfiles]);
 
   useFocusEffect(useCallback(() => { loadProfile(); }, [loadProfile]));
 
@@ -203,6 +322,30 @@ export const useProfileController = (opts: { setAuth: (v: boolean) => void; setP
       Alert.alert('Logout error', e?.message ?? 'Could not log out.');
     }
   };
+
+  const runPartnerAction = useCallback(
+    async (partnerId: string, action: 'deactivate' | 'reactivate' | 'delete') => {
+      const endpoint =
+        action === 'deactivate'
+          ? ROUTES.partners.deactivate(partnerId)
+          : action === 'reactivate'
+          ? ROUTES.partners.reactivate(partnerId)
+          : ROUTES.partners.remove(partnerId);
+      setPartnerActionId(partnerId);
+      try {
+        const response = await postRequest(endpoint, {});
+        if (!response.success) {
+          throw new Error(response.message || 'Unable to perform action');
+        }
+        await loadProfile();
+      } catch (error: any) {
+        Alert.alert('Partner', error?.message || 'Unable to complete the action.');
+      } finally {
+        setPartnerActionId(null);
+      }
+    },
+    [loadProfile],
+  );
 
   const openEditProfile = () => {
     setDraftProfile((prev) => ({
@@ -609,6 +752,8 @@ export const useProfileController = (opts: { setAuth: (v: boolean) => void; setP
     saving,
     prefsDraft,
     walletForm,
+    partnerActionId,
+    broadcastProfiles,
 
     // setters
     setDraftProfile,
@@ -638,9 +783,18 @@ export const useProfileController = (opts: { setAuth: (v: boolean) => void; setP
     resumeSubscription,
     downgradeTier,
     retryTransaction,
+    refreshBroadcastProfiles: loadBroadcastProfiles,
     submitWalletAction,
     openCreatePartner,
     closeCreatePartner,
+    deactivatePartnerProfile: (id: string) => runPartnerAction(id, 'deactivate'),
+    reactivatePartnerProfile: (id: string) => runPartnerAction(id, 'reactivate'),
+    deletePartnerProfile: (id: string) => runPartnerAction(id, 'delete'),
+    uploadProfileAttachment,
+    manageProfileSection,
+    addBroadcastFeedEntry,
+    updateBroadcastFeedEntry,
+    deleteBroadcastFeedEntry,
 
     // derived
     sectionList,

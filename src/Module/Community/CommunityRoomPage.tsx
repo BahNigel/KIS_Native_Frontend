@@ -17,7 +17,7 @@ import { KISIcon } from '@/constants/kisIcons';
 import ImagePlaceholder from '@/components/common/ImagePlaceholder';
 import Skeleton from '@/components/common/Skeleton';
 import AddContactsPage from '@/Module/AddContacts/AddContactsPage';
-import CommunityFeedPage from '@/Module/Community/CommunityFeedPage';
+import CommunityFeedScreen from '@/components/feeds/CommunityFeedScreen';
 
 type Community = {
   id: string;
@@ -149,7 +149,7 @@ export default function CommunityRoomPage({
 
   if (showFeed) {
     return (
-      <CommunityFeedPage
+      <CommunityFeedScreen
         community={community}
         onBack={() => setShowFeed(false)}
       />
@@ -323,7 +323,7 @@ const styles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   section: { marginBottom: 16 },
   sectionTitle: { fontSize: 12, fontWeight: '600', textTransform: 'uppercase', marginBottom: 8 },
-  feedCard: { borderWidth: 1, borderRadius: 12, padding: 12, marginBottom: 10 },
+  feedCard: { borderWidth: 2, borderRadius: 12, padding: 12, marginBottom: 10 },
   feedHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   overlay: {
     position: 'absolute',

@@ -327,7 +327,7 @@ export const AttachmentPreviewPage: React.FC<AttachmentPreviewPageProps> = ({
               style={{
                 marginBottom: KIS_TOKENS.spacing.md,
                 borderRadius: kisRadius.lg,
-                borderWidth: 1,
+                borderWidth: 2,
                 borderColor: palette.divider,
                 padding: KIS_TOKENS.spacing.md,
                 backgroundColor: palette.surface,
@@ -628,7 +628,7 @@ export const AttachmentPreviewPage: React.FC<AttachmentPreviewPageProps> = ({
               minHeight: 60,
               maxHeight: 120,
               borderRadius: kisRadius.md,
-              borderWidth: 1,
+              borderWidth: 2,
               borderColor: palette.divider,
               paddingHorizontal: KIS_TOKENS.spacing.md,
               paddingVertical: KIS_TOKENS.spacing.sm,

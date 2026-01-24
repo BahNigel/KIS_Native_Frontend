@@ -192,7 +192,7 @@ export const NewGroupForm: React.FC<NewGroupFormProps> = ({
         <View
           style={{
             borderRadius: 12,
-            borderWidth: 1,
+            borderWidth: 2,
             borderColor: palette.inputBorder,
             backgroundColor: palette.card,
             paddingHorizontal: 12,
@@ -223,7 +223,7 @@ export const NewGroupForm: React.FC<NewGroupFormProps> = ({
         <View
           style={{
             borderRadius: 12,
-            borderWidth: 1,
+            borderWidth: 2,
             borderColor: palette.inputBorder,
             backgroundColor: palette.card,
             paddingHorizontal: 12,
@@ -265,7 +265,7 @@ export const NewGroupForm: React.FC<NewGroupFormProps> = ({
         <View
           style={{
             borderRadius: 12,
-            borderWidth: 1,
+            borderWidth: 2,
             borderColor: palette.inputBorder,
             backgroundColor: palette.card,
             paddingHorizontal: 12,
@@ -296,7 +296,7 @@ export const NewGroupForm: React.FC<NewGroupFormProps> = ({
           <View
             style={{
               borderRadius: 12,
-              borderWidth: 1,
+              borderWidth: 2,
               borderColor: palette.inputBorder,
               backgroundColor: palette.card,
               paddingHorizontal: 12,
@@ -324,7 +324,7 @@ export const NewGroupForm: React.FC<NewGroupFormProps> = ({
           <View
             style={{
               borderRadius: 12,
-              borderWidth: 1,
+              borderWidth: 2,
               borderColor: palette.inputBorder,
               backgroundColor: palette.card,
               padding: 8,
@@ -337,7 +337,7 @@ export const NewGroupForm: React.FC<NewGroupFormProps> = ({
               <Pressable
                 onPress={onCreateChannel}
                 style={({ pressed }) => ({
-                  borderWidth: 1,
+                  borderWidth: 2,
                   borderColor: palette.inputBorder,
                   borderRadius: 10,
                   paddingVertical: 10,
@@ -361,7 +361,7 @@ export const NewGroupForm: React.FC<NewGroupFormProps> = ({
                         paddingVertical: 8,
                         paddingHorizontal: 10,
                         borderRadius: 10,
-                        borderWidth: 1,
+                        borderWidth: 2,
                         borderColor: palette.inputBorder,
                         marginBottom: 8,
                         flexDirection: 'row',
@@ -394,7 +394,7 @@ export const NewGroupForm: React.FC<NewGroupFormProps> = ({
           <View
             style={{
               borderRadius: 12,
-              borderWidth: 1,
+              borderWidth: 2,
               borderColor: palette.inputBorder,
               backgroundColor: palette.card,
               padding: 10,
@@ -409,7 +409,7 @@ export const NewGroupForm: React.FC<NewGroupFormProps> = ({
                 paddingVertical: 10,
                 paddingHorizontal: 12,
                 borderRadius: 10,
-                borderWidth: 1,
+                borderWidth: 2,
                 borderColor: palette.inputBorder,
                 backgroundColor: pressed ? palette.surface : 'transparent',
               })}

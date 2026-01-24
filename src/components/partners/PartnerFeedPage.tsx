@@ -12,7 +12,11 @@ import {
 } from 'react-native';
 import { useKISTheme } from '@/theme/useTheme';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import ROUTES from '@/network';
+import ROUTES, {
+  buildMediaSource,
+  resolveBackendAssetUrl,
+  useMediaHeaders,
+} from '@/network';
 import { getRequest } from '@/network/get';
 import { postRequest } from '@/network/post';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -21,11 +25,12 @@ import ImagePlaceholder from '@/components/common/ImagePlaceholder';
 import Skeleton from '@/components/common/Skeleton';
 import { Partner, PartnerPost } from './partnersTypes';
 import FeedComposerSheet, { FeedComposerPayload } from '@/components/feeds/FeedComposerSheet';
+import { prepareBroadcastVideoPayload } from '@/components/feeds/videoAttachmentHelpers';
 import FeedPostActionsSheet from '@/components/feeds/FeedPostActionsSheet';
-import ChatRoomPage from '@/Module/ChatRoom/ChatRoomPage';
+import { InlineCommentSheet, formatCommentContextLabel } from '@/components/feeds/FeedScreen';
 import ShareRenderer, { type SharePayload } from '@/components/feeds/ShareRenderer';
 import { uploadFileToBackend } from '@/Module/ChatRoom/uploadFileToBackend';
-import { NEST_API_BASE_URL } from '@/network';
+import Video from 'react-native-video';
 
 type FeedItem =
   | { type: 'post'; data: PartnerPost }
@@ -44,14 +49,25 @@ export default function PartnerFeedPage({ partner, onBack }: Props) {
   const [composerVisible, setComposerVisible] = useState(false);
   const [actionsVisible, setActionsVisible] = useState(false);
   const [activePost, setActivePost] = useState<PartnerPost | null>(null);
-  const [commentChatVisible, setCommentChatVisible] = useState(false);
-  const [commentChat, setCommentChat] = useState<{ post: PartnerPost; chat: any } | null>(null);
+  const [commentSheetVisible, setCommentSheetVisible] = useState(false);
+  const [commentThread, setCommentThread] = useState<
+    { post: PartnerPost; conversationId: string; context?: Record<string, any> } | null
+  >(null);
   const [commentCounts, setCommentCounts] = useState<Record<string, number>>({});
   const [likeCounts, setLikeCounts] = useState<Record<string, number>>({});
   const [likedPostIds, setLikedPostIds] = useState<Record<string, boolean>>({});
   const likedPostIdsRef = useRef<Record<string, boolean>>({});
+  const handleCommentMessageCountChange = useCallback(
+    (count: number) => {
+      const postId = commentThread?.post.id;
+      if (!postId) return;
+      setCommentCounts((prev) => ({ ...prev, [postId]: count }));
+    },
+    [commentThread?.post?.id],
+  );
   const shareShotRef = useRef<any>(null);
   const [sharePayload, setSharePayload] = useState<SharePayload | null>(null);
+  const mediaHeaders = useMediaHeaders();
   const listRef = useRef<FlatList<FeedItem>>(null);
 
   const loadFeed = useCallback(async () => {
@@ -62,6 +78,11 @@ export default function PartnerFeedPage({ partner, onBack }: Props) {
       });
       const list = (res?.data?.results ?? res?.data ?? res ?? []) as PartnerPost[];
       setPosts(Array.isArray(list) ? list : []);
+      console.log('[PartnerFeedPage] loadFeed payload', list);
+      console.log(
+        '[PartnerFeedPage] attachments preview',
+        (Array.isArray(list) ? list : []).map((post) => post?.attachments?.slice?.(0, 1)),
+      );
     } finally {
       setLoading(false);
     }
@@ -107,11 +128,15 @@ export default function PartnerFeedPage({ partner, onBack }: Props) {
   }, [posts]);
 
   const handleCreate = async (payload: FeedComposerPayload) => {
-    const res = await postRequest(
-      ROUTES.partners.posts,
-      { partner: partner.id, ...payload },
-      { errorMessage: 'Unable to post to partner feed.' },
-    );
+    const prepared = await prepareBroadcastVideoPayload(payload);
+    if (!prepared) return;
+    const payloadToSend = { partner: partner.id, ...prepared };
+    delete payloadToSend.textPlain;
+    delete payloadToSend.textPreview;
+    delete payloadToSend.composerType;
+    const res = await postRequest(ROUTES.partners.posts, payloadToSend, {
+      errorMessage: 'Unable to post to partner feed.',
+    });
     if (res?.success) {
       loadFeed();
     }
@@ -155,7 +180,6 @@ export default function PartnerFeedPage({ partner, onBack }: Props) {
         type: 'image/png',
       },
       authToken: token,
-      baseUrl: NEST_API_BASE_URL,
     });
     return attachment?.url ?? null;
   };
@@ -163,7 +187,7 @@ export default function PartnerFeedPage({ partner, onBack }: Props) {
   const handleShare = async (post: PartnerPost) => {
     const text = post.text ?? post.styled_text?.text ?? '';
     const attachment = Array.isArray(post.attachments) ? post.attachments[0] : null;
-    const attachmentUrl = attachment?.url ?? attachment?.uri ?? null;
+    const attachmentUrl = resolveBackendAssetUrl(attachment?.url ?? attachment?.uri ?? null);
     const kind = attachment?.kind ?? attachment?.mimeType ?? '';
     const isImage = String(kind).includes('image');
     const watermarkColor = '#F97316';
@@ -228,20 +252,15 @@ export default function PartnerFeedPage({ partner, onBack }: Props) {
       Alert.alert('Comments', 'Unable to open comment thread.');
       return;
     }
-    setCommentChat({
+    setCommentThread({
       post,
-      chat: {
-        id: conversationId,
-        conversationId,
-        name: 'Comments',
-        title: 'Comments',
-        isGroup: true,
-        kind: 'group',
+      conversationId,
+      context: {
         partnerId: partner.id,
         partnerName: partner.name,
       },
     });
-    setCommentChatVisible(true);
+    setCommentSheetVisible(true);
   };
 
   const handleDelete = async (postId: string) => {
@@ -318,7 +337,7 @@ export default function PartnerFeedPage({ partner, onBack }: Props) {
   }, [activePost, feedItems]);
 
   const handleOpenPostFromChat = useCallback(() => {
-    setCommentChatVisible(false);
+    setCommentSheetVisible(false);
     setTimeout(() => {
       scrollToActivePost();
     }, 250);
@@ -401,7 +420,7 @@ export default function PartnerFeedPage({ partner, onBack }: Props) {
             }
             const post = item.data;
             const attachment = Array.isArray(post.attachments) ? post.attachments[0] : null;
-            const attachmentUrl =
+            const rawAttachmentUrl =
               (typeof attachment === 'string' ? attachment : null) ??
               attachment?.url ??
               attachment?.uri ??
@@ -409,16 +428,21 @@ export default function PartnerFeedPage({ partner, onBack }: Props) {
               attachment?.fileUrl ??
               attachment?.path ??
               null;
+            const attachmentUrl = resolveBackendAssetUrl(rawAttachmentUrl);
             const thumbUrl =
-              attachment?.thumbUrl ??
-              attachment?.thumb_url ??
-              attachment?.thumbnail ??
-              attachment?.thumb ??
-              attachment?.preview_url ??
-              attachment?.previewUrl ??
-              null;
+              resolveBackendAssetUrl(
+                attachment?.thumbUrl ??
+                  attachment?.thumb_url ??
+                  attachment?.thumbnail ??
+                  attachment?.thumb ??
+                  attachment?.preview_url ??
+                  attachment?.previewUrl ??
+                  null,
+              ) ??
+              attachmentUrl;
             const kind = attachment?.kind ?? attachment?.mimeType ?? attachment?.type ?? '';
             const isVideo = String(kind).includes('video') || String(kind).includes('mp4');
+            const videoSource = buildMediaSource(attachmentUrl, mediaHeaders);
             return (
               <View
                 style={[
@@ -449,21 +473,14 @@ export default function PartnerFeedPage({ partner, onBack }: Props) {
                 {attachmentUrl ? (
                   <View style={styles.mediaWrap}>
                     {isVideo ? (
-                      <>
-                        {thumbUrl ? (
-                          <Image source={{ uri: thumbUrl }} style={styles.media} />
-                        ) : (
-                          <View style={[styles.media, styles.mediaFallback, { borderColor: palette.inputBorder }]}>
-                            <KISIcon name="play" size={22} color={palette.subtext} />
-                            <Text style={{ color: palette.subtext, fontSize: 12, marginTop: 6 }}>
-                              Add a thumbnail
-                            </Text>
-                          </View>
-                        )}
-                        <View style={[styles.playBadge, { backgroundColor: '#00000066' }]}>
-                          <KISIcon name="play" size={14} color="#fff" />
-                        </View>
-                      </>
+                      <Video
+                        source={videoSource ?? { uri: attachmentUrl }}
+                        style={styles.media}
+                        controls
+                        poster={thumbUrl ?? undefined}
+                        posterResizeMode="cover"
+                        resizeMode="cover"
+                      />
                     ) : (
                       <Image source={{ uri: attachmentUrl }} style={styles.media} />
                     )}
@@ -585,29 +602,20 @@ export default function PartnerFeedPage({ partner, onBack }: Props) {
         ].filter((action) => action.key !== 'delete' || activePost?.id)}
       />
 
-      <Modal
-        visible={commentChatVisible}
-        animationType="slide"
-        onRequestClose={() => setCommentChatVisible(false)}
-      >
-        {commentChat ? (
-          <ChatRoomPage
-            chat={commentChat.chat}
-            onBack={() => setCommentChatVisible(false)}
-            allChats={[]}
-            headerContextLabel={`Feed: ${
-              commentChat.post.text ?? commentChat.post.styled_text?.text ?? partner.name
-            }`}
-            onPressHeaderContext={handleOpenPostFromChat}
-            safeAreaTopInsetOverride={insets.top}
-            showMessageCount
-            messageCountLabel="comments"
-            onMessageCountChange={(count) => {
-              setCommentCounts((prev) => ({ ...prev, [commentChat.post.id]: count }));
-            }}
-          />
-        ) : null}
-      </Modal>
+      <InlineCommentSheet
+        visible={commentSheetVisible}
+        conversationId={commentThread?.conversationId}
+        headerLabel={`Feed: ${
+          commentThread?.post?.text ?? commentThread?.post?.styled_text?.text ?? partner.name
+        }`}
+        contextLabel={formatCommentContextLabel(commentThread?.context)}
+        onClose={() => {
+          setCommentSheetVisible(false);
+          setCommentThread(null);
+        }}
+        onMessageCountChange={handleCommentMessageCountChange}
+        onPressContext={handleOpenPostFromChat}
+      />
     </View>
   );
 }
@@ -629,29 +637,15 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
   center: { alignItems: 'center', justifyContent: 'center', paddingVertical: 20 },
-  postCard: { borderWidth: 1, borderRadius: 14, padding: 14, marginBottom: 14 },
+  postCard: { borderWidth: 2, borderRadius: 14, padding: 14, marginBottom: 14 },
   postHeader: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   avatar: { width: 36, height: 36, borderRadius: 18 },
   moreButton: { padding: 6 },
   postActions: { flexDirection: 'row', gap: 8, marginTop: 12, flexWrap: 'wrap' },
   actionPill: { flexDirection: 'row', alignItems: 'center', paddingVertical: 6, paddingHorizontal: 10, borderRadius: 999 },
-  adCard: { borderWidth: 1, borderRadius: 14, padding: 14, marginBottom: 14 },
+  adCard: { borderWidth: 2, borderRadius: 14, padding: 14, marginBottom: 14 },
   mediaWrap: { marginTop: 10 },
   media: { width: '100%', height: 180, borderRadius: 12 },
-  mediaFallback: {
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 4,
-  },
-  playBadge: {
-    position: 'absolute',
-    right: 10,
-    bottom: 10,
-    paddingHorizontal: 8,
-    paddingVertical: 6,
-    borderRadius: 999,
-  },
   fab: {
     position: 'absolute',
     right: 20,

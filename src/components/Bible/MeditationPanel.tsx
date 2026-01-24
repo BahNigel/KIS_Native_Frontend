@@ -118,11 +118,11 @@ export default function MeditationPanel({ meditations, onGenerate }: Props) {
 const styles = StyleSheet.create({
   title: { fontSize: 18, fontWeight: '800' },
   input: {
-    borderWidth: 1,
+    borderWidth: 2,
     borderRadius: 10,
     padding: 10,
   },
   sectionRow: { flexDirection: 'row', gap: 12, flexWrap: 'wrap' },
-  scheduleCard: { borderWidth: 1, borderRadius: 12, padding: 10, width: 160, gap: 6 },
-  meditationCard: { borderWidth: 1, borderRadius: 12, padding: 12 },
+  scheduleCard: { borderWidth: 2, borderRadius: 12, padding: 10, width: 160, gap: 6 },
+  meditationCard: { borderWidth: 2, borderRadius: 12, padding: 12 },
 });

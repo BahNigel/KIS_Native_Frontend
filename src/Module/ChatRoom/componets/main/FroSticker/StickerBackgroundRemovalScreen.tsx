@@ -544,7 +544,7 @@ export const StickerBackgroundRemovalScreen: React.FC<
               style={{
                 paddingVertical: 10,
                 borderRadius: 22,
-                borderWidth: 1,
+                borderWidth: 2,
                 borderColor: palette.subtext,
                 alignItems: 'center',
                 justifyContent: 'center',

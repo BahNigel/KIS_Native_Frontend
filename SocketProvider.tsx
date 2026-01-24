@@ -8,6 +8,7 @@ import React, {
   useState,
   useMemo,
 } from 'react';
+import { DeviceEventEmitter } from 'react-native';
 import { io, Socket } from 'socket.io-client';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from './App';
@@ -228,6 +229,10 @@ export const SocketProvider: React.FC<{
           ...prev,
           [userId]: { isOnline, at },
         }));
+      });
+
+      s.on('broadcast.created', (payload: any) => {
+        DeviceEventEmitter.emit('broadcast.created', payload);
       });
     };
 

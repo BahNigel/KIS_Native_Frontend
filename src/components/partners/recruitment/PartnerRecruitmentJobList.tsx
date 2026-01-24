@@ -24,7 +24,7 @@ export default function PartnerRecruitmentJobList({ palette, jobs }: Props) {
           <View
             key={String(job.id)}
             style={{
-              borderWidth: 1,
+              borderWidth: 2,
               borderColor: palette.borderMuted,
               borderRadius: 12,
               padding: 10,

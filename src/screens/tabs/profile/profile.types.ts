@@ -48,6 +48,19 @@ export type ProfilePayload = {
     credits_value_cents?: number;
     points?: number;
   };
+  partner_profiles?: Array<{
+    id: string;
+    name?: string;
+    slug?: string;
+    avatar_url?: string | null;
+    is_active?: boolean;
+    created_at?: string;
+  }>;
+  partner_profiles_count?: number;
+  partner_profiles_limit_value?: number | null;
+  partner_profiles_limit_label?: string | null;
+  partner_profiles_is_unlimited?: boolean;
+  partner_profiles_can_create?: boolean;
   privacy?: any[];
   tiers?: any[];
 };

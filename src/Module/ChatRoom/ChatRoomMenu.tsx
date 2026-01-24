@@ -212,7 +212,7 @@ const localStyles = StyleSheet.create({
     right: 12,
     top: 60,
     borderRadius: 12,
-    borderWidth: 1,
+    borderWidth: 2,
     paddingVertical: 6,
     width: 220,
   },

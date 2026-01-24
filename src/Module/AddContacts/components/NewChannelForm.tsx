@@ -113,7 +113,7 @@ export const NewChannelForm: React.FC<NewChannelFormProps> = ({
         <View
           style={{
             borderRadius: 12,
-            borderWidth: 1,
+            borderWidth: 2,
             borderColor: palette.inputBorder,
             backgroundColor: palette.card,
             paddingHorizontal: 12,
@@ -144,7 +144,7 @@ export const NewChannelForm: React.FC<NewChannelFormProps> = ({
         <View
           style={{
             borderRadius: 12,
-            borderWidth: 1,
+            borderWidth: 2,
             borderColor: palette.inputBorder,
             backgroundColor: palette.card,
             paddingHorizontal: 12,
@@ -186,7 +186,7 @@ export const NewChannelForm: React.FC<NewChannelFormProps> = ({
         <View
           style={{
             borderRadius: 12,
-            borderWidth: 1,
+            borderWidth: 2,
             borderColor: palette.inputBorder,
             backgroundColor: palette.card,
             paddingHorizontal: 12,

@@ -29,7 +29,7 @@ export default function PartnerHeaderSection({ partner, onPress }: Props) {
               paddingHorizontal: 10,
               paddingVertical: 6,
               borderRadius: 14,
-              borderWidth: 1,
+              borderWidth: 2,
               borderColor: palette.primary,
               backgroundColor: palette.primary,
               shadowColor: palette.primary,

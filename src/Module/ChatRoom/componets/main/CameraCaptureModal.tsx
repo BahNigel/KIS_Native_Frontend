@@ -157,6 +157,7 @@ export const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
       name: a.fileName ?? (a.type?.startsWith("video") ? "video.mp4" : "image.jpg"),
       type: a.type ?? 'image/jpeg',
       size: a.fileSize,
+      durationMs: typeof a.duration === 'number' ? Math.round(a.duration * 1000) : undefined,
     }));
 
     onCapture?.({ caption: caption, files });
@@ -398,7 +399,7 @@ const styles = StyleSheet.create({
   emptyState: {
     width: '100%',
     height: '80%',
-    borderWidth: 1,
+    borderWidth: 2,
     borderRadius: kisRadius.lg,
     justifyContent: 'center',
     alignItems: 'center'

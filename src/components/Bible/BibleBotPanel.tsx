@@ -73,7 +73,7 @@ export default function BibleBotPanel({ messages, onSend }: Props) {
 const styles = StyleSheet.create({
   title: { fontSize: 18, fontWeight: '800' },
   chatBox: {
-    borderWidth: 1,
+    borderWidth: 2,
     borderRadius: 12,
     padding: 12,
     gap: 8,
@@ -85,5 +85,5 @@ const styles = StyleSheet.create({
     maxWidth: '80%',
   },
   inputRow: { flexDirection: 'row', gap: 8, alignItems: 'center' },
-  input: { flex: 1, borderWidth: 1, borderRadius: 10, padding: 10 },
+  input: { flex: 1, borderWidth: 2, borderRadius: 10, padding: 10 },
 });

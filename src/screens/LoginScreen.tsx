@@ -2,7 +2,6 @@
 import React, { useMemo, useState, useCallback } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   Pressable,
   Switch,
@@ -16,17 +15,85 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useKISTheme } from '../theme/useTheme';
 import KISButton from '../constants/KISButton';
 import KISTextInput from '../constants/KISTextInput';
-
+import KISText from '@/components/common/KISText';
 import { postRequest } from '@/network/post/index';
 import ROUTES from '@/network';
 import { useAuth } from '../../App';
 import { ensureDeviceId } from '@/security/e2ee';
+import { KIS_TOKENS } from '@/theme/constants';
 
 const CM_REGION = 'CM';
-const CM_NATIONAL_MAX = 9; // Cameroon national digits length
+const CM_NATIONAL_MAX = 9;
+
+const makeStyles = (tokens: typeof KIS_TOKENS) =>
+  StyleSheet.create({
+    root: {
+      flex: 1,
+      padding: tokens.spacing['2xl'],
+      gap: tokens.spacing.lg,
+    },
+    backBtn: {
+      marginBottom: tokens.spacing.sm,
+      alignSelf: 'flex-start',
+    },
+    backTxt: {
+      fontSize: tokens.typography.title,
+      fontWeight: tokens.typography.weight.bold,
+    },
+    header: {
+      fontSize: tokens.typography.h2,
+      fontWeight: tokens.typography.weight.extrabold,
+      marginTop: tokens.spacing.xs,
+    },
+    row: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: tokens.spacing.md,
+      marginTop: tokens.spacing.xs,
+    },
+    inlineRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: tokens.spacing.sm,
+    },
+    bottomCallout: {
+      alignItems: 'center',
+      marginTop: tokens.spacing['2xl'],
+    },
+    centerText: {
+      textAlign: 'center',
+    },
+    modalBackdrop: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: 'rgba(0,0,0,0.45)',
+      padding: tokens.spacing.lg,
+    },
+    modalCard: {
+      width: '100%',
+      maxWidth: 360,
+      borderRadius: tokens.radius.xl,
+      padding: tokens.spacing.lg,
+    },
+    modalTitle: {
+      fontSize: tokens.typography.h3,
+      fontWeight: tokens.typography.weight.bold,
+      marginBottom: tokens.spacing.sm,
+    },
+    modalRow: {
+      marginTop: tokens.spacing.md,
+      gap: tokens.spacing.lg,
+    },
+    link: {
+      textDecorationLine: 'underline',
+    },
+  });
 
 export default function LoginScreen({ navigation }: any) {
-  const { palette } = useKISTheme();
+  const { palette, tokens } = useKISTheme();
+  const styles = useMemo(() => makeStyles(tokens), [tokens]);
   const { setAuth, setPhone } = useAuth();
 
   const [phone, setPhoneInput] = useState('');
@@ -181,17 +248,23 @@ export default function LoginScreen({ navigation }: any) {
 
   return (
     <View style={[styles.root, { backgroundColor: palette.bg }]}>
-      {/* Back arrow */}
       <Pressable onPress={() => navigation.goBack()} hitSlop={10} style={styles.backBtn}>
-        <Text style={[styles.backTxt, { color: palette.text }]}>{Platform.OS === 'ios' ? '‹' : '←'} Back</Text>
+        <KISText preset="label" style={[styles.backTxt, { color: palette.text }]}>
+          {Platform.OS === 'ios' ? '‹' : '←'} Back
+        </KISText>
       </Pressable>
 
-      <Text style={[styles.header, { color: palette.text }]}>Log In</Text>
+      <KISText preset="h2" color={palette.text} style={styles.header}>
+        Log In
+      </KISText>
 
-      {/* Country (fixed, non-editable) */}
-      <View style={styles.countryRow}>
-        <Text style={[styles.countryLabel, { color: palette.subtext }]}>Country</Text>
-        <Text style={[styles.countryValue, { color: palette.text }]}>CM</Text>
+      <View>
+        <KISText preset="helper" color={palette.subtext}>
+          Country
+        </KISText>
+        <KISText preset="title" color={palette.text}>
+          CM
+        </KISText>
       </View>
 
       <KISTextInput
@@ -213,12 +286,16 @@ export default function LoginScreen({ navigation }: any) {
       />
 
       <View style={styles.row}>
-        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+        <View style={styles.inlineRow}>
           <Switch value={remember} onValueChange={setRemember} />
-          <Text style={{ color: palette.subtext, marginLeft: 10 }}>Remember me</Text>
+          <KISText preset="helper" color={palette.subtext}>
+            Remember me
+          </KISText>
         </View>
         <Pressable onPress={() => setForgotVisible(true)}>
-          <Text style={{ color: palette.subtext, textDecorationLine: 'underline' }}>Forgot password?</Text>
+          <KISText preset="helper" color={palette.subtext} style={styles.link}>
+            Forgot password?
+          </KISText>
         </Pressable>
       </View>
 
@@ -226,21 +303,30 @@ export default function LoginScreen({ navigation }: any) {
         {loading ? <ActivityIndicator /> : null}
       </KISButton>
 
-      <View style={{ alignItems: 'center', marginTop: 14 }}>
-        <Text style={{ color: palette.subtext }}>
+      <View style={styles.bottomCallout}>
+        <KISText preset="helper" color={palette.subtext} style={styles.centerText}>
           Don’t have an account?{' '}
-          <Text onPress={() => navigation.navigate('Register')} style={{ textDecorationLine: 'underline', color: palette.text }}>
+          <KISText
+            preset="helper"
+            color={palette.text}
+            style={styles.link}
+            onPress={() => navigation.navigate('Register')}
+          >
             Create one
-          </Text>
-        </Text>
+          </KISText>
+        </KISText>
       </View>
 
-      <Text style={{ color: palette.subtext, textAlign: 'center', marginTop: 24 }}>2FA enabled</Text>
+      <KISText preset="helper" color={palette.subtext} style={[styles.centerText, { marginTop: tokens.spacing['2xl'] }]}>
+        2FA enabled
+      </KISText>
 
       <Modal visible={forgotVisible} transparent animationType="fade" onRequestClose={() => setForgotVisible(false)}>
         <View style={styles.modalBackdrop}>
           <View style={[styles.modalCard, { backgroundColor: palette.card }]}>
-            <Text style={[styles.modalTitle, { color: palette.text }]}>Reset password</Text>
+            <KISText preset="h3" color={palette.text} style={styles.modalTitle}>
+              Reset password
+            </KISText>
             <KISTextInput
               label="Phone (CM)"
               placeholder="e.g. 676139881 or +237676139881"
@@ -248,7 +334,11 @@ export default function LoginScreen({ navigation }: any) {
               keyboardType="phone-pad"
               value={forgotPhone}
               onChangeText={setForgotPhone}
-              errorText={forgotPhone.length > 0 && !forgotPhoneValid ? 'Enter a valid CM number (9 digits) or +237…' : undefined}
+              errorText={
+                forgotPhone.length > 0 && !forgotPhoneValid
+                  ? 'Enter a valid CM number (9 digits) or +237…'
+                  : undefined
+              }
             />
             {forgotStep === 'reset' ? (
               <>
@@ -277,7 +367,9 @@ export default function LoginScreen({ navigation }: any) {
                 {forgotLoading ? <ActivityIndicator /> : null}
               </KISButton>
               <Pressable onPress={() => setForgotVisible(false)}>
-                <Text style={{ color: palette.subtext }}>Cancel</Text>
+                <KISText preset="helper" color={palette.subtext}>
+                  Cancel
+                </KISText>
               </Pressable>
             </View>
           </View>
@@ -286,44 +378,3 @@ export default function LoginScreen({ navigation }: any) {
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  root: { flex: 1, padding: 24 },
-  header: { fontSize: 22, fontWeight: '800', marginBottom: 12, marginTop: 4 },
-  row: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 16,
-    marginTop: 4,
-  },
-  backBtn: { marginBottom: 8, alignSelf: 'flex-start' },
-  backTxt: { fontSize: 16, fontWeight: '600' },
-
-  countryRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 8,
-    paddingVertical: 8,
-  },
-  countryLabel: { fontSize: 14, fontWeight: '600' },
-  countryValue: { fontSize: 14, fontWeight: '700' },
-  modalBackdrop: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(0,0,0,0.45)',
-    padding: 16,
-  },
-  modalCard: {
-    width: '100%',
-    maxWidth: 360,
-    borderRadius: 16,
-    padding: 16,
-  },
-  modalTitle: { fontSize: 18, fontWeight: '700', marginBottom: 8 },
-  modalRow: {
-    marginTop: 12,
-    gap: 12,
-  },
-});

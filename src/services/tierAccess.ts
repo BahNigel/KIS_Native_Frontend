@@ -8,12 +8,25 @@ export type AccountTierShape = {
   id?: string | number;
 };
 
-const TIER_ORDER = ['free', 'basic', 'pro', 'business', 'business pro', 'partner'];
+const TIER_ORDER = ['free', 'basic', 'pro', 'business', 'market pro', 'business pro', 'partner', 'partner pro'];
+const TIER_ALIASES: Record<string, string> = {
+  'market pro': 'business pro',
+  'market-pro': 'business pro',
+  'market_pro': 'business pro',
+};
 
 export const normalizeTierName = (tier?: AccountTierShape | string | null) => {
   if (!tier) return '';
-  if (typeof tier === 'string') return tier.trim().toLowerCase();
-  return String(tier.name || tier.code || tier.slug || '').trim().toLowerCase();
+  const source =
+    typeof tier === 'string'
+      ? tier
+      : String(tier.name || tier.code || tier.slug || tier?.id || '');
+  const cleaned = source
+    .trim()
+    .replace(/[-_]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .toLowerCase();
+  return TIER_ALIASES[cleaned] ?? cleaned;
 };
 
 export const tierRank = (tier?: AccountTierShape | string | null) => {

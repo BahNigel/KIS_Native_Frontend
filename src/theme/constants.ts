@@ -400,79 +400,13 @@ export const kisRadius = {
  *  Component Recipes
  *  ───────────────────────── */
 
-export const buttonStyles = (tone: KISTone) => {
-  const palette = createPalette(tone);
-  const secondarySoft =
-    tone === 'dark' ? 'rgba(108,74,242,0.22)' : 'rgba(108,74,242,0.16)';
-  const base = {
-    height: KIS_TOKENS.controlHeights.md,
-    paddingHorizontal: 16,
-    borderRadius: KIS_TOKENS.radius.lg,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-    flexDirection: 'row' as const,
-    gap: 8,
-  };
-  const textBase = {
-    fontSize: 16,
-    fontWeight: KIS_TOKENS.typography.weight.bold,
-  } as const;
-
-  return {
-    primary: {
-      container: { ...base, backgroundColor: palette.primary },
-      text: { ...textBase, color: palette.onPrimary },
-    },
-    secondary: {
-      container: {
-        ...base,
-        backgroundColor: secondarySoft,
-        borderWidth: 1,
-        borderColor: palette.secondary,
-      },
-      text: { ...textBase, color: palette.secondary },
-    },
-    outline: {
-      container: {
-        ...base,
-        backgroundColor: 'transparent',
-        borderWidth: 1,
-        borderColor: palette.primaryStrong,
-      },
-      text: { ...textBase, color: palette.primaryStrong },
-    },
-    ghost: {
-      container: { ...base, backgroundColor: 'transparent' },
-      text: { ...textBase, color: palette.primaryStrong },
-    },
-    sizes: {
-      xs: {
-        height: 32,
-        paddingHorizontal: 10,
-        borderRadius: KIS_TOKENS.radius.sm,
-      },
-      sm: {
-        height: KIS_TOKENS.controlHeights.sm,
-        paddingHorizontal: 12,
-        borderRadius: KIS_TOKENS.radius.md,
-      },
-      md: { height: KIS_TOKENS.controlHeights.md },
-      lg: {
-        height: KIS_TOKENS.controlHeights.lg,
-        paddingHorizontal: 20,
-        borderRadius: KIS_TOKENS.radius.xl,
-      },
-    },
-  };
-};
-
 export const inputStyles = (tone: KISTone) => {
   const palette = createPalette(tone);
   return {
     container: {
       height: KIS_TOKENS.controlHeights.md,
       borderRadius: KIS_TOKENS.radius.lg,
-      borderWidth: 1,
+      borderWidth: 2,
       borderColor: palette.inputBorder,
       backgroundColor: palette.inputBg,
       paddingHorizontal: 12,

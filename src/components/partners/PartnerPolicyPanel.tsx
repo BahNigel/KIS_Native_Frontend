@@ -182,7 +182,7 @@ export default function PartnerPolicyPanel({
                 paddingHorizontal: 12,
                 paddingVertical: 6,
                 borderRadius: 14,
-                borderWidth: 1,
+                borderWidth: 2,
                 borderColor: palette.borderMuted,
                 backgroundColor: palette.surface,
                 opacity: pressed || saving ? 0.7 : 1,
@@ -262,7 +262,7 @@ export default function PartnerPolicyPanel({
                   style={{
                     color: palette.text,
                     borderColor: palette.borderMuted,
-                    borderWidth: 1,
+                    borderWidth: 2,
                     paddingHorizontal: 10,
                     paddingVertical: 6,
                     borderRadius: 8,
@@ -290,7 +290,7 @@ export default function PartnerPolicyPanel({
                   style={{
                     color: palette.text,
                     borderColor: palette.borderMuted,
-                    borderWidth: 1,
+                    borderWidth: 2,
                     paddingHorizontal: 10,
                     paddingVertical: 6,
                     borderRadius: 8,
@@ -349,7 +349,7 @@ export default function PartnerPolicyPanel({
                   style={{
                     color: palette.text,
                     borderColor: palette.borderMuted,
-                    borderWidth: 1,
+                    borderWidth: 2,
                     paddingHorizontal: 10,
                     paddingVertical: 6,
                     borderRadius: 8,
@@ -371,7 +371,7 @@ export default function PartnerPolicyPanel({
                   style={{
                     color: palette.text,
                     borderColor: palette.borderMuted,
-                    borderWidth: 1,
+                    borderWidth: 2,
                     paddingHorizontal: 10,
                     paddingVertical: 6,
                     borderRadius: 8,
@@ -401,7 +401,7 @@ export default function PartnerPolicyPanel({
                   style={{
                     color: palette.text,
                     borderColor: palette.borderMuted,
-                    borderWidth: 1,
+                    borderWidth: 2,
                     paddingHorizontal: 10,
                     paddingVertical: 6,
                     borderRadius: 8,

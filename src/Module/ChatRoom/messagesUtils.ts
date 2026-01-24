@@ -425,7 +425,7 @@ export const styles = StyleSheet.create({
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderWidth: 1,
+    borderWidth: 2,
     height: KIS_TOKENS.controlHeights.md,
     borderRadius: KIS_TOKENS.radius.xl,
     paddingHorizontal: 12,
@@ -453,7 +453,7 @@ export const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 999,
-    borderWidth: 1,
+    borderWidth: 2,
   },
 
   /* Chat Row */
@@ -463,7 +463,7 @@ export const styles = StyleSheet.create({
     gap: 12,
     padding: 12,
     borderRadius: 16,
-    borderWidth: 1,
+    borderWidth: 2,
     marginBottom: 12,
   },
   name: { fontWeight: '700', marginBottom: 2, fontSize: 16 },
@@ -481,7 +481,7 @@ export const styles = StyleSheet.create({
     position: 'absolute',
     width: 200,
     borderRadius: 12,
-    borderWidth: 1,
+    borderWidth: 2,
     paddingVertical: 6,
   },
   menuItem: { paddingHorizontal: 14, paddingVertical: 12 },
@@ -495,7 +495,7 @@ export const styles = StyleSheet.create({
     padding: 16,
     borderTopLeftRadius: 16,
     borderTopRightRadius: 16,
-    borderWidth: 1,
+    borderWidth: 2,
   },
   searchOverlay: {
     position: 'absolute',
@@ -517,7 +517,7 @@ export const styles = StyleSheet.create({
   searchOverlayCard: {
     marginTop: 10,
     marginHorizontal: 12,
-    borderWidth: 1,
+    borderWidth: 2,
     borderRadius: 14,
     paddingHorizontal: 12,
     paddingVertical: 10,
@@ -529,14 +529,14 @@ export const styles = StyleSheet.create({
   modalTitle: { fontSize: 18, fontWeight: '800', marginBottom: 10 },
 
   input: {
-    borderWidth: 1,
+    borderWidth: 2,
     borderRadius: 10,
     paddingHorizontal: 10,
     paddingVertical: 8,
     marginBottom: 6,
   },
   pillBtn: {
-    borderWidth: 1,
+    borderWidth: 2,
     borderRadius: 999,
     paddingHorizontal: 12,
     paddingVertical: 8,
@@ -551,14 +551,14 @@ export const styles = StyleSheet.create({
     width: 20,
     height: 20,
     borderRadius: 6,
-    borderWidth: 1,
+    borderWidth: 2,
     alignItems: 'center',
     justifyContent: 'center',
   },
   savedFilterPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderWidth: 1,
+    borderWidth: 2,
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 999,

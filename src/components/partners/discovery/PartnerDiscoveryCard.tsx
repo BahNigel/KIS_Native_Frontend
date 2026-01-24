@@ -32,7 +32,7 @@ export default function PartnerDiscoveryCard({
   return (
     <View
       style={{
-        borderWidth: 1,
+        borderWidth: 2,
         borderColor: palette.borderMuted,
         borderRadius: 16,
         padding: 14,
@@ -99,7 +99,7 @@ export default function PartnerDiscoveryCard({
               paddingVertical: 8,
               borderRadius: 10,
               backgroundColor: palette.surfaceElevated,
-              borderWidth: 1,
+              borderWidth: 2,
               borderColor: palette.borderMuted,
               opacity: pressed ? 0.8 : 1,
             })}

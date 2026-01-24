@@ -117,7 +117,7 @@ export const EventModal: React.FC<EventModalProps> = ({
 
   const inputStyle = {
     borderRadius: kisRadius.lg,
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: palette.inputBorder,
     backgroundColor: palette.inputBg,
     paddingHorizontal: KIS_TOKENS.spacing.md,
@@ -289,7 +289,7 @@ export const EventModal: React.FC<EventModalProps> = ({
                       backgroundColor: active
                         ? palette.primarySoft ?? palette.primary
                         : palette.card,
-                      borderWidth: 1,
+                      borderWidth: 2,
                       borderColor: active
                         ? palette.primary ?? palette.inputBorder
                         : palette.inputBorder,

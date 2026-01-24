@@ -733,7 +733,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 6,
     paddingVertical: 6,
     borderRadius: kisRadius.lg,
-    borderWidth: 1,
+    borderWidth: 2,
     marginHorizontal: 4,
   },
   footer: {
@@ -749,7 +749,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingVertical: 10,
     borderRadius: kisRadius.lg,
-    borderWidth: 1,
+    borderWidth: 2,
     marginHorizontal: 4,
   },
 });

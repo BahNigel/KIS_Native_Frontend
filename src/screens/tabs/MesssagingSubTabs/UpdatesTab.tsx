@@ -16,12 +16,13 @@ import {
 } from 'react-native';
 import { useKISTheme } from '@/theme/useTheme';
 import { KISIcon } from '@/constants/kisIcons';
-import ROUTES from '@/network';
+import ROUTES, { buildMediaSource, useMediaHeaders } from '@/network';
 import { getRequest } from '@/network/get';
 import { postRequest } from '@/network/post';
 import NewChannelForm from '@/Module/AddContacts/components/NewChannelForm';
 import { Chat } from '@/Module/ChatRoom/messagesUtils';
 import Skeleton from '@/components/common/Skeleton';
+import KISText from '@/components/common/KISText';
 import { launchImageLibrary } from 'react-native-image-picker';
 import { refreshFromDeviceAndBackendWithOptions } from '@/Module/AddContacts/contactsService';
 import { useSocket } from '../../../../SocketProvider';
@@ -92,6 +93,7 @@ export default function UpdatesTab({ searchTerm = '', onOpenChat }: UpdatesTabPr
     'Times New Roman',
     'Courier New',
   ];
+  const mediaHeaders = useMediaHeaders();
   const [channels, setChannels] = useState<any[]>([]);
   const [channelsLoading, setChannelsLoading] = useState(false);
   const [showCreateChannel, setShowCreateChannel] = useState(false);
@@ -302,6 +304,7 @@ export default function UpdatesTab({ searchTerm = '', onOpenChat }: UpdatesTabPr
   );
 
   const currentItem = activeUser?.items?.[viewerIndex] ?? null;
+  const viewerMediaSource = buildMediaSource(currentItem?.uri, mediaHeaders);
   const resolveTextStyle = (item?: StatusItem) => ({
     bgColor: item?.style?.bgColor ?? palette.card,
     textColor: item?.style?.textColor ?? palette.text,
@@ -639,11 +642,13 @@ export default function UpdatesTab({ searchTerm = '', onOpenChat }: UpdatesTabPr
       <ScrollView contentContainerStyle={{ paddingBottom: 120 }}>
         {/* Status row */}
         <View style={styles.sectionHeader}>
-          <Text style={{ color: palette.text, fontSize: 18, fontWeight: '700' }}>
+          <KISText preset="h3" color={palette.text}>
             Status
-          </Text>
+          </KISText>
           {statusesLoading ? (
-            <Text style={{ color: palette.subtext, fontSize: 12 }}>Loading…</Text>
+            <KISText preset="helper" color={palette.subtext}>
+              Loading…
+            </KISText>
           ) : null}
         </View>
         {statusesLoading ? (
@@ -865,7 +870,9 @@ export default function UpdatesTab({ searchTerm = '', onOpenChat }: UpdatesTabPr
       <Modal visible={statusComposerOpen} transparent animationType="slide">
         <View style={styles.composerBackdrop}>
           <View style={[styles.composerCard, { backgroundColor: palette.card }]}>
-            <Text style={[styles.composerTitle, { color: palette.text }]}>Create status</Text>
+            <KISText preset="h3" color={palette.text} style={styles.composerTitle}>
+              Create status
+            </KISText>
 
             <View style={styles.composerRow}>
               <Pressable
@@ -886,7 +893,9 @@ export default function UpdatesTab({ searchTerm = '', onOpenChat }: UpdatesTabPr
                 ]}
               >
                 <KISIcon name="image" size={18} color={palette.text} />
-                <Text style={{ color: palette.text, fontSize: 13 }}>Photo/Video</Text>
+                <KISText preset="helper" color={palette.text}>
+                  Photo/Video
+                </KISText>
               </Pressable>
               <Pressable
                 onPress={async () => {
@@ -902,9 +911,9 @@ export default function UpdatesTab({ searchTerm = '', onOpenChat }: UpdatesTabPr
                 ]}
               >
                 <KISIcon name={isRecording ? 'stop' : 'mic'} size={18} color={palette.text} />
-                <Text style={{ color: palette.text, fontSize: 13 }}>
+                <KISText preset="helper" color={palette.text}>
                   {isRecording ? 'Stop' : 'Audio'}
-                </Text>
+                </KISText>
               </Pressable>
               <Pressable
                 onPress={() => {
@@ -917,7 +926,9 @@ export default function UpdatesTab({ searchTerm = '', onOpenChat }: UpdatesTabPr
                 ]}
               >
                 <KISIcon name="edit" size={18} color={palette.text} />
-                <Text style={{ color: palette.text, fontSize: 13 }}>Text</Text>
+                <KISText preset="helper" color={palette.text}>
+                  Text
+                </KISText>
               </Pressable>
             </View>
 
@@ -1051,27 +1062,28 @@ export default function UpdatesTab({ searchTerm = '', onOpenChat }: UpdatesTabPr
               </View>
             ) : (
               <View style={styles.composerPreview}>
-                {statusDraftAssets.length > 0 ? (
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                    {statusDraftAssets.map((asset, idx) =>
-                      statusDraftType === 'video' ? (
-                        <Video
-                          key={`${asset.uri}_${idx}`}
-                          source={{ uri: asset.uri }}
-                          style={styles.composerPreviewMedia}
-                          resizeMode="cover"
-                          paused
-                        />
-                      ) : (
-                        <Image
-                          key={`${asset.uri}_${idx}`}
-                          source={{ uri: asset.uri }}
-                          style={styles.composerPreviewMedia}
-                        />
-                      )
-                    )}
-                  </ScrollView>
-                ) : (
+                    {statusDraftAssets.length > 0 ? (
+                      <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                        {statusDraftAssets.map((asset, idx) => {
+                          const assetVideoSource = buildMediaSource(asset.uri, mediaHeaders);
+                          return statusDraftType === 'video' ? (
+                            <Video
+                              key={`${asset.uri}_${idx}`}
+                              source={assetVideoSource ?? { uri: asset.uri }}
+                              style={styles.composerPreviewMedia}
+                              resizeMode="cover"
+                              paused
+                            />
+                          ) : (
+                            <Image
+                              key={`${asset.uri}_${idx}`}
+                              source={{ uri: asset.uri }}
+                              style={styles.composerPreviewMedia}
+                            />
+                          );
+                        })}
+                      </ScrollView>
+                    ) : (
                   <Text style={{ color: palette.subtext }}>No media selected.</Text>
                 )}
               </View>
@@ -1226,7 +1238,7 @@ export default function UpdatesTab({ searchTerm = '', onOpenChat }: UpdatesTabPr
               </View>
             ) : currentItem?.type === 'video' && currentItem?.uri ? (
               <Video
-                source={{ uri: currentItem.uri }}
+                source={viewerMediaSource ?? { uri: currentItem.uri }}
                 style={styles.viewerImage}
                 resizeMode="cover"
                 paused={!viewerOpen || mediaPaused}
@@ -1243,7 +1255,7 @@ export default function UpdatesTab({ searchTerm = '', onOpenChat }: UpdatesTabPr
             ) : currentItem?.type === 'audio' && currentItem?.uri ? (
               <View style={styles.audioViewer}>
                 <Video
-                  source={{ uri: currentItem.uri }}
+                  source={viewerMediaSource ?? { uri: currentItem.uri }}
                   style={styles.audioHidden}
                   paused={!viewerOpen || mediaPaused}
                   audioOnly
@@ -1299,7 +1311,7 @@ const styles = StyleSheet.create({
     width: 70,
     height: 70,
     borderRadius: 18,
-    borderWidth: 1,
+    borderWidth: 2,
     overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'center',
@@ -1324,7 +1336,7 @@ const styles = StyleSheet.create({
   channelCard: {
     marginHorizontal: 16,
     marginBottom: 12,
-    borderWidth: 1,
+    borderWidth: 2,
     borderRadius: 16,
     padding: 12,
   },
@@ -1418,7 +1430,7 @@ const styles = StyleSheet.create({
   composerInput: {
     minHeight: 100,
     borderRadius: 12,
-    borderWidth: 1,
+    borderWidth: 2,
     padding: 12,
     textAlignVertical: 'top',
   },
@@ -1442,7 +1454,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   choiceChip: {
-    borderWidth: 1,
+    borderWidth: 2,
     borderRadius: 12,
     paddingHorizontal: 10,
     paddingVertical: 6,
@@ -1529,7 +1541,7 @@ const styles = StyleSheet.create({
   audioButton: {
     marginTop: 12,
     borderRadius: 16,
-    borderWidth: 1,
+    borderWidth: 2,
     paddingHorizontal: 16,
     paddingVertical: 8,
     flexDirection: 'row',

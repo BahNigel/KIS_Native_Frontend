@@ -2,7 +2,6 @@
 import React, { useEffect, useRef } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   StatusBar,
   Animated,
@@ -11,6 +10,7 @@ import {
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useKISTheme } from '../theme/useTheme';
+import KISText from '@/components/common/KISText';
 
 import logoLight from '../assets/logo-light.png';
 import logoDark from '../assets/logo-dark.png';
@@ -33,13 +33,7 @@ export default function SplashScreen({
   onFinish,
   minimumDurationMs = DEFAULT_SPLASH_DURATION_MS,
 }: SplashScreenProps) {
-  // Make theme hook safe
-  const themeHook = typeof useKISTheme === 'function' ? useKISTheme() : null;
-  const { palette, tone } =
-    themeHook ?? {
-      palette: { bg: '#000', text: '#fff', subtext: '#ccc', primary: '#6EA8FE' },
-      tone: 'dark',
-    };
+  const { palette, tone } = useKISTheme();
 
   const logo: ImageSourcePropType = tone === 'dark' ? logoDark : logoLight;
 
@@ -317,12 +311,12 @@ export default function SplashScreen({
           />
         </View>
 
-        <Text style={[styles.title, { color: palette.text }]}>
+        <KISText preset="h1" color={palette.text} style={styles.title}>
           kingdom{'\n'}impact social
-        </Text>
-        <Text style={[styles.subtitle, { color: palette.subtext }]}>
+        </KISText>
+        <KISText preset="body" color={palette.subtext} style={styles.subtitle}>
           Connecting Communities in Faith
-        </Text>
+        </KISText>
       </View>
     </View>
   );

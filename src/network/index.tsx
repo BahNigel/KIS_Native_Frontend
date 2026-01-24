@@ -1,5 +1,7 @@
 // network/routes/index.ts
 import { Platform } from 'react-native';
+import { useEffect, useState } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 /**
  * Set USE_EMULATOR = true when testing on Android/iOS emulator/simulator.
@@ -40,6 +42,26 @@ export const CHAT_UPLOAD_URL = `${CHAT_BASE_URL}/uploads/file`;
 export const WEBSOCKET_URL = CHAT_WS_URL;
 
 export const NEST_API_BASE_URL = CHAT_BASE_URL; // keep in sync with CHAT_BASE_URL
+
+// Centralize endpoints here so you can adjust once if your backend paths differ.
+
+export const FEEDS_ENDPOINT = '/api/v1/broadcast/feeds/';
+export const FEEDS_TRENDING_ENDPOINT = '/api/v1/broadcast/trending/';
+export const FEEDS_CODES_ENDPOINT = '/api/v1/broadcast/codes/';
+
+// Subscribe/unsubscribe for a source/channel/community/etc
+export const SUBSCRIBE_ENDPOINT = (sourceId: string) => `/api/v1/broadcast/sources/${sourceId}/subscribe/`;
+export const UNSUBSCRIBE_ENDPOINT = (sourceId: string) => `/api/v1/broadcast/sources/${sourceId}/unsubscribe/`;
+
+
+
+// Adjust these when you confirm your backend routes.
+// Keep them centralized so wiring is painless.
+
+export const EDUCATION_HOME_ENDPOINT = '/api/v1/education/home/';
+export const EDUCATION_LESSONS_ENDPOINT = '/api/v1/education/lessons/';
+export const EDUCATION_COURSES_ENDPOINT = '/api/v1/education/courses/';
+export const EDUCATION_ENROLL_ENDPOINT = (courseId: string) => `/api/v1/education/courses/${courseId}/enroll/`;
 
 const ROUTES = {
   auth: {
@@ -95,6 +117,24 @@ const ROUTES = {
     list: `${API_BASE_URL}/api/v1/subscriptions/`,
     detail: (id: string) => `${API_BASE_URL}/api/v1/subscriptions/${id}/`,
     create: `${API_BASE_URL}/api/v1/subscriptions/`,
+  },
+  healthcare: {
+    organizations: `${API_BASE_URL}/api/v1/medical/organizations/`,
+    organization: (id: string) => `${API_BASE_URL}/api/v1/medical/organizations/${id}/`,
+    profiles: `${API_BASE_URL}/api/v1/medical/profiles/`,
+    profile: (id: string) => `${API_BASE_URL}/api/v1/medical/profiles/${id}/`,
+    staff: `${API_BASE_URL}/api/v1/medical/staff/`,
+  },
+  patients: {
+    master: `${API_BASE_URL}/api/v1/patients/master/`,
+    family: `${API_BASE_URL}/api/v1/patients/family/`,
+    consents: `${API_BASE_URL}/api/v1/patients/consents/`,
+    encounters: `${API_BASE_URL}/api/v1/patients/encounters/`,
+    appointments: `${API_BASE_URL}/api/v1/patients/appointments/`,
+    summary: (id: string) => `${API_BASE_URL}/api/v1/core/patients/master/${id}/summary/`,
+    medications: `${API_BASE_URL}/api/v1/patients/medications/`,
+    allergies: `${API_BASE_URL}/api/v1/patients/allergies/`,
+    vitals: `${API_BASE_URL}/api/v1/patients/vitals/`,
   },
   wallet: {
     me: `${API_BASE_URL}/api/v1/wallet/me/`,
@@ -188,6 +228,14 @@ const ROUTES = {
     postUnpin: (id: string) => `${API_BASE_URL}/api/v1/posts/${id}/unpin/`,
     postDelete: (id: string) => `${API_BASE_URL}/api/v1/posts/${id}/delete/`,
     postBroadcast: (id: string) => `${API_BASE_URL}/api/v1/posts/${id}/broadcast/`,
+  },
+  telemedicine: {
+    sessions: `${API_BASE_URL}/api/v1/telemedicine/sessions/`,
+    session: (id: string) => `${API_BASE_URL}/api/v1/telemedicine/sessions/${id}/`,
+    sessionStart: (id: string) => `${API_BASE_URL}/api/v1/telemedicine/sessions/${id}/start/`,
+    sessionEnd: (id: string) => `${API_BASE_URL}/api/v1/telemedicine/sessions/${id}/end/`,
+    devices: `${API_BASE_URL}/api/v1/telemedicine/devices/`,
+    dictations: `${API_BASE_URL}/api/v1/telemedicine/dictations/`,
   },
   bible: {
     translations: `${API_BASE_URL}/api/v1/bible/translations/`,
@@ -340,6 +388,12 @@ const ROUTES = {
     lessonEnrollments: `${API_BASE_URL}/api/v1/broadcasts/lessons/enrollments/`,
     lessonEnroll: (lessonId: string) =>
       `${API_BASE_URL}/api/v1/broadcasts/lessons/${lessonId}/enroll/`,
+    createProfile: `${API_BASE_URL}/api/v1/broadcasts/profiles/create/`,
+    feedProfile: `${API_BASE_URL}/api/v1/broadcasts/profiles/feeds/`,
+    feedEntry: (id: string) => `${API_BASE_URL}/api/v1/broadcasts/profiles/feeds/${id}/`,
+    profileAttachment: `${API_BASE_URL}/api/v1/broadcasts/profiles/attachment/`,
+    profileManage: `${API_BASE_URL}/api/v1/broadcasts/profiles/manage/`,
+    subscribe: `${API_BASE_URL}/api/v1/broadcasts/subscribe/`,
   },
   commerce: {
     shops: `${API_BASE_URL}/api/v1/commerce/shops/`,
@@ -347,6 +401,30 @@ const ROUTES = {
     productBroadcast: (id: string) => `${API_BASE_URL}/api/v1/commerce/products/${id}/broadcast/`,
     productSubscribe: (id: string) => `${API_BASE_URL}/api/v1/commerce/products/${id}/subscribe/`,
     shopJoin: (id: string) => `${API_BASE_URL}/api/v1/commerce/shops/${id}/join/`,
+  },
+  ai: {
+    groqStream: `${API_BASE_URL}/api/v1/ai-integration/groq-stream/`,
+    groqTask: `${API_BASE_URL}/api/v1/ai-integration/groq-task/`,
+  },
+  core: {
+    organizations: `${API_BASE_URL}/api/v1/core/medical/organizations/`,
+    profiles: `${API_BASE_URL}/api/v1/core/medical/profiles/`,
+    locations: `${API_BASE_URL}/api/v1/core/medical/locations/`,
+    wards: `${API_BASE_URL}/api/v1/core/medical/wards/`,
+    services: `${API_BASE_URL}/api/v1/core/medical/services/`,
+    equipment: `${API_BASE_URL}/api/v1/core/medical/equipment/`,
+    context: `${API_BASE_URL}/api/v1/core/medical/context/`,
+    setActiveProfile: (id: string) => `${API_BASE_URL}/api/v1/core/medical/profiles/${id}/set-active/`,
+    staff: `${API_BASE_URL}/api/v1/core/medical/staff/`,
+    staffDetail: (id: string) => `${API_BASE_URL}/api/v1/core/medical/staff/${id}/`,
+    staffAssignRole: (id: string) => `${API_BASE_URL}/api/v1/core/medical/staff/${id}/assign-role/`,
+    staffAssignShift: (id: string) => `${API_BASE_URL}/api/v1/core/medical/staff/${id}/assign-shift/`,
+    staffAudits: `${API_BASE_URL}/api/v1/core/medical/staff-audits/`,
+  },
+  feeds: {
+    create: `${NEST_API_BASE_URL}/api/v1/feeds`,
+    broadcast: (id: string) => `${NEST_API_BASE_URL}/api/v1/feeds/${id}/broadcast`,
+    broadcastFromChannel: `${NEST_API_BASE_URL}/api/v1/feeds/broadcast-from-channel`,
   },
   statuses: {
     list: `${API_BASE_URL}/api/v1/statuses/`,
@@ -358,3 +436,82 @@ const ROUTES = {
 };
 
 export default ROUTES;
+
+export type MediaHeaders = Record<string, string>;
+export type MediaSource = { uri: string; headers?: MediaHeaders };
+
+export const buildMediaSource = (
+  uri?: string | null,
+  headers?: MediaHeaders,
+): MediaSource | undefined => {
+  if (!uri) return undefined;
+  if (headers && Object.keys(headers).length > 0) {
+    return { uri, headers };
+  }
+  return { uri };
+};
+
+export const useMediaHeaders = (): MediaHeaders => {
+  const [headers, setHeaders] = useState<MediaHeaders>({});
+
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      const token = await AsyncStorage.getItem('access_token');
+      const deviceId = await AsyncStorage.getItem('device_id');
+      if (!active) return;
+      const next: MediaHeaders = {};
+      if (token) next.Authorization = `Bearer ${token}`;
+      if (deviceId) next['X-Device-Id'] = deviceId;
+      console.log('[useMediaHeaders] headers ready', { token: !!token, deviceId: !!deviceId, next });
+      setHeaders(next);
+    })();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  return headers;
+};
+
+const NEST_API_HOST = (() => {
+  try {
+    return new URL(NEST_API_BASE_URL).host;
+  } catch {
+    return undefined;
+  }
+})();
+
+export const resolveBackendAssetUrl = (value?: string | null): string | undefined => {
+  if (!value) return undefined;
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+  if (/^file:/i.test(trimmed)) {
+    return undefined;
+  }
+  if (/^(?:https?:)?\/\//i.test(trimmed)) {
+    if (trimmed.startsWith('//')) {
+      return `https:${trimmed}`;
+    }
+    try {
+      const parsed = new URL(trimmed);
+      if (NEST_API_HOST && parsed.host === NEST_API_HOST) {
+        return trimmed;
+      }
+      const pathAndSearch = `${parsed.pathname}${parsed.search}${parsed.hash}`;
+      const hostIsLocal =
+        parsed.hostname === '127.0.0.1' ||
+        parsed.hostname === '::1' ||
+        parsed.hostname === 'localhost';
+      if (hostIsLocal) {
+        const normalizedBase = API_BASE_URL.replace(/\/$/, '');
+        return `${normalizedBase}${pathAndSearch}`;
+      }
+      return trimmed;
+    } catch {
+      return trimmed;
+    }
+  }
+  const normalized = trimmed.startsWith('/') ? trimmed : `/${trimmed}`;
+  return `${NEST_API_BASE_URL}${normalized}`;
+};

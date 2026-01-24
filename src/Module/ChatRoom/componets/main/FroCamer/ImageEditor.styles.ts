@@ -53,7 +53,7 @@ export const editorStyles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 999,
-    borderWidth: 1,
+    borderWidth: 2,
     marginHorizontal: 4,
   },
   toolsRow: {
@@ -70,7 +70,7 @@ export const editorStyles = StyleSheet.create({
     paddingHorizontal: 6,
     paddingVertical: 6,
     borderRadius: kisRadius.lg,
-    borderWidth: 1,
+    borderWidth: 2,
     marginHorizontal: 4,
   },
   footer: {
@@ -86,7 +86,7 @@ export const editorStyles = StyleSheet.create({
     justifyContent: 'center',
     paddingVertical: 10,
     borderRadius: kisRadius.lg,
-    borderWidth: 1,
+    borderWidth: 2,
     marginHorizontal: 4,
   },
   textControlsRow: {
@@ -101,21 +101,21 @@ export const editorStyles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: kisRadius.lg,
-    borderWidth: 1,
+    borderWidth: 2,
     marginRight: 8,
   },
   textSizeButton: {
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 999,
-    borderWidth: 1,
+    borderWidth: 2,
     marginHorizontal: 2,
   },
   textStyleButton: {
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 999,
-    borderWidth: 1,
+    borderWidth: 2,
     marginHorizontal: 4,
   },
   colorDot: {
@@ -123,6 +123,6 @@ export const editorStyles = StyleSheet.create({
     height: 18,
     borderRadius: 9,
     marginHorizontal: 4,
-    borderWidth: 1,
+    borderWidth: 2,
   },
 });

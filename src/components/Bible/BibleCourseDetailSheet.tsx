@@ -11,7 +11,11 @@ import KISButton from '@/constants/KISButton';
 import KISTextInput from '@/constants/KISTextInput';
 import { getRequest } from '@/network/get';
 import { postRequest } from '@/network/post';
-import ROUTES, { API_BASE_URL } from '@/network';
+import ROUTES, {
+  API_BASE_URL,
+  buildMediaSource,
+  useMediaHeaders,
+} from '@/network';
 
 type Course = {
   id: string;
@@ -78,6 +82,7 @@ export default function BibleCourseDetailSheet({
   const [quizVisible, setQuizVisible] = useState(false);
   const [activeQuiz, setActiveQuiz] = useState<any | null>(null);
   const [quizAnswers, setQuizAnswers] = useState<Record<string, any>>({});
+  const mediaHeaders = useMediaHeaders();
   const [quizResult, setQuizResult] = useState<any | null>(null);
   const [assignmentVisible, setAssignmentVisible] = useState(false);
   const [activeAssignment, setActiveAssignment] = useState<any | null>(null);
@@ -998,6 +1003,7 @@ export default function BibleCourseDetailSheet({
               const localUri = offlineAssets[uri] || uri;
               const resumeMs = Number(activeLesson?.last_position_ms || 0);
               if (kind.includes('video')) {
+                const mediaSource = buildMediaSource(localUri, mediaHeaders);
                 return (
                   <View style={{ marginTop: 16 }}>
                     <View style={styles.actionRow}>
@@ -1015,7 +1021,7 @@ export default function BibleCourseDetailSheet({
                       />
                     </View>
                     <Video
-                      source={{ uri: localUri }}
+                      source={mediaSource ?? { uri: localUri }}
                       style={styles.videoPlayer}
                       controls
                       rate={playbackRate}
@@ -1040,6 +1046,7 @@ export default function BibleCourseDetailSheet({
                 );
               }
               if (kind.includes('audio')) {
+                const audioSource = buildMediaSource(localUri, mediaHeaders);
                 return (
                   <View style={{ marginTop: 16 }}>
                     <View style={styles.actionRow}>
@@ -1057,7 +1064,7 @@ export default function BibleCourseDetailSheet({
                       />
                     </View>
                     <Video
-                      source={{ uri: localUri }}
+                      source={audioSource ?? { uri: localUri }}
                       style={styles.audioPlayer}
                       controls
                       audioOnly
@@ -1493,17 +1500,17 @@ const styles = StyleSheet.create({
   sheet: { maxHeight: '88%', borderTopLeftRadius: 18, borderTopRightRadius: 18, padding: 16 },
   headerRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 12 },
   actionRow: { flexDirection: 'row', gap: 8, marginTop: 12, alignItems: 'center', flexWrap: 'wrap' },
-  lessonCard: { borderWidth: 1, borderRadius: 12, padding: 10, flexDirection: 'row', gap: 8 },
+  lessonCard: { borderWidth: 2, borderRadius: 12, padding: 10, flexDirection: 'row', gap: 8 },
   lessonDetailWrap: { flex: 1, padding: 16 },
-  attachmentRow: { borderWidth: 1, borderRadius: 12, padding: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  attachmentRow: { borderWidth: 2, borderRadius: 12, padding: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   videoPlayer: { width: '100%', height: 220, borderRadius: 12, backgroundColor: '#000' },
   audioPlayer: { width: '100%', height: 60, borderRadius: 12, backgroundColor: '#000' },
   pdfViewer: { flex: 1, width: '100%' },
-  speedChip: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 6 },
-  quizChoice: { borderWidth: 1, borderRadius: 10, padding: 10 },
+  speedChip: { borderWidth: 2, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 6 },
+  quizChoice: { borderWidth: 2, borderRadius: 10, padding: 10 },
   badgeRow: { flexDirection: 'row', gap: 6, flexWrap: 'wrap', marginTop: 6 },
   badge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 999, fontSize: 11 },
   reactionRow: { flexDirection: 'row', gap: 12, marginTop: 12 },
   reactionChip: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  commentCard: { borderWidth: 1, borderRadius: 10, padding: 10 },
+  commentCard: { borderWidth: 2, borderRadius: 10, padding: 10 },
 });

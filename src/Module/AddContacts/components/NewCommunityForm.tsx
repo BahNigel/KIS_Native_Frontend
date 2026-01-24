@@ -30,6 +30,12 @@ type NewCommunityFormProps = {
   onSelectMembers: () => void;
   showMemberPicker?: boolean;
   partnerId?: string | null;
+  name?: string;
+  slug?: string;
+  description?: string;
+  onChangeName?: (value: string) => void;
+  onChangeSlug?: (value: string) => void;
+  onChangeDescription?: (value: string) => void;
 };
 
 const slugify = (value: string): string =>
@@ -46,21 +52,50 @@ export const NewCommunityForm: React.FC<NewCommunityFormProps> = ({
   onSelectMembers,
   showMemberPicker = true,
   partnerId,
+  name,
+  slug,
+  description,
+  onChangeName,
+  onChangeSlug,
+  onChangeDescription,
 }) => {
-  const [name, setName] = useState('');
-  const [slug, setSlug] = useState('');
-  const [description, setDescription] = useState('');
+  const [nameState, setNameState] = useState('');
+  const [slugState, setSlugState] = useState('');
+  const [descriptionState, setDescriptionState] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const memberCountLabel = `${selectedMemberIds.length} selected`;
+  const nameValue = name ?? nameState;
+  const slugValue = slug ?? slugState;
+  const descriptionValue = description ?? descriptionState;
+  const handleNameChange = (value: string) => {
+    onChangeName?.(value);
+    if (name === undefined) {
+      setNameState(value);
+    }
+  };
+  const handleSlugChange = (value: string) => {
+    onChangeSlug?.(value);
+    if (slug === undefined) {
+      setSlugState(value);
+    }
+  };
+  const handleDescriptionChange = (value: string) => {
+    onChangeDescription?.(value);
+    if (description === undefined) {
+      setDescriptionState(value);
+    }
+  };
 
   const handleSubmit = async () => {
-    const trimmedName = name.trim();
+    const trimmedName = nameValue.trim();
     if (!trimmedName) {
       Alert.alert('Missing name', 'Please enter a community name.');
       return;
     }
 
-    const finalSlug = slug.trim() ? slugify(slug) : slugify(trimmedName);
+    const finalSlug = slugValue.trim()
+      ? slugify(slugValue)
+      : slugify(trimmedName);
 
     try {
       setSubmitting(true);
@@ -68,7 +103,7 @@ export const NewCommunityForm: React.FC<NewCommunityFormProps> = ({
       const payload = {
         name: trimmedName,
         slug: finalSlug,
-        description: description.trim() || undefined,
+        description: descriptionValue.trim() || undefined,
         partner: partnerId ?? null,
       };
 
@@ -127,7 +162,7 @@ export const NewCommunityForm: React.FC<NewCommunityFormProps> = ({
         <View
           style={{
             borderRadius: 12,
-            borderWidth: 1,
+            borderWidth: 2,
             borderColor: palette.inputBorder,
             backgroundColor: palette.card,
             paddingHorizontal: 12,
@@ -135,8 +170,8 @@ export const NewCommunityForm: React.FC<NewCommunityFormProps> = ({
           }}
         >
           <TextInput
-            value={name}
-            onChangeText={setName}
+            value={nameValue}
+            onChangeText={handleNameChange}
             placeholder="e.g. KIS Global Prayer"
             placeholderTextColor={palette.subtext}
             style={{ color: palette.text, fontSize: 14 }}
@@ -158,7 +193,7 @@ export const NewCommunityForm: React.FC<NewCommunityFormProps> = ({
         <View
           style={{
             borderRadius: 12,
-            borderWidth: 1,
+            borderWidth: 2,
             borderColor: palette.inputBorder,
             backgroundColor: palette.card,
             paddingHorizontal: 12,
@@ -166,8 +201,8 @@ export const NewCommunityForm: React.FC<NewCommunityFormProps> = ({
           }}
         >
           <TextInput
-            value={slug}
-            onChangeText={setSlug}
+            value={slugValue}
+            onChangeText={handleSlugChange}
             autoCapitalize="none"
             autoCorrect={false}
             placeholder="e.g. kis-global-prayer"
@@ -200,7 +235,7 @@ export const NewCommunityForm: React.FC<NewCommunityFormProps> = ({
         <View
           style={{
             borderRadius: 12,
-            borderWidth: 1,
+            borderWidth: 2,
             borderColor: palette.inputBorder,
             backgroundColor: palette.card,
             paddingHorizontal: 12,
@@ -208,8 +243,8 @@ export const NewCommunityForm: React.FC<NewCommunityFormProps> = ({
           }}
         >
           <TextInput
-            value={description}
-            onChangeText={setDescription}
+            value={descriptionValue}
+            onChangeText={handleDescriptionChange}
             placeholder="What is this community about?"
             placeholderTextColor={palette.subtext}
             style={{
@@ -232,7 +267,7 @@ export const NewCommunityForm: React.FC<NewCommunityFormProps> = ({
           <View
             style={{
               borderRadius: 12,
-              borderWidth: 1,
+              borderWidth: 2,
               borderColor: palette.inputBorder,
               backgroundColor: palette.card,
               padding: 10,
@@ -247,7 +282,7 @@ export const NewCommunityForm: React.FC<NewCommunityFormProps> = ({
                 paddingVertical: 10,
                 paddingHorizontal: 12,
                 borderRadius: 10,
-                borderWidth: 1,
+                borderWidth: 2,
                 borderColor: palette.inputBorder,
                 backgroundColor: pressed ? palette.surface : 'transparent',
               })}
@@ -273,7 +308,7 @@ export const NewCommunityForm: React.FC<NewCommunityFormProps> = ({
           paddingHorizontal: 16,
           backgroundColor: palette.primary,
           opacity:
-            submitting || !name.trim()
+            submitting || !nameValue.trim()
               ? 0.6
               : pressed
               ? KIS_TOKENS.opacity.pressed

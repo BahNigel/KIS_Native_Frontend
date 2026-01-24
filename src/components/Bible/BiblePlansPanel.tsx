@@ -55,5 +55,5 @@ export default function BiblePlansPanel() {
 
 const styles = StyleSheet.create({
   title: { fontSize: 18, fontWeight: '800' },
-  planCard: { borderWidth: 1, borderRadius: 12, padding: 12, gap: 6 },
+  planCard: { borderWidth: 2, borderRadius: 12, padding: 12, gap: 6 },
 });

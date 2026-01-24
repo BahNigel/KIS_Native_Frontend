@@ -78,6 +78,6 @@ export default function PrayerPanel() {
 
 const styles = StyleSheet.create({
   title: { fontSize: 18, fontWeight: '800' },
-  input: { borderWidth: 1, borderRadius: 10, padding: 10 },
-  prayerCard: { borderWidth: 1, borderRadius: 12, padding: 12 },
+  input: { borderWidth: 2, borderRadius: 10, padding: 10 },
+  prayerCard: { borderWidth: 2, borderRadius: 12, padding: 12 },
 });

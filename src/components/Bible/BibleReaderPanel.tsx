@@ -8,7 +8,11 @@ import KISButton from '@/constants/KISButton';
 import { KISIcon } from '@/constants/kisIcons';
 import { getRequest } from '@/network/get';
 import { postRequest } from '@/network/post';
-import ROUTES, { API_BASE_URL } from '@/network';
+import ROUTES, {
+  API_BASE_URL,
+  buildMediaSource,
+  useMediaHeaders,
+} from '@/network';
 import type { BibleBook, BibleReaderPayload, BibleTranslation } from '@/screens/tabs/bible/useBibleData';
 
 const MAX_PREVIEW_VERSES = 30;
@@ -38,6 +42,7 @@ export default function BibleReaderPanel({
   const [audioSpeed, setAudioSpeed] = useState(1.0);
   const [audioSync, setAudioSync] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const mediaHeaders = useMediaHeaders();
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [searching, setSearching] = useState(false);
   const [aiSuggestion, setAiSuggestion] = useState<string | null>(null);
@@ -67,15 +72,33 @@ export default function BibleReaderPanel({
   };
 
   const bookList = useMemo(() => books, [books]);
+  const currentTranslationCode = selectedTranslation ?? reader?.translation?.code ?? translations[0]?.code;
+  const currentBookCode = selectedBook ?? reader?.book?.code ?? books[0]?.code;
   const selectedBookObj = useMemo(
-    () => books.find((book) => book.code === selectedBook) || books[0],
-    [books, selectedBook],
+    () => books.find((book) => book.code === currentBookCode) || books[0],
+    [books, currentBookCode],
+  );
+  const translationDisplayName = useMemo(
+    () =>
+      translations.find((t) => t.code === currentTranslationCode)?.name ??
+      reader?.translation?.name ??
+      'Holy Bible',
+    [translations, currentTranslationCode, reader?.translation?.name],
   );
   const audioUrl = reader?.audio?.audio_file
     ? reader.audio.audio_file.startsWith('http')
       ? reader.audio.audio_file
       : `${API_BASE_URL}${reader.audio.audio_file}`
     : null;
+  const audioSource = buildMediaSource(audioUrl, mediaHeaders);
+  const displayedChapter = reader?.chapter?.number ?? Number(chapterInput || 1);
+  const limitedSearchResults = searchResults.slice(0, 6);
+  const callLoad = (chapterNum?: number, translationCode?: string, bookCode?: string) => {
+    const translationParam = translationCode ?? currentTranslationCode;
+    const bookParam = bookCode ?? currentBookCode;
+    if (!translationParam || !bookParam) return;
+    onLoad(translationParam, bookParam, chapterNum ?? Number(chapterInput || 1));
+  };
 
   useEffect(() => {
     const loadPrefs = async () => {
@@ -135,12 +158,20 @@ export default function BibleReaderPanel({
   return (
     <BibleSectionCard>
       <Text style={[styles.title, { color: palette.text }]}>Read & listen</Text>
+      <View style={[styles.readerHeader, { backgroundColor: palette.surface, borderColor: palette.divider }]}>
+        <Text style={[styles.translationLabel, { color: palette.subtext }]} numberOfLines={1}>
+          {translationDisplayName}
+        </Text>
+        <Text style={[styles.chapterTitle, { color: palette.text }]} numberOfLines={1}>
+          {selectedBookObj?.name ?? 'Bible'} {displayedChapter}
+        </Text>
+      </View>
       <TranslationPicker
         translations={translations}
         selected={selectedTranslation}
         onSelect={(code) => {
           setSelectedTranslation(code);
-          onLoad(code, selectedBook, Number(chapterInput || 1));
+          callLoad(Number(chapterInput || 1), code);
         }}
       />
 
@@ -152,7 +183,7 @@ export default function BibleReaderPanel({
               key={book.id}
               onPress={() => {
                 setSelectedBook(book.code);
-                onLoad(selectedTranslation, book.code, Number(chapterInput || 1));
+                callLoad(Number(chapterInput || 1), undefined, book.code);
               }}
               style={[
                 styles.bookChip,
@@ -179,7 +210,7 @@ export default function BibleReaderPanel({
         <KISButton
           title="Load"
           size="xs"
-          onPress={() => onLoad(selectedTranslation, selectedBook, Number(chapterInput || 1))}
+          onPress={() => callLoad(Number(chapterInput || 1))}
         />
       </View>
 
@@ -192,7 +223,7 @@ export default function BibleReaderPanel({
                 key={chapter.id}
                 onPress={() => {
                   setChapterInput(String(chapter.number));
-                  onLoad(selectedTranslation, selectedBook, Number(chapter.number));
+                  callLoad(Number(chapter.number));
                 }}
                 style={[
                   styles.chapterChip,
@@ -243,8 +274,8 @@ export default function BibleReaderPanel({
                   },
                 ]}
               >
-                <Text style={{ color: palette.subtext, width: 28 }}>{verse.number}</Text>
-                <Text style={{ color: palette.text, flex: 1 }}>{verse.text}</Text>
+                <Text style={[styles.verseNumber, { color: palette.subtext }]}>{verse.number}</Text>
+                <Text style={[styles.verseText, { color: palette.text }]}>{verse.text}</Text>
               </View>
             );
           })
@@ -270,20 +301,30 @@ export default function BibleReaderPanel({
           </View>
         ) : null}
         <View style={{ gap: 8 }}>
-          {searchResults.slice(0, 6).map((verse) => (
-            <View key={verse.id} style={[styles.searchResult, { borderColor: palette.divider }]}>
-              <Text style={{ color: palette.subtext, fontSize: 12 }}>
-                {verse.chapter?.book?.name} {verse.chapter?.number}:{verse.number}
-              </Text>
-              <Text style={{ color: palette.text, marginTop: 4 }}>{verse.text}</Text>
-            </View>
-          ))}
+          {limitedSearchResults.map((verse, index) => {
+            const previousBookName = limitedSearchResults[index - 1]?.chapter?.book?.name;
+            const showBookLabel =
+              !!verse.chapter?.book?.name && verse.chapter?.book?.name !== previousBookName;
+            return (
+              <View key={verse.id} style={[styles.searchResult, { borderColor: palette.divider }]}>
+                {showBookLabel ? (
+                  <Text style={[styles.searchBookLabel, { color: palette.primaryStrong }]}>
+                    {verse.chapter?.book?.name}
+                  </Text>
+                ) : null}
+                <Text style={[styles.searchReference, { color: palette.subtext }]}>
+                  {verse.chapter?.number}:{verse.number}
+                </Text>
+                <Text style={{ color: palette.text, marginTop: 4 }}>{verse.text}</Text>
+              </View>
+            );
+          })}
         </View>
       </View>
 
       {audioUrl ? (
         <Video
-          source={{ uri: audioUrl }}
+          source={audioSource ?? { uri: audioUrl }}
           paused={!isPlaying}
           audioOnly
           rate={audioSpeed}
@@ -314,25 +355,44 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 12,
-    borderWidth: 1,
+    borderWidth: 2,
   },
   chapterRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  chapterInput: { borderWidth: 1, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 6, minWidth: 60 },
+  chapterInput: { borderWidth: 2, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 6, minWidth: 60 },
   audioRow: {
-    borderWidth: 1,
+    borderWidth: 2,
     borderRadius: 12,
     padding: 10,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  readerBox: { borderWidth: 1, borderRadius: 12, padding: 10, gap: 6 },
-  verseRow: { flexDirection: 'row', gap: 8, paddingVertical: 6, paddingHorizontal: 6, borderRadius: 8 },
+  readerHeader: {
+    borderWidth: 2,
+    borderRadius: 12,
+    padding: 12,
+    marginVertical: 12,
+  },
+  translationLabel: { fontSize: 12, letterSpacing: 1.5, textTransform: 'uppercase' },
+  chapterTitle: { fontSize: 22, fontWeight: '700', letterSpacing: 0.5 },
+  readerBox: { borderWidth: 2, borderRadius: 12, padding: 10, gap: 6 },
+  verseRow: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingVertical: 6,
+    paddingHorizontal: 6,
+    borderRadius: 8,
+    alignItems: 'flex-start',
+  },
+  verseNumber: { width: 28, fontWeight: '600', textAlign: 'right' },
+  verseText: { flex: 1, lineHeight: 22 },
   chapterRowScroll: { gap: 8, paddingVertical: 6 },
   chapterChip: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10, borderWidth: 1 },
   searchPanel: { gap: 8, marginTop: 12 },
   searchRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  searchInput: { flex: 1, borderWidth: 1, borderRadius: 10, padding: 10 },
-  searchResult: { borderWidth: 1, borderRadius: 10, padding: 10 },
-  suggestionBox: { borderWidth: 1, borderRadius: 10, padding: 10 },
+  searchInput: { flex: 1, borderWidth: 2, borderRadius: 10, padding: 10 },
+  searchResult: { borderWidth: 2, borderRadius: 10, padding: 10 },
+  searchBookLabel: { fontSize: 12, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 1 },
+  searchReference: { fontSize: 12 },
+  suggestionBox: { borderWidth: 2, borderRadius: 10, padding: 10 },
 });

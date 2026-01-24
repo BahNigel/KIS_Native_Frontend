@@ -147,8 +147,8 @@ export default function BibleCommunityPanel() {
 const styles = StyleSheet.create({
   title: { fontSize: 18, fontWeight: '800' },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginTop: 12 },
-  card: { borderWidth: 1, borderRadius: 12, padding: 12, width: '47%' },
-  section: { borderWidth: 1, borderRadius: 12, padding: 12, marginTop: 12 },
-  input: { borderWidth: 1, borderRadius: 10, padding: 10, marginTop: 8 },
-  prayerCard: { borderWidth: 1, borderRadius: 12, padding: 10, gap: 4 },
+  card: { borderWidth: 2, borderRadius: 12, padding: 12, width: '47%' },
+  section: { borderWidth: 2, borderRadius: 12, padding: 12, marginTop: 12 },
+  input: { borderWidth: 2, borderRadius: 10, padding: 10, marginTop: 8 },
+  prayerCard: { borderWidth: 2, borderRadius: 12, padding: 10, gap: 4 },
 });

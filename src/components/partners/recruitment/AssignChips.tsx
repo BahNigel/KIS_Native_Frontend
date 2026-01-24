@@ -36,7 +36,7 @@ export default function AssignChips({
                 paddingHorizontal: 10,
                 paddingVertical: 6,
                 borderRadius: 999,
-                borderWidth: 1,
+                borderWidth: 2,
                 borderColor: palette.borderMuted,
                 backgroundColor: active ? palette.primarySoft : 'transparent',
                 marginRight: 8,

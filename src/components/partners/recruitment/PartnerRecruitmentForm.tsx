@@ -61,7 +61,7 @@ export default function PartnerRecruitmentForm({
         placeholderTextColor={palette.subtext}
         style={{
           marginTop: 8,
-          borderWidth: 1,
+          borderWidth: 2,
           borderColor: palette.borderMuted,
           borderRadius: 10,
           paddingHorizontal: 10,
@@ -77,7 +77,7 @@ export default function PartnerRecruitmentForm({
         multiline
         style={{
           marginTop: 8,
-          borderWidth: 1,
+          borderWidth: 2,
           borderColor: palette.borderMuted,
           borderRadius: 10,
           paddingHorizontal: 10,
@@ -95,7 +95,7 @@ export default function PartnerRecruitmentForm({
         multiline
         style={{
           marginTop: 8,
-          borderWidth: 1,
+          borderWidth: 2,
           borderColor: palette.borderMuted,
           borderRadius: 10,
           paddingHorizontal: 10,
@@ -113,7 +113,7 @@ export default function PartnerRecruitmentForm({
         multiline
         style={{
           marginTop: 8,
-          borderWidth: 1,
+          borderWidth: 2,
           borderColor: palette.borderMuted,
           borderRadius: 10,
           paddingHorizontal: 10,

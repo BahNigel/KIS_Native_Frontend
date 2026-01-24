@@ -364,7 +364,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
    */
   const pinnedStyle = isPinned
     ? {
-        borderWidth: 1,
+        borderWidth: 2,
         borderColor:
           palette.pinnedBorder ?? (palette.primarySoft ?? '#4F46E533'),
       }
@@ -569,7 +569,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
               marginRight: 6,
               marginBottom: 6,
               backgroundColor: palette.reactionAddBg ?? '#0000000d',
-              borderWidth: 1,
+              borderWidth: 2,
               borderColor: palette.reactionAddBorder ?? '#00000022',
             }}
           >
@@ -1185,7 +1185,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
               paddingHorizontal: 10,
               paddingVertical: 6,
               borderRadius: 12,
-              borderWidth: 1,
+              borderWidth: 2,
               borderColor: titleColor,
             }}
           >

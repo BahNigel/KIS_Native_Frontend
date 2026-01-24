@@ -29,6 +29,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useKISTheme } from '../theme/useTheme';
 import { KISIcon, KISIconName } from '@/constants/kisIcons';
+import type { MainTabsParamList } from '@/navigation/types';
 
 import MessagesScreen from '../screens/tabs/MessagesScreen';
 import PartnersScreen from '../screens/tabs/PartnersScreen';
@@ -41,10 +42,12 @@ import ChatInfoPage from '@/Module/ChatRoom/ChatInfoPage';
 import CommunityInfoPage from '@/Module/Community/CommunityInfoPage';
 import { Chat } from '@/Module/ChatRoom/messagesUtils';
 import { useSocket } from '../../SocketProvider';
+import ROUTES from '@/network';
+import { getRequest } from '@/network/get';
 
 type RouteKey = 'Partners' | 'Bible' | 'Messages' | 'Broadcast' | 'Profile';
 
-const Tabs = createBottomTabNavigator();
+const Tabs = createBottomTabNavigator<MainTabsParamList>();
 
 const routeIconMap: Record<RouteKey, KISIconName> = {
   Partners: 'people',
@@ -251,6 +254,9 @@ function AnimatedKISTabBar({
 export function MainTabs() {
   const { palette } = useKISTheme();
   const { currentUserId } = useSocket();
+  const [communityByConversationId, setCommunityByConversationId] = useState<
+    Record<string, { id: string; name: string }>
+  >({});
   // ✅ Responsive width for overlay slide
   const { width } = useWindowDimensions();
 
@@ -270,6 +276,67 @@ export function MainTabs() {
 
   // 👇 control for hiding the nav bar (managed ONLY here)
   const [hidNav, setHidNav] = useState(false);
+
+  useEffect(() => {
+    if (!currentUserId) {
+      setCommunityByConversationId({});
+      return;
+    }
+    let active = true;
+
+    const loadCommunities = async () => {
+      try {
+        const res = await getRequest(ROUTES.community.list, {
+          errorMessage: 'Failed to load communities',
+        });
+        const list = Array.isArray(res?.data?.results)
+          ? res.data.results
+          : Array.isArray(res?.results)
+          ? res.results
+          : Array.isArray(res?.data)
+          ? res.data
+          : Array.isArray(res)
+          ? res
+          : [];
+        if (!Array.isArray(list)) {
+          if (active) setCommunityByConversationId({});
+          return;
+        }
+
+        const next: Record<string, { id: string; name: string }> = {};
+        list.forEach((community: any) => {
+          const communityId = community?.id;
+          const mainId = community?.main_conversation_id ?? community?.mainConversationId;
+          const postsId = community?.posts_conversation_id ?? community?.postsConversationId;
+          const title = String(community?.name ?? community?.title ?? 'Community');
+          const register = (key: any) => {
+            if (!key) return;
+            const keyStr = String(key);
+            next[keyStr] = {
+              id: communityId ? String(communityId) : keyStr,
+              name: title,
+            };
+          };
+          register(communityId);
+          register(mainId);
+          register(postsId);
+        });
+
+        if (active) {
+          setCommunityByConversationId(next);
+        }
+      } catch (err) {
+        if (active) {
+          setCommunityByConversationId({});
+        }
+      }
+    };
+
+    loadCommunities();
+    return () => {
+      active = false;
+    };
+  }, [currentUserId]);
 
   useEffect(() => {
     let mounted = true;
@@ -303,11 +370,21 @@ export function MainTabs() {
   };
 
   const openChat = (chat: Chat) => {
-    const communityId = chat?.communityId ?? (chat?.isCommunityChat ? chat?.id : null);
-    if (chat?.isCommunityChat || chat?.kind === 'community' || communityId) {
+    const conversationKey = chat?.conversationId ?? chat?.id;
+    const communityEntry =
+      conversationKey && communityByConversationId[String(conversationKey)]
+        ? communityByConversationId[String(conversationKey)]
+        : undefined;
+    const communityId =
+      chat?.communityId ??
+      communityEntry?.id ??
+      (chat?.isCommunityChat ? chat?.id : null);
+    const shouldOpenCommunity =
+      chat?.isCommunityChat || chat?.kind === 'community' || Boolean(communityId);
+    if (shouldOpenCommunity && communityId) {
       openCommunity({
         id: String(communityId),
-        name: String(chat?.name ?? 'Community'),
+        name: communityEntry?.name ?? String(chat?.name ?? 'Community'),
       });
       return;
     }

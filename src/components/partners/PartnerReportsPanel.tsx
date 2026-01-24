@@ -263,7 +263,7 @@ export default function PartnerReportsPanel({
                   style={{
                     color: palette.text,
                     borderColor: palette.borderMuted,
-                    borderWidth: 1,
+                    borderWidth: 2,
                     paddingHorizontal: 10,
                     paddingVertical: 6,
                     borderRadius: 8,
@@ -278,7 +278,7 @@ export default function PartnerReportsPanel({
                   style={{
                     color: palette.text,
                     borderColor: palette.borderMuted,
-                    borderWidth: 1,
+                    borderWidth: 2,
                     paddingHorizontal: 10,
                     paddingVertical: 6,
                     borderRadius: 8,
@@ -292,7 +292,7 @@ export default function PartnerReportsPanel({
                       marginTop: 10,
                       paddingVertical: 8,
                       borderRadius: 10,
-                      borderWidth: 1,
+                      borderWidth: 2,
                       borderColor: palette.borderMuted,
                       backgroundColor: palette.primarySoft ?? palette.surface,
                       opacity: pressed ? 0.8 : 1,

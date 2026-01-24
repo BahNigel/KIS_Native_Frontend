@@ -255,7 +255,7 @@ const localStyles = StyleSheet.create({
     marginBottom: 12,
   },
   modalInput: {
-    borderWidth: 1,
+    borderWidth: 2,
     borderRadius: 10,
     paddingHorizontal: 12,
     paddingVertical: 8,
@@ -267,7 +267,7 @@ const localStyles = StyleSheet.create({
     gap: 10,
   },
   modalButton: {
-    borderWidth: 1,
+    borderWidth: 2,
     borderRadius: 10,
     paddingHorizontal: 14,
     paddingVertical: 8,

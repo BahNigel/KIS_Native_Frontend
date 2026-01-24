@@ -12,7 +12,8 @@
     "baseUrl": ".",
     "paths": {
       "@/*": ["src/*"],
-      "@/src/*": ["src/*"]
+      "@/src/*": ["src/*"],
+      "@/SocketProvider": ["SocketProvider.tsx"]
     },
     "resolveJsonModule": true
   },

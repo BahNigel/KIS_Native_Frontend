@@ -8,8 +8,8 @@ import {
   TextStyle,
   View,
 } from 'react-native';
-import { buttonStyles } from '../theme/constants';
-import { useKISTheme } from '../theme/useTheme';
+import { createButtonStyles } from '@/theme/foundations/buttons';
+import { useKISTheme } from '@/theme/useTheme';
 
 type Variant = 'primary' | 'secondary' | 'outline' | 'ghost';
 type Size = 'xs' | 'sm' | 'md' | 'lg';
@@ -39,8 +39,8 @@ export default function KISButton({
   textStyle,
   disabled,
 }: Props) {
-  const { tone, tokens } = useKISTheme();
-  const bs = buttonStyles(tone);
+  const { tone, palette, tokens } = useKISTheme();
+  const bs = createButtonStyles(tone, palette, tokens);
 
   // Resolve variant styles
   const variantStyles = bs[variant] ?? bs.primary;

@@ -1,12 +1,11 @@
 // src/screens/DeviceVerificationScreen.tsx
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
   StyleSheet,
-  Text,
   TextInput,
   View,
   ActivityIndicator,
@@ -16,16 +15,48 @@ import { useRoute, useNavigation } from '@react-navigation/native';
 import KISButton from '@/constants/KISButton';
 import { postRequest } from '@/network/post';
 import ROUTES from '@/network';
+import { useKISTheme } from '@/theme/useTheme';
+import KISText from '@/components/common/KISText';
+import { KIS_TOKENS } from '@/theme/constants';
 
 type RouteParams = {
   phone?: string | null;   // <-- we expect phone passed from Register
   purpose?: 'register' | 'login';
 };
 
-export default function DeviceVerificationScreen({setLoad}:any) {
+const makeStyles = (tokens: typeof KIS_TOKENS) =>
+  StyleSheet.create({
+    flex: { flex: 1 },
+    container: {
+      padding: tokens.spacing['2xl'],
+      gap: tokens.spacing.xl,
+      flexGrow: 1,
+      justifyContent: 'center',
+    },
+    headerBlock: {
+      gap: tokens.spacing.sm,
+      alignItems: 'center',
+    },
+    field: {
+      gap: tokens.spacing.sm,
+    },
+    input: {
+      borderWidth: 2,
+      borderRadius: tokens.radius.lg,
+      paddingHorizontal: 14,
+      paddingVertical: Platform.select({ ios: 12, android: 10 }),
+      fontSize: tokens.typography.input,
+    },
+    spacer: { height: tokens.spacing.sm },
+  });
+
+export default function DeviceVerificationScreen({ setLoad }: any) {
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
   const params: RouteParams = route?.params || {};
+
+  const { palette, tokens } = useKISTheme();
+  const styles = useMemo(() => makeStyles(tokens), [tokens]);
 
   const [phone, setPhone] = useState<string>(params.phone || '');
   const [purpose] = useState<'register' | 'login'>(params.purpose || 'register');
@@ -92,33 +123,57 @@ export default function DeviceVerificationScreen({setLoad}:any) {
   };
 
   return (
-    <SafeAreaView style={styles.flex}>
+    <SafeAreaView style={[styles.flex, { backgroundColor: palette.bg }]}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.flex}>
         <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
           <View style={styles.headerBlock}>
-            <Text style={styles.title}>Verify your account</Text>
-            <Text style={styles.subtitle}>We sent a 6-digit code to your phone.</Text>
+            <KISText preset="h1" style={{ textAlign: 'center', color: palette.text }}>
+              Verify your account
+            </KISText>
+            <KISText preset="body" color={palette.subtext}>
+              We sent a 6-digit code to your phone.
+            </KISText>
           </View>
 
           <View style={styles.field}>
-            <Text style={styles.label}>Phone (read-only)</Text>
+            <KISText preset="label" color={palette.subtext}>
+              Phone (read-only)
+            </KISText>
             <TextInput
               value={phone}
               onChangeText={setPhone}
               editable={false}
-              style={[styles.input, { opacity: 0.8 }]}
+              style={[
+                styles.input,
+                {
+                  borderColor: palette.inputBorder,
+                  backgroundColor: palette.surface,
+                  color: palette.text,
+                  opacity: 0.8,
+                },
+              ]}
             />
           </View>
 
           <View style={styles.field}>
-            <Text style={styles.label}>Verification Code</Text>
+            <KISText preset="label" color={palette.subtext}>
+              Verification Code
+            </KISText>
             <TextInput
               value={code}
               onChangeText={setCode}
               autoCapitalize="none"
               keyboardType="number-pad"
               placeholder="Enter 6-digit code"
-              style={styles.input}
+              placeholderTextColor={palette.subtext}
+              style={[
+                styles.input,
+                {
+                  borderColor: palette.inputBorder,
+                  backgroundColor: palette.surface,
+                  color: palette.text,
+                },
+              ]}
               maxLength={6}
             />
           </View>
@@ -133,7 +188,7 @@ export default function DeviceVerificationScreen({setLoad}:any) {
             {loadingVerify ? <ActivityIndicator /> : null}
           </KISButton>
 
-          <View style={{ height: 12 }} />
+          <View style={styles.spacer} />
 
           <KISButton
             title={loadingResend ? undefined : 'Resend Code'}
@@ -159,7 +214,7 @@ const styles = StyleSheet.create({
   field: { gap: 8 },
   label: { fontSize: 14, color: '#333' },
   input: {
-    borderWidth: 1, borderColor: '#ddd', borderRadius: 10,
+    borderWidth: 2, borderColor: '#ddd', borderRadius: 10,
     paddingHorizontal: 14, paddingVertical: Platform.select({ ios: 12, android: 10 }),
     fontSize: 16, backgroundColor: '#fff',
   },

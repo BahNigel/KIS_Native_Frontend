@@ -18,6 +18,8 @@ type UseBulkMessageActionsParams = {
   onReportMessage?: (message: ChatMessage) => Promise<boolean> | boolean;
   onPinMessage?: (message: ChatMessage, pinned: boolean) => void;
   onContinueInSubRoom?: (message: ChatMessage) => void;
+  onEditMessage?: (message: ChatMessage) => void;
+  onDeleteForEveryone?: (message: ChatMessage) => Promise<void> | void;
 };
 
 export function useBulkMessageActions({
@@ -33,6 +35,8 @@ export function useBulkMessageActions({
   onReportMessage,
   onPinMessage,
   onContinueInSubRoom,
+  onEditMessage,
+  onDeleteForEveryone,
 }: UseBulkMessageActionsParams) {
   const handlePinSelected = useCallback(async () => {
     if (!selectedIds.length) return;
@@ -106,6 +110,50 @@ export function useBulkMessageActions({
     );
   }, [isSingleSelection, messages, onContinueInSubRoom, selectedIds]);
 
+  const handleEditSelected = useCallback(() => {
+    if (!isSingleSelection) return;
+    const msgId = selectedIds[0];
+    const message = messages.find((m) => m.id === msgId);
+    if (!message) return;
+    if (onEditMessage) {
+      onEditMessage(message);
+    } else {
+      Alert.alert(
+        'Edit not yet wired',
+        'Editing requires a dedicated UI—please hook `onEditMessage` to open it.',
+      );
+    }
+    exitSelectionMode();
+  }, [isSingleSelection, messages, onEditMessage, exitSelectionMode, selectedIds]);
+
+  const handleDeleteForEveryone = useCallback(async () => {
+    if (!isSingleSelection) return;
+    const msgId = selectedIds[0];
+    const message = messages.find((m) => m.id === msgId);
+    if (!message) return;
+    const confirm = await new Promise<boolean>((resolve) => {
+      Alert.alert(
+        'Delete for everyone',
+        'Remove this message for everyone in the conversation?',
+        [
+          { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+          {
+            text: 'Delete',
+            style: 'destructive',
+            onPress: () => resolve(true),
+          },
+        ],
+      );
+    });
+    if (!confirm) return;
+    if (onDeleteForEveryone) {
+      await onDeleteForEveryone(message);
+    } else {
+      await softDeleteMessage(msgId);
+    }
+    exitSelectionMode();
+  }, [isSingleSelection, messages, onDeleteForEveryone, exitSelectionMode, selectedIds, softDeleteMessage]);
+
   const handleMoreSelected = useCallback(() => {
     if (!selectedMessages.length) return;
 
@@ -118,6 +166,19 @@ export function useBulkMessageActions({
         text: 'Pin',
         onPress: () => handlePinSelected(),
       },
+      ...(isSingleSelection
+        ? [
+            {
+              text: 'Edit message',
+              onPress: () => handleEditSelected(),
+            },
+            {
+              text: 'Delete for everyone',
+              style: 'destructive',
+              onPress: () => handleDeleteForEveryone(),
+            },
+          ]
+        : []),
       ...(canBroadcast && onBroadcastMessages
         ? [
             {
@@ -169,5 +230,7 @@ export function useBulkMessageActions({
     handleCopySelected,
     handleMoreSelected,
     handleContinueInSubRoom,
+    handleEditSelected,
+    handleDeleteForEveryone,
   };
 }

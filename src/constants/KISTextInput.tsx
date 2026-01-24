@@ -10,7 +10,9 @@ import {
   ActivityIndicator,
   GestureResponderEvent,
 } from 'react-native';
-import { useKISTheme } from '../theme/useTheme';
+import { getTypographyStyle } from '@/theme/foundations/typography';
+import { FONT_FAMILIES, FONT_WEIGHTS } from '@/theme/foundations/fonts';
+import { useKISTheme } from '@/theme/useTheme';
 
 type Adornment = React.ReactNode | ((color: string) => React.ReactNode);
 
@@ -47,6 +49,10 @@ export default function KISTextInput({
 }: Props) {
   const { palette, tokens } = useKISTheme();
   const [secure, setSecure] = useState(!!secureTextEntry);
+  const labelStyle = getTypographyStyle('label', palette.subtext);
+  const helperStyle = getTypographyStyle('helper', palette.subtext);
+  const errorStyle = getTypographyStyle('helper', palette.danger);
+  const inputTextStyle = getTypographyStyle('input');
 
   const hasError = !!errorText || !!error;
 
@@ -86,7 +92,13 @@ export default function KISTextInput({
           accessibilityRole="button"
           accessibilityLabel={secure ? 'Show password' : 'Hide password'}
         >
-          <Text style={{ color: palette.subtext, fontWeight: '600' }}>
+          <Text
+            style={{
+              color: palette.subtext,
+              fontWeight: FONT_WEIGHTS.semibold,
+              fontFamily: FONT_FAMILIES.body,
+            }}
+          >
             {secure ? 'Show' : 'Hide'}
           </Text>
         </TouchableOpacity>
@@ -101,7 +113,15 @@ export default function KISTextInput({
           accessibilityRole="button"
           accessibilityLabel="Clear text"
         >
-          <Text style={{ color: palette.subtext, fontWeight: '600' }}>Clear</Text>
+          <Text
+            style={{
+              color: palette.subtext,
+              fontWeight: FONT_WEIGHTS.semibold,
+              fontFamily: FONT_FAMILIES.body,
+            }}
+          >
+            Clear
+          </Text>
         </TouchableOpacity>
       );
     }
@@ -119,11 +139,7 @@ export default function KISTextInput({
   return (
     <View style={[{ marginBottom: 16 }, containerStyle]}>
       {label ? (
-        <Text
-          style={{ marginBottom: 6, color: palette.subtext, fontSize: tokens.typography.label }}
-        >
-          {label}
-        </Text>
+        <Text style={[labelStyle, { marginBottom: 6 }]}>{label}</Text>
       ) : null}
 
       <View
@@ -149,29 +165,16 @@ export default function KISTextInput({
           onChangeText={onChangeText}
           secureTextEntry={secure}
           placeholderTextColor={palette.subtext}
-          style={[
-            styles.input,
-            {
-              color: palette.text,
-              fontSize: tokens.typography.input,
-            },
-            style,
-          ]}
+          style={[styles.input, inputTextStyle, { color: palette.text }, style]}
         />
 
         {RightAdornment}
       </View>
 
-      {!!errorText && (
-        <Text style={{ color: palette.danger, marginTop: 6, fontSize: tokens.typography.helper }}>
-          {errorText}
-        </Text>
-      )}
+      {!!errorText && <Text style={[errorStyle, { marginTop: 6 }]}>{errorText}</Text>}
 
       {!errorText && !!helperText && (
-        <Text style={{ color: palette.subtext, marginTop: 6, fontSize: tokens.typography.helper }}>
-          {helperText}
-        </Text>
+        <Text style={[helperStyle, { marginTop: 6 }]}>{helperText}</Text>
       )}
     </View>
   );
@@ -181,7 +184,7 @@ const styles = StyleSheet.create({
   inputWrap: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderWidth: 1,
+    borderWidth: 2,
     paddingHorizontal: 12,
   },
   input: {

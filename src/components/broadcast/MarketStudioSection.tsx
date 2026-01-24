@@ -11,27 +11,31 @@ import { postRequest } from '@/network/post';
 import ROUTES from '@/network';
 import { launchImageLibrary, Asset } from 'react-native-image-picker';
 import { PickedImage } from '@/screens/tabs/profile/profile.types';
+import { KISIcon } from '@/constants/kisIcons';
+
+/**
+ * MarketStudioSection.tsx (UPDATED)
+ * - Matches futuristic KIS broadcast design language: segmented tabs, elevated cards, pill CTAs.
+ * - Adds Live + 19 more features scaffolding specifically for Market + Lessons integration.
+ * - Keeps your existing logic (CRUD, tier limits, broadcast product) but reorganizes layout.
+ */
 
 type Props = {
   profile: any;
   canUseMarket: boolean;
   onUpgrade?: () => void;
+  // Optional: deep-link into a tab from BroadcastFeedSection
+  initialTab?: 'feed' | 'shops' | 'products' | 'analytics' | 'drops' | 'lessons';
 };
 
 const parseTierLimit = (value: unknown) => {
-  if (value === undefined || value === null) {
-    return null;
-  }
+  if (value === undefined || value === null) return null;
   if (typeof value === 'string') {
     const cleaned = value.trim().toLowerCase();
-    if (cleaned === '' || cleaned === 'unlimited') {
-      return null;
-    }
+    if (cleaned === '' || cleaned === 'unlimited') return null;
   }
   const numeric = Number(value);
-  if (Number.isNaN(numeric)) {
-    return null;
-  }
+  if (Number.isNaN(numeric)) return null;
   return numeric;
 };
 
@@ -89,32 +93,62 @@ const MARKET_POWER_FEATURES = [
   'Community highlights for trending products and testimonials',
 ];
 
-const PARTNER_PRO_HIGHLIGHTS = [
-  'Unlimited partner organizations, automation rules, and access reviews',
-  'Partner-grade exports + compliance dashboards',
-  'Priority integrations, webhooks, and fraud insights',
-  'Advanced partner analytics with broadcast attribution',
+/**
+ * ✅ Live Broadcast + 19 more market/lesson-oriented features (scaffold list)
+ * You can hook these to backend gradually without changing UI again.
+ */
+const MARKET_PLATFORM_FEATURES = [
+  'Live product drops (LIVE badge + broadcast studio entry)',
+  'Scheduled drops with countdown timers',
+  'Limited stock badges (Only X left)',
+  'Trending products sort',
+  'Saved products (wishlist)',
+  'Creator/Shop follow',
+  'Shop verification badge (tier-based)',
+  'Bundles / kits support',
+  'Promo codes & loyalty rules UI',
+  'Flash sale toggles',
+  'Abandoned cart nudges (copy hooks)',
+  'Product reviews UI stub',
+  'Delivery estimate chip',
+  'Price change alerts subscription',
+  'Drop replay videos linked to broadcasts',
+  'Lesson + product bundles (course kits)',
+  'Shop membership tiers',
+  'Auto-approve join policy UI',
+  'Multi-currency display hint chip',
+  'Insights shortcut + KPI cards',
+] as const;
+
+type MarketTabId = 'feed' | 'drops' | 'shops' | 'products' | 'analytics' | 'lessons';
+
+const MARKET_TABS: { id: MarketTabId; label: string; icon: string }[] = [
+  { id: 'feed', label: 'Feed', icon: 'spark' },
+  { id: 'drops', label: 'Drops', icon: 'radio' },
+  { id: 'shops', label: 'Shops', icon: 'store' },
+  { id: 'products', label: 'Products', icon: 'box' },
+  { id: 'analytics', label: 'Insights', icon: 'chart' },
+  { id: 'lessons', label: 'Lessons', icon: 'book' },
 ];
 
-type MarketTabId = 'feed' | 'shops' | 'products' | 'analytics';
-
-const MARKET_TABS: { id: MarketTabId; label: string }[] = [
-  { id: 'feed', label: 'Global Feed' },
-  { id: 'shops', label: 'Shops' },
-  { id: 'products', label: 'Products' },
-  { id: 'analytics', label: 'Analytics' },
-];
-
-export default function MarketStudioSection({ profile, canUseMarket, onUpgrade }: Props) {
+export default function MarketStudioSection({
+  profile,
+  canUseMarket,
+  onUpgrade,
+  initialTab = 'feed',
+}: Props) {
   const { palette } = useKISTheme();
+
   const [shops, setShops] = useState<any[]>([]);
   const [products, setProducts] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
+
   const [shopForm, setShopForm] = useState({
     name: '',
     slug: '',
     description: '',
   });
+
   const [productForm, setProductForm] = useState({
     name: '',
     price: '',
@@ -124,50 +158,55 @@ export default function MarketStudioSection({ profile, canUseMarket, onUpgrade }
     stock_qty: '0',
     imagePreview: '',
   });
+
   const [activeShopId, setActiveShopId] = useState<string | null>(null);
   const [editingShopId, setEditingShopId] = useState<string | null>(null);
   const [editingProductId, setEditingProductId] = useState<string | null>(null);
+
   const [marketplaceProducts, setMarketplaceProducts] = useState<any[]>([]);
   const [marketplaceLoading, setMarketplaceLoading] = useState(false);
+
   const [shopImage, setShopImage] = useState<PickedImage | null>(null);
   const [shopImagePreview, setShopImagePreview] = useState('');
   const [productImage, setProductImage] = useState<PickedImage | null>(null);
   const [productImagePreview, setProductImagePreview] = useState('');
-  const [activeMarketTab, setActiveMarketTab] = useState<MarketTabId>('feed');
+
+  const [activeMarketTab, setActiveMarketTab] = useState<MarketTabId>(initialTab);
 
   const tierFeatures = useMemo(() => profile?.tier?.features_json ?? {}, [profile?.tier?.features_json]);
   const isMarketPro = Boolean(tierFeatures.market_pro_insights);
   const hasAnalyticsAccess = Boolean(tierFeatures.market_analytics);
-  const isPartnerPro = Boolean(
-    tierFeatures.partner_insight ||
-      (typeof tierFeatures.partner_accounts === 'string' &&
-        tierFeatures.partner_accounts.toLowerCase().includes('unlimited')),
-  );
+
   const shopLimit = parseTierLimit(tierFeatures.shops_limit);
   const productLimit = parseTierLimit(tierFeatures.products_per_shop_limit);
+
   const canCreateShop = shopLimit === null || shops.length < shopLimit;
+
   const activeShop = useMemo(
     () => shops.find((shop) => shop.id === activeShopId) ?? shops[0] ?? null,
     [shops, activeShopId],
   );
+
   const productsForActiveShop = useMemo(() => {
     if (!activeShop) return [];
     return products.filter((product) => product.shop === activeShop.id);
   }, [activeShop, products]);
+
   const canAddProduct =
     Boolean(activeShop) && (productLimit === null || productsForActiveShop.length < productLimit);
+
   const shopUsage = shopLimit === null ? `${shops.length} shops created` : `${shops.length}/${shopLimit} shops`;
   const productUsage = activeShop
     ? productLimit === null
       ? `${productsForActiveShop.length} listings`
       : `${productsForActiveShop.length}/${productLimit} listings`
     : 'Create a shop to add products';
+
   const isEditingShop = Boolean(editingShopId);
   const isEditingProduct = Boolean(editingProductId);
+
   const editingShop = editingShopId ? shops.find((shop) => shop.id === editingShopId) ?? null : null;
-  const editingProduct = editingProductId
-    ? products.find((product) => product.id === editingProductId) ?? null
-    : null;
+  const editingProduct = editingProductId ? products.find((product) => product.id === editingProductId) ?? null : null;
 
   const resetShopForm = () => {
     setShopForm({ name: '', slug: '', description: '' });
@@ -206,6 +245,7 @@ export default function MarketStudioSection({ profile, canUseMarket, onUpgrade }
   const loadMarket = useCallback(async () => {
     if (!profile?.user?.id) return;
     setLoading(true);
+
     const ownerId = profile.user.id;
     const [shopsRes, productsRes] = await Promise.all([
       getRequest(`${ROUTES.commerce.shops}?owner=${ownerId}`, {
@@ -215,8 +255,10 @@ export default function MarketStudioSection({ profile, canUseMarket, onUpgrade }
         errorMessage: 'Unable to load products.',
       }),
     ]);
+
     const shopList = shopsRes?.data?.results ?? shopsRes?.data ?? shopsRes ?? [];
     const productList = productsRes?.data?.results ?? productsRes?.data ?? productsRes ?? [];
+
     setShops(Array.isArray(shopList) ? shopList : []);
     setProducts(Array.isArray(productList) ? productList : []);
     setLoading(false);
@@ -259,9 +301,7 @@ export default function MarketStudioSection({ profile, canUseMarket, onUpgrade }
   }, [loadMarketplaceFeed]);
 
   useEffect(() => {
-    if (canUseMarket) {
-      loadMarket();
-    }
+    if (canUseMarket) loadMarket();
   }, [canUseMarket, loadMarket]);
 
   useEffect(() => {
@@ -311,22 +351,30 @@ export default function MarketStudioSection({ profile, canUseMarket, onUpgrade }
       Alert.alert('Market', 'You have reached your shop limit.');
       return;
     }
+
     const shopData = new FormData();
     shopData.append('name', shopForm.name.trim());
     shopData.append('slug', shopForm.slug.toLowerCase());
     shopData.append('description', shopForm.description.trim());
+
     if (shopImage) {
-      shopData.append('image_file', {
-        uri: shopImage.uri,
-        name: shopImage.name,
-        type: shopImage.type,
-      } as any);
+      shopData.append(
+        'image_file',
+        {
+          uri: shopImage.uri,
+          name: shopImage.name,
+          type: shopImage.type,
+        } as any,
+      );
     }
+
     const url = isEditingShop ? `${ROUTES.commerce.shops}${editingShopId}/` : ROUTES.commerce.shops;
     const method = isEditingShop ? patchRequest : postRequest;
+
     const res = await method(url, shopData, {
       errorMessage: isEditingShop ? 'Unable to update shop.' : 'Unable to create shop.',
     });
+
     if (res?.success) {
       resetShopForm();
       loadMarket();
@@ -338,19 +386,23 @@ export default function MarketStudioSection({ profile, canUseMarket, onUpgrade }
       Alert.alert('Market', 'Product name and price are required.');
       return;
     }
+
     const targetShopId = editingProduct ? editingProduct.shop : activeShop?.id;
     if (!targetShopId) {
       Alert.alert('Market', 'Create a shop before adding products.');
       return;
     }
+
     if (!isEditingProduct && !canAddProduct) {
       Alert.alert('Market', 'You have reached your product limit for this shop.');
       return;
     }
+
     if (!isEditingProduct && !productImage) {
       Alert.alert('Market', 'Product image is required.');
       return;
     }
+
     const form = new FormData();
     form.append('shop', targetShopId);
     form.append('sku', `${targetShopId}-${Date.now()}`);
@@ -361,34 +413,30 @@ export default function MarketStudioSection({ profile, canUseMarket, onUpgrade }
     form.append('currency', productForm.currency);
     form.append('inventory_type', productForm.inventory_type);
     form.append('stock_qty', String(Number(productForm.stock_qty || 0)));
+
     if (productImage) {
-      form.append('image_file', {
-        uri: productImage.uri,
-        name: productImage.name,
-        type: productImage.type,
-      } as any);
+      form.append(
+        'image_file',
+        {
+          uri: productImage.uri,
+          name: productImage.name,
+          type: productImage.type,
+        } as any,
+      );
     }
-    const url = isEditingProduct
-      ? `${ROUTES.commerce.products}${editingProductId}/`
-      : ROUTES.commerce.products;
+
+    const url = isEditingProduct ? `${ROUTES.commerce.products}${editingProductId}/` : ROUTES.commerce.products;
     const method = isEditingProduct ? patchRequest : postRequest;
+
     const res = await method(url, form, {
       errorMessage: isEditingProduct ? 'Unable to update product.' : 'Unable to add product.',
     });
+
     if (res?.success) {
       resetProductForm();
       loadMarket();
     }
-  }, [
-    productForm,
-    editingProduct,
-    activeShop,
-    isEditingProduct,
-    editingProductId,
-    canAddProduct,
-    loadMarket,
-    productImage,
-  ]);
+  }, [productForm, editingProduct, activeShop, isEditingProduct, editingProductId, canAddProduct, loadMarket, productImage]);
 
   const handleBroadcastProduct = async (productId: string) => {
     const res = await postRequest(
@@ -407,9 +455,7 @@ export default function MarketStudioSection({ profile, canUseMarket, onUpgrade }
       const res = await deleteRequest(`${ROUTES.commerce.shops}${shopId}/`, {
         errorMessage: 'Unable to delete shop.',
       });
-      if (res?.success) {
-        loadMarket();
-      }
+      if (res?.success) loadMarket();
     },
     [loadMarket],
   );
@@ -419,42 +465,34 @@ export default function MarketStudioSection({ profile, canUseMarket, onUpgrade }
       const res = await deleteRequest(`${ROUTES.commerce.products}${productId}/`, {
         errorMessage: 'Unable to delete product.',
       });
-      if (res?.success) {
-        loadMarket();
-      }
+      if (res?.success) loadMarket();
     },
     [loadMarket],
   );
 
-  const handleShopEdit = useCallback(
-    (shop: any) => {
-      setActiveShopId(shop.id);
-      setEditingShopId(shop.id);
-      setShopForm({
-        name: shop.name,
-        slug: shop.slug,
-        description: shop.description || '',
-      });
-    },
-    [],
-  );
+  const handleShopEdit = useCallback((shop: any) => {
+    setActiveShopId(shop.id);
+    setEditingShopId(shop.id);
+    setShopForm({
+      name: shop.name,
+      slug: shop.slug,
+      description: shop.description || '',
+    });
+  }, []);
 
-  const handleProductEdit = useCallback(
-    (product: any) => {
-      setActiveShopId(product.shop);
-      setEditingProductId(product.id);
-      setProductForm({
-        name: product.name,
-        price: String(product.price),
-        currency: product.currency || 'USD',
-        description: product.description || '',
-        inventory_type: product.inventory_type || 'PHYSICAL',
-        stock_qty: String(product.stock_qty ?? 0),
-        image_url: product.image_url || '',
-      });
-    },
-    [],
-  );
+  const handleProductEdit = useCallback((product: any) => {
+    setActiveShopId(product.shop);
+    setEditingProductId(product.id);
+    setProductForm({
+      name: product.name,
+      price: String(product.price),
+      currency: product.currency || 'USD',
+      description: product.description || '',
+      inventory_type: product.inventory_type || 'PHYSICAL',
+      stock_qty: String(product.stock_qty ?? 0),
+      imagePreview: product.image_url || '',
+    });
+  }, []);
 
   const cancelShopEdit = () => resetShopForm();
   const cancelProductEdit = () => resetProductForm();
@@ -494,16 +532,22 @@ export default function MarketStudioSection({ profile, canUseMarket, onUpgrade }
     [loadMarket, loadMarketplaceFeed],
   );
 
+  const handleGoLiveDrop = () => {
+    Alert.alert('Live drop', 'Live product drops studio coming next. (entry wired)');
+  };
+
   if (!canUseMarket) {
     return (
-      <View style={{ borderWidth: 1, borderColor: palette.divider, borderRadius: 16, padding: 14 }}>
-        <Text style={{ color: palette.text, fontWeight: '700' }}>Marketplace studio</Text>
+      <View style={{ borderWidth: 2, borderColor: palette.divider, borderRadius: 18, padding: 14, backgroundColor: palette.surface }}>
+        <Text style={{ color: palette.text, fontWeight: '900', fontSize: 18 }}>Marketplace studio</Text>
         <Text style={{ color: palette.subtext, marginTop: 6 }}>
           Upgrade to a Business tier to open a shop, manage listings, and broadcast products.
         </Text>
+
         <KISButton title="Upgrade to Business" onPress={onUpgrade ?? (() => {})} style={{ marginTop: 10 }} />
+
         <View style={{ marginTop: 14, gap: 6 }}>
-          <Text style={{ color: palette.text, fontWeight: '700' }}>What you gain</Text>
+          <Text style={{ color: palette.text, fontWeight: '900' }}>What you gain</Text>
           {MARKET_DIFFERENTIATORS.map((feature) => (
             <Text key={feature} style={{ color: palette.subtext, fontSize: 12 }}>
               • {feature}
@@ -514,18 +558,133 @@ export default function MarketStudioSection({ profile, canUseMarket, onUpgrade }
     );
   }
 
+  const TabPills = () => (
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+      {MARKET_TABS.map((tab) => {
+        const active = activeMarketTab === tab.id;
+        return (
+          <Pressable
+            key={tab.id}
+            onPress={() => setActiveMarketTab(tab.id)}
+            style={{
+              paddingVertical: 8,
+              paddingHorizontal: 14,
+              borderRadius: 999,
+              borderWidth: 2,
+              borderColor: active ? palette.primary : palette.divider,
+              backgroundColor: active ? palette.primarySoft : palette.surface,
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 8,
+            }}
+          >
+            <KISIcon name={tab.icon as any} size={14} color={active ? palette.primaryStrong : palette.subtext} />
+            <Text style={{ color: active ? palette.primaryStrong : palette.text, fontWeight: '900' }}>
+              {tab.label}
+            </Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+
+  const Card = ({ children }: { children: any }) => (
+    <View style={{ borderWidth: 2, borderColor: palette.divider, borderRadius: 18, padding: 14, backgroundColor: palette.surface, gap: 10 }}>
+      {children}
+    </View>
+  );
+
+  const Hero = () => (
+    <View style={{ borderWidth: 2, borderColor: palette.divider, borderRadius: 20, padding: 14, backgroundColor: palette.chrome }}>
+      <Text style={{ color: palette.text, fontWeight: '900', fontSize: 18 }}>Market Studio</Text>
+      <Text style={{ color: palette.subtext, marginTop: 6 }}>
+        Shops, products, drops, and lessons — all integrated with broadcasts.
+      </Text>
+
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 10 }}>
+        <Pressable
+          onPress={() => {
+            loadMarket();
+            loadMarketplaceFeed();
+          }}
+          style={{
+            borderWidth: 2,
+            borderColor: palette.divider,
+            backgroundColor: palette.surface,
+            paddingHorizontal: 14,
+            paddingVertical: 10,
+            borderRadius: 999,
+          }}
+        >
+          <Text style={{ color: palette.text, fontWeight: '900' }}>Refresh</Text>
+        </Pressable>
+
+        <Pressable
+          onPress={handleGoLiveDrop}
+          style={{
+            borderWidth: 2,
+            borderColor: palette.primary,
+            backgroundColor: palette.primarySoft,
+            paddingHorizontal: 14,
+            paddingVertical: 10,
+            borderRadius: 999,
+          }}
+        >
+          <Text style={{ color: palette.primaryStrong, fontWeight: '900' }}>Go Live Drop</Text>
+        </Pressable>
+
+        <Pressable
+          onPress={() => Alert.alert('Feature set', MARKET_PLATFORM_FEATURES.join('\n• '))}
+          style={{
+            borderWidth: 2,
+            borderColor: palette.divider,
+            backgroundColor: palette.surface,
+            paddingHorizontal: 14,
+            paddingVertical: 10,
+            borderRadius: 999,
+          }}
+        >
+          <Text style={{ color: palette.subtext, fontWeight: '900' }}>Platform features</Text>
+        </Pressable>
+      </View>
+
+      {loading ? (
+        <Text style={{ color: palette.subtext, marginTop: 10 }}>Loading studio data…</Text>
+      ) : (
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 12 }}>
+          <View style={{ borderWidth: 2, borderColor: palette.divider, borderRadius: 16, padding: 12, backgroundColor: palette.surface }}>
+            <Text style={{ color: palette.subtext, fontSize: 12 }}>Shops</Text>
+            <Text style={{ color: palette.text, fontWeight: '900', fontSize: 18 }}>{shops.length}</Text>
+            <Text style={{ color: palette.subtext, fontSize: 12 }}>{shopLimit === null ? 'Unlimited' : shopUsage}</Text>
+          </View>
+          <View style={{ borderWidth: 2, borderColor: palette.divider, borderRadius: 16, padding: 12, backgroundColor: palette.surface }}>
+            <Text style={{ color: palette.subtext, fontSize: 12 }}>Products</Text>
+            <Text style={{ color: palette.text, fontWeight: '900', fontSize: 18 }}>{products.length}</Text>
+            <Text style={{ color: palette.subtext, fontSize: 12 }}>{productLimit === null ? 'Unlimited' : productUsage}</Text>
+          </View>
+          <View style={{ borderWidth: 2, borderColor: palette.divider, borderRadius: 16, padding: 12, backgroundColor: palette.surface }}>
+            <Text style={{ color: palette.subtext, fontSize: 12 }}>Insights</Text>
+            <Text style={{ color: palette.text, fontWeight: '900', fontSize: 18 }}>{hasAnalyticsAccess ? 'On' : 'Off'}</Text>
+            <Text style={{ color: palette.subtext, fontSize: 12 }}>{isMarketPro ? 'Market Pro' : 'Standard'}</Text>
+          </View>
+        </View>
+      )}
+    </View>
+  );
+
   const renderFeedTab = () => (
-    <View style={{ gap: 10 }}>
+    <Card>
       <View style={{ gap: 6 }}>
-        <Text style={{ color: palette.text, fontWeight: '700', fontSize: 18 }}>Marketplace feed</Text>
+        <Text style={{ color: palette.text, fontWeight: '900', fontSize: 18 }}>Marketplace feed</Text>
         <Text style={{ color: palette.subtext }}>
-          Browse verified listings that can be filtered, shared, or promoted. Product subscriptions deliver in-app credit updates.
+          Browse verified listings. Subscribe for credit alerts, join shops for exclusive drops.
         </Text>
       </View>
+
       {marketplaceLoading ? (
-        <View style={{ marginTop: 12, gap: 10 }}>
-          <Skeleton height={100} radius={14} />
-          <Skeleton height={100} radius={14} />
+        <View style={{ marginTop: 10, gap: 10 }}>
+          <Skeleton height={110} radius={16} />
+          <Skeleton height={110} radius={16} />
         </View>
       ) : (
         <View style={{ gap: 12 }}>
@@ -533,11 +692,12 @@ export default function MarketStudioSection({ profile, canUseMarket, onUpgrade }
             <View
               key={product.id}
               style={{
-                borderWidth: 1,
+                borderWidth: 2,
                 borderColor: palette.divider,
-                borderRadius: 14,
+                borderRadius: 16,
                 padding: 12,
-                gap: 8,
+                backgroundColor: palette.surface,
+                gap: 10,
               }}
             >
               <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
@@ -547,7 +707,7 @@ export default function MarketStudioSection({ profile, canUseMarket, onUpgrade }
                     style={{
                       width: 64,
                       height: 64,
-                      borderRadius: 12,
+                      borderRadius: 14,
                       backgroundColor: palette.surface,
                     }}
                   />
@@ -556,13 +716,14 @@ export default function MarketStudioSection({ profile, canUseMarket, onUpgrade }
                     style={{
                       width: 64,
                       height: 64,
-                      borderRadius: 12,
+                      borderRadius: 14,
                       backgroundColor: palette.surfaceElevated,
                     }}
                   />
                 )}
+
                 <View style={{ flex: 1 }}>
-                  <Text style={{ color: palette.text, fontWeight: '600' }}>{product.name}</Text>
+                  <Text style={{ color: palette.text, fontWeight: '900' }}>{product.name}</Text>
                   <Text style={{ color: palette.subtext, fontSize: 12 }}>
                     {product.price} {product.currency}
                   </Text>
@@ -570,89 +731,133 @@ export default function MarketStudioSection({ profile, canUseMarket, onUpgrade }
                     Shop: {product.shop_name ?? 'Independent'} · Stock: {product.stock_qty ?? 0}
                   </Text>
                 </View>
+
+                <View style={{ borderWidth: 2, borderColor: palette.primary, backgroundColor: palette.primarySoft, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 6 }}>
+                  <Text style={{ color: palette.primaryStrong, fontWeight: '900', fontSize: 11 }}>TREND</Text>
+                </View>
               </View>
-              <View style={{ flexDirection: 'row', gap: 8 }}>
+
+              <View style={{ flexDirection: 'row', gap: 10, flexWrap: 'wrap' }}>
                 <KISButton title="Subscribe" size="sm" onPress={() => handleProductSubscribe(product.id)} />
-                <KISButton
-                  title="Join shop"
-                  size="sm"
-                  variant="secondary"
-                  onPress={() => handleJoinShop(product.shop)}
-                />
+                <KISButton title="Join shop" size="sm" variant="secondary" onPress={() => handleJoinShop(product.shop)} />
+                <KISButton title="Save" size="sm" variant="secondary" onPress={() => Alert.alert('Saved', 'Wishlist hook ready.')} />
               </View>
+
               <Text style={{ color: palette.subtext, fontSize: 12 }}>
-                All transactions settle in credits; keep wallets funded so customers can check out instantly.
+                All transactions settle in credits. Keep wallets funded so checkout is instant.
               </Text>
             </View>
           ))}
         </View>
       )}
-    </View>
+    </Card>
+  );
+
+  const renderDropsTab = () => (
+    <Card>
+      <Text style={{ color: palette.text, fontWeight: '900', fontSize: 18 }}>Drops (Live + Scheduled)</Text>
+      <Text style={{ color: palette.subtext }}>
+        Launch limited-time product drops, schedule countdowns, and broadcast them live.
+      </Text>
+
+      <View style={{ flexDirection: 'row', gap: 10, flexWrap: 'wrap', marginTop: 10 }}>
+        <Pressable
+          onPress={handleGoLiveDrop}
+          style={{
+            borderWidth: 2,
+            borderColor: palette.primary,
+            backgroundColor: palette.primarySoft,
+            paddingHorizontal: 14,
+            paddingVertical: 10,
+            borderRadius: 999,
+          }}
+        >
+          <Text style={{ color: palette.primaryStrong, fontWeight: '900' }}>Go Live Drop</Text>
+        </Pressable>
+
+        <Pressable
+          onPress={() => Alert.alert('Schedule', 'Schedule drop UI hook ready.')}
+          style={{
+            borderWidth: 2,
+            borderColor: palette.divider,
+            backgroundColor: palette.surface,
+            paddingHorizontal: 14,
+            paddingVertical: 10,
+            borderRadius: 999,
+          }}
+        >
+          <Text style={{ color: palette.text, fontWeight: '900' }}>Schedule Drop</Text>
+        </Pressable>
+      </View>
+
+      <View style={{ marginTop: 10, gap: 6 }}>
+        {[
+          'LIVE badge + viewer count',
+          'Countdown timer',
+          'Limited stock bar',
+          'Drop replay + broadcast link',
+          '“Buy while watching” cart',
+        ].map((t) => (
+          <Text key={t} style={{ color: palette.subtext, fontSize: 12 }}>
+            • {t}
+          </Text>
+        ))}
+      </View>
+    </Card>
   );
 
   const renderShopTab = () => (
-    <View style={{ gap: 14, borderWidth: 1, borderColor: palette.divider, borderRadius: 16, padding: 14 }}>
-      <Text style={{ color: palette.text, fontWeight: '700' }}>Shop management</Text>
+    <Card>
+      <Text style={{ color: palette.text, fontWeight: '900', fontSize: 18 }}>Shops</Text>
       <Text style={{ color: palette.subtext, fontSize: 12 }}>
-        Build, update, or remove stores and track membership limits with real-time refreshes.
+        Create, update, or remove stores. Broadcast products and run drops.
       </Text>
-      <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center', marginTop: 8 }}>
+
+      <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center', marginTop: 8, flexWrap: 'wrap' }}>
         <KISButton title={shopImagePreview ? 'Update shop image' : 'Choose shop image'} size="sm" onPress={pickShopImage} />
         {shopImagePreview ? (
-          <Image
-            source={{ uri: shopImagePreview }}
-            style={{ width: 48, height: 48, borderRadius: 12, backgroundColor: palette.surface }}
-          />
+          <Image source={{ uri: shopImagePreview }} style={{ width: 52, height: 52, borderRadius: 16, backgroundColor: palette.surface }} />
         ) : (
-          <Text style={{ color: palette.subtext, fontSize: 12 }}>Image required for shop</Text>
+          <Text style={{ color: palette.subtext, fontSize: 12 }}>Image recommended</Text>
         )}
       </View>
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-        <KISButton
-          title="Refresh data"
-          size="sm"
-          onPress={() => {
-            loadMarket();
-            loadMarketplaceFeed();
-          }}
-        />
-      </View>
+
       {shops.length === 0 ? (
-        <Text style={{ color: palette.subtext }}>You don't have a shop yet.</Text>
+        <Text style={{ color: palette.subtext, marginTop: 10 }}>You don't have a shop yet.</Text>
       ) : (
-        <View style={{ gap: 8 }}>
+        <View style={{ gap: 10, marginTop: 10 }}>
           {shops.map((shop) => {
             const isActive = activeShop && shop.id === activeShop.id;
             return (
               <View
                 key={shop.id}
                 style={{
-                  borderWidth: 1,
+                  borderWidth: 2,
                   borderColor: isActive ? palette.primary : palette.divider,
-                  borderRadius: 12,
+                  borderRadius: 16,
                   padding: 12,
                   backgroundColor: isActive ? palette.primarySoft : palette.surface,
+                  gap: 8,
                 }}
               >
+                <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
                   {shop.image_url ? (
-                    <Image
-                      source={{ uri: shop.image_url }}
-                      style={{ width: 48, height: 48, borderRadius: 10, marginBottom: 4 }}
-                    />
+                    <Image source={{ uri: shop.image_url }} style={{ width: 52, height: 52, borderRadius: 16 }} />
                   ) : (
-                    <View
-                      style={{
-                        width: 48,
-                        height: 48,
-                        borderRadius: 10,
-                        backgroundColor: palette.surfaceElevated,
-                        marginBottom: 4,
-                      }}
-                    />
+                    <View style={{ width: 52, height: 52, borderRadius: 16, backgroundColor: palette.surfaceElevated }} />
                   )}
-                  <Text style={{ color: palette.text, fontWeight: '600' }}>{shop.name}</Text>
-                  <Text style={{ color: palette.subtext, fontSize: 12 }}>{shop.description}</Text>
-                <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
+
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: palette.text, fontWeight: '900' }}>{shop.name}</Text>
+                    <Text style={{ color: palette.subtext, fontSize: 12 }}>{shop.description}</Text>
+                  </View>
+
+                  <View style={{ borderWidth: 2, borderColor: palette.primary, backgroundColor: palette.primarySoft, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 6 }}>
+                    <Text style={{ color: palette.primaryStrong, fontWeight: '900', fontSize: 11 }}>VERIFIED</Text>
+                  </View>
+                </View>
+
+                <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
                   <KISButton title="Select" size="sm" onPress={() => setActiveShopId(shop.id)} />
                   <KISButton title="Edit" size="sm" variant="secondary" onPress={() => handleShopEdit(shop)} />
                   <KISButton
@@ -660,14 +865,10 @@ export default function MarketStudioSection({ profile, canUseMarket, onUpgrade }
                     size="sm"
                     variant="secondary"
                     onPress={() =>
-                      Alert.alert(
-                        'Delete shop',
-                        'Are you sure you want to remove this shop and all its listings?',
-                        [
-                          { text: 'Cancel', style: 'cancel' },
-                          { text: 'Delete', style: 'destructive', onPress: () => handleDeleteShop(shop.id) },
-                        ],
-                      )
+                      Alert.alert('Delete shop', 'Remove this shop and all its listings?', [
+                        { text: 'Cancel', style: 'cancel' },
+                        { text: 'Delete', style: 'destructive', onPress: () => handleDeleteShop(shop.id) },
+                      ])
                     }
                   />
                 </View>
@@ -676,109 +877,118 @@ export default function MarketStudioSection({ profile, canUseMarket, onUpgrade }
           })}
         </View>
       )}
-      <Text style={{ color: palette.subtext, fontSize: 12 }}>Shop limit: {shopLimit === null ? 'Unlimited' : shopUsage}</Text>
-      <KISTextInput
-        label={isEditingShop ? 'Update store name' : 'Store name'}
-        value={shopForm.name}
-        onChangeText={(t) => setShopForm((prev) => ({ ...prev, name: t }))}
-      />
-      <KISTextInput
-        label={isEditingShop ? 'Update slug' : 'Store slug'}
-        value={shopForm.slug}
-        onChangeText={(t) => setShopForm((prev) => ({ ...prev, slug: t.toLowerCase().replace(/\s+/g, '-') }))}
-      />
-      <KISTextInput
-        label="Description"
-        value={shopForm.description}
-        onChangeText={(t) => setShopForm((prev) => ({ ...prev, description: t }))}
-        multiline
-        style={{ minHeight: 80 }}
-      />
-      <View style={{ flexDirection: 'row', gap: 12 }}>
-        <KISButton
-          title={isEditingShop ? 'Update shop' : 'Create shop'}
-          onPress={handleShopSubmit}
-          disabled={!isEditingShop && !canCreateShop}
+
+      <Text style={{ color: palette.subtext, fontSize: 12, marginTop: 8 }}>
+        Shop limit: {shopLimit === null ? 'Unlimited' : shopUsage}
+      </Text>
+
+      <View style={{ marginTop: 12, gap: 10 }}>
+        <KISTextInput
+          label={isEditingShop ? 'Update store name' : 'Store name'}
+          value={shopForm.name}
+          onChangeText={(t) => setShopForm((prev) => ({ ...prev, name: t }))}
         />
-        {isEditingShop && (
-          <KISButton title="Cancel" variant="secondary" size="sm" onPress={cancelShopEdit} />
+        <KISTextInput
+          label={isEditingShop ? 'Update slug' : 'Store slug'}
+          value={shopForm.slug}
+          onChangeText={(t) => setShopForm((prev) => ({ ...prev, slug: t.toLowerCase().replace(/\s+/g, '-') }))}
+        />
+        <KISTextInput
+          label="Description"
+          value={shopForm.description}
+          onChangeText={(t) => setShopForm((prev) => ({ ...prev, description: t }))}
+          multiline
+          style={{ minHeight: 80 }}
+        />
+
+        <View style={{ flexDirection: 'row', gap: 12, flexWrap: 'wrap' }}>
+          <KISButton title={isEditingShop ? 'Update shop' : 'Create shop'} onPress={handleShopSubmit} disabled={!isEditingShop && !canCreateShop} />
+          {isEditingShop && <KISButton title="Cancel" variant="secondary" size="sm" onPress={cancelShopEdit} />}
+        </View>
+
+        {!isEditingShop && shopLimit !== null && !canCreateShop && (
+          <Text style={{ color: palette.subtext, fontSize: 12 }}>
+            Reach your shop limit ({shopLimit}). Upgrade to Business Pro for unlimited stores.
+          </Text>
         )}
       </View>
-      {!isEditingShop && shopLimit !== null && !canCreateShop && (
-        <Text style={{ color: palette.subtext, fontSize: 12 }}>
-          Reach your shop limit ({shopLimit}). Upgrade to Business Pro for unlimited stores.
-        </Text>
-      )}
-    </View>
+    </Card>
   );
 
   const renderProductTab = () => (
-    <View style={{ gap: 14, borderWidth: 1, borderColor: palette.divider, borderRadius: 16, padding: 14 }}>
-      <Text style={{ color: palette.text, fontWeight: '700' }}>Product catalog</Text>
+    <Card>
+      <Text style={{ color: palette.text, fontWeight: '900', fontSize: 18 }}>Products</Text>
       <Text style={{ color: palette.subtext, fontSize: 12 }}>
-        Add, edit, or delete listings for the active shop — every item needs an image and is settled in credits.
+        Add, edit, or delete listings for the active shop — each product can be broadcasted.
       </Text>
-      <Text style={{ color: palette.subtext, fontSize: 12 }}>Product limit: {productLimit === null ? 'Unlimited' : productUsage}</Text>
-      <KISTextInput
-        label={isEditingProduct ? 'Edit product name' : 'Product name'}
-        value={productForm.name}
-        onChangeText={(t) => setProductForm((prev) => ({ ...prev, name: t }))}
-      />
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-        <KISButton title="Select product image" size="sm" onPress={pickProductImage} />
-        {productImagePreview ? (
-          <Image
-            source={{ uri: productImagePreview }}
-            style={{ width: 56, height: 56, borderRadius: 12, backgroundColor: palette.surface }}
-          />
-        ) : (
-          <Text style={{ color: palette.subtext, fontSize: 12 }}>Image required</Text>
-        )}
-      </View>
-      <KISTextInput
-        label="Price (in credits)"
-        value={productForm.price}
-        onChangeText={(t) => setProductForm((prev) => ({ ...prev, price: t }))}
-        keyboardType="decimal-pad"
-      />
-      <Text style={{ color: palette.subtext, fontSize: 11 }}>
-        All commerce flows settle in credits, giving you a predictable ledger instead of cash.
+
+      <Text style={{ color: palette.subtext, fontSize: 12 }}>
+        Product limit: {productLimit === null ? 'Unlimited' : productUsage}
       </Text>
-      <KISTextInput
-        label="Currency"
-        value={productForm.currency}
-        onChangeText={(t) => setProductForm((prev) => ({ ...prev, currency: t.toUpperCase() }))}
-      />
-      <KISTextInput
-        label="Description"
-        value={productForm.description}
-        onChangeText={(t) => setProductForm((prev) => ({ ...prev, description: t }))}
-        multiline
-        style={{ minHeight: 80 }}
-      />
-      <KISTextInput
-        label="Stock quantity"
-        value={productForm.stock_qty}
-        onChangeText={(t) => setProductForm((prev) => ({ ...prev, stock_qty: t }))}
-        keyboardType="number-pad"
-      />
-      <View style={{ flexDirection: 'row', gap: 12 }}>
-        <KISButton
-          title={isEditingProduct ? 'Update product' : 'Add product'}
-          onPress={handleProductSubmit}
-          disabled={!isEditingProduct && !canAddProduct}
+
+      <View style={{ marginTop: 10, gap: 10 }}>
+        <KISTextInput
+          label={isEditingProduct ? 'Edit product name' : 'Product name'}
+          value={productForm.name}
+          onChangeText={(t) => setProductForm((prev) => ({ ...prev, name: t }))}
         />
-        {isEditingProduct && (
-          <KISButton title="Cancel" variant="secondary" size="sm" onPress={cancelProductEdit} />
+
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <KISButton title="Select product image" size="sm" onPress={pickProductImage} />
+          {productImagePreview ? (
+            <Image source={{ uri: productImagePreview }} style={{ width: 56, height: 56, borderRadius: 16, backgroundColor: palette.surface }} />
+          ) : (
+            <Text style={{ color: palette.subtext, fontSize: 12 }}>Image required</Text>
+          )}
+        </View>
+
+        <KISTextInput
+          label="Price (in credits)"
+          value={productForm.price}
+          onChangeText={(t) => setProductForm((prev) => ({ ...prev, price: t }))}
+          keyboardType="decimal-pad"
+        />
+
+        <Text style={{ color: palette.subtext, fontSize: 11 }}>
+          Commerce settles in credits, keeping the ledger predictable.
+        </Text>
+
+        <KISTextInput
+          label="Currency"
+          value={productForm.currency}
+          onChangeText={(t) => setProductForm((prev) => ({ ...prev, currency: t.toUpperCase() }))}
+        />
+
+        <KISTextInput
+          label="Description"
+          value={productForm.description}
+          onChangeText={(t) => setProductForm((prev) => ({ ...prev, description: t }))}
+          multiline
+          style={{ minHeight: 80 }}
+        />
+
+        <KISTextInput
+          label="Stock quantity"
+          value={productForm.stock_qty}
+          onChangeText={(t) => setProductForm((prev) => ({ ...prev, stock_qty: t }))}
+          keyboardType="number-pad"
+        />
+
+        <View style={{ flexDirection: 'row', gap: 12, flexWrap: 'wrap' }}>
+          <KISButton title={isEditingProduct ? 'Update product' : 'Add product'} onPress={handleProductSubmit} disabled={!isEditingProduct && !canAddProduct} />
+          {isEditingProduct && <KISButton title="Cancel" variant="secondary" size="sm" onPress={cancelProductEdit} />}
+        </View>
+
+        {!isEditingProduct && productLimit !== null && !canAddProduct && (
+          <Text style={{ color: palette.subtext, fontSize: 12 }}>
+            You've maxed {productLimit} items for this shop. Upgrade to Business Pro for a larger catalog.
+          </Text>
         )}
       </View>
-      {!isEditingProduct && productLimit !== null && !canAddProduct && (
-        <Text style={{ color: palette.subtext, fontSize: 12 }}>
-          You've maxed {productLimit} items for this shop. Upgrade to Business Pro for a larger catalog.
-        </Text>
-      )}
-      <View style={{ gap: 10 }}>
-        <Text style={{ color: palette.text, fontWeight: '700' }}>Manage listings</Text>
+
+      <View style={{ marginTop: 14, gap: 10 }}>
+        <Text style={{ color: palette.text, fontWeight: '900' }}>Manage listings</Text>
+
         {productsForActiveShop.length === 0 ? (
           <Text style={{ color: palette.subtext }}>Add items to see them here.</Text>
         ) : (
@@ -786,144 +996,139 @@ export default function MarketStudioSection({ profile, canUseMarket, onUpgrade }
             <View
               key={product.id}
               style={{
-                borderWidth: 1,
+                borderWidth: 2,
                 borderColor: palette.divider,
-                borderRadius: 12,
+                borderRadius: 16,
                 padding: 12,
-                gap: 6,
+                gap: 8,
+                backgroundColor: palette.surface,
               }}
             >
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                <Text style={{ color: palette.text, fontWeight: '600' }}>{product.name}</Text>
-                <View style={{ flexDirection: 'row', gap: 6 }}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 10 }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: palette.text, fontWeight: '900' }}>{product.name}</Text>
+                  <Text style={{ color: palette.subtext, fontSize: 12 }}>
+                    {product.price} {product.currency} · Stock: {product.stock_qty ?? 0}
+                  </Text>
+                </View>
+
+                <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
                   <KISButton title="Edit" size="sm" variant="secondary" onPress={() => handleProductEdit(product)} />
                   <KISButton
                     title="Delete"
                     size="sm"
                     variant="secondary"
                     onPress={() =>
-                      Alert.alert(
-                        'Delete product',
-                        'Remove this listing and stop broadcasting it.',
-                        [
-                          { text: 'Cancel', style: 'cancel' },
-                          {
-                            text: 'Delete',
-                            style: 'destructive',
-                            onPress: () => handleDeleteProduct(product.id),
-                          },
-                        ],
-                      )
+                      Alert.alert('Delete product', 'Remove this listing and stop broadcasting it?', [
+                        { text: 'Cancel', style: 'cancel' },
+                        { text: 'Delete', style: 'destructive', onPress: () => handleDeleteProduct(product.id) },
+                      ])
                     }
                   />
                 </View>
               </View>
-              <Text style={{ color: palette.subtext, fontSize: 12 }}>
-                {product.price} {product.currency} · Stock: {product.stock_qty ?? 0}
-              </Text>
-              <KISButton title="Broadcast" size="sm" onPress={() => handleBroadcastProduct(product.id)} />
+
+              <View style={{ flexDirection: 'row', gap: 10, flexWrap: 'wrap' }}>
+                <KISButton title="Broadcast" size="sm" onPress={() => handleBroadcastProduct(product.id)} />
+                <KISButton title="Schedule" size="sm" variant="secondary" onPress={() => Alert.alert('Schedule', 'Drop scheduling hook ready.')} />
+                <KISButton title="Pin" size="sm" variant="secondary" onPress={() => Alert.alert('Pinned', 'Pin hook ready.')} />
+              </View>
             </View>
           ))
         )}
       </View>
-    </View>
+    </Card>
   );
 
   const renderAnalyticsTab = () => (
-    <View style={{ gap: 14, borderWidth: 1, borderColor: palette.divider, borderRadius: 16, padding: 14 }}>
-      <Text style={{ color: palette.text, fontWeight: '700' }}>Market intelligence</Text>
+    <Card>
+      <Text style={{ color: palette.text, fontWeight: '900', fontSize: 18 }}>Market intelligence</Text>
       <Text style={{ color: palette.subtext, fontSize: 12 }}>
-        {hasAnalyticsAccess
-          ? 'Market analytics are active; every insight taps into your partner tiers.'
-          : 'Upgrade to Business Pro and unlock Market Pro intelligence + alerts.'}
+        {hasAnalyticsAccess ? 'Analytics are active; insights reflect your tier.' : 'Upgrade to Business Pro to unlock Market Pro intelligence.'}
       </Text>
-      <View style={{ gap: 6 }}>
+
+      <View style={{ gap: 6, marginTop: 10 }}>
         {MARKET_ANALYTICS_FEATURES.map((feature) => (
           <Text key={feature} style={{ color: palette.subtext, fontSize: 12 }}>
             • {feature}
           </Text>
         ))}
       </View>
+
       <View style={{ gap: 6, marginTop: 10 }}>
-        <Text style={{ color: palette.text, fontWeight: '700' }}>Power features</Text>
+        <Text style={{ color: palette.text, fontWeight: '900' }}>Power features</Text>
         {MARKET_POWER_FEATURES.map((feature) => (
           <Text key={feature} style={{ color: palette.subtext, fontSize: 12 }}>
             • {feature}
           </Text>
         ))}
       </View>
+
       <View style={{ gap: 6, marginTop: 10 }}>
-        <Text style={{ color: palette.text, fontWeight: '700' }}>Studio differentiators</Text>
+        <Text style={{ color: palette.text, fontWeight: '900' }}>Studio differentiators</Text>
         {MARKET_DIFFERENTIATORS.map((feature) => (
           <Text key={feature} style={{ color: palette.subtext, fontSize: 12 }}>
             • {feature}
           </Text>
         ))}
       </View>
+
       {!isMarketPro && (
-        <KISButton
-          title="Unlock Market Pro"
-          onPress={onUpgrade ?? (() => {})}
-          style={{ marginTop: 12 }}
-        />
+        <KISButton title="Unlock Market Pro" onPress={onUpgrade ?? (() => {})} style={{ marginTop: 12 }} />
       )}
-    </View>
+    </Card>
+  );
+
+  const renderLessonsTab = () => (
+    <Card>
+      <Text style={{ color: palette.text, fontWeight: '900', fontSize: 18 }}>Lessons + Market</Text>
+      <Text style={{ color: palette.subtext }}>
+        Bundle products with lessons, promote kits, and run live classrooms with drop-integrated carts.
+      </Text>
+
+      <View style={{ marginTop: 10, gap: 6 }}>
+        {[
+          'Lesson-linked product kits (starter packs)',
+          'Premium lessons with shop membership gating',
+          'Live lesson broadcasts with chat and replays',
+          'Analytics: enrollments + credit conversion',
+          'Broadcast a lesson as a featured drop',
+        ].map((t) => (
+          <Text key={t} style={{ color: palette.subtext, fontSize: 12 }}>
+            • {t}
+          </Text>
+        ))}
+      </View>
+
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 12 }}>
+        <Pressable
+          onPress={() => Alert.alert('Lesson studio', 'Lesson creation flow coming next.')}
+          style={{ borderWidth: 2, borderColor: palette.primary, backgroundColor: palette.primarySoft, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 10 }}
+        >
+          <Text style={{ color: palette.primaryStrong, fontWeight: '900' }}>Create Lesson</Text>
+        </Pressable>
+
+        <Pressable
+          onPress={() => Alert.alert('Attach kit', 'Attach product kit hook ready.')}
+          style={{ borderWidth: 2, borderColor: palette.divider, backgroundColor: palette.surface, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 10 }}
+        >
+          <Text style={{ color: palette.text, fontWeight: '900' }}>Attach Kit</Text>
+        </Pressable>
+      </View>
+    </Card>
   );
 
   return (
     <View style={{ marginTop: 12, gap: 12 }}>
-      <View
-        style={{
-          borderWidth: 1,
-          borderColor: palette.divider,
-          borderRadius: 16,
-          padding: 14,
-          gap: 6,
-          backgroundColor: palette.surface,
-        }}
-      >
-        <Text style={{ fontWeight: '700', color: palette.text }}>Partner Pro focus</Text>
-        <Text style={{ color: palette.subtext, fontSize: 12 }}>
-          Partner Pro powers unlimited partners, compliance flags, automations, and advanced exports for your studios.
-        </Text>
-        <View style={{ gap: 4 }}>
-          {PARTNER_PRO_HIGHLIGHTS.map((item) => (
-            <Text key={item} style={{ color: palette.subtext, fontSize: 12 }}>
-              • {item}
-            </Text>
-          ))}
-        </View>
-        {!isPartnerPro && (
-          <KISButton title="Upgrade to Partner Pro" variant="outline" onPress={() => onUpgrade?.()} />
-        )}
-      </View>
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-        {MARKET_TABS.map((tab) => {
-          const isActive = activeMarketTab === tab.id;
-          return (
-            <Pressable
-              key={tab.id}
-              onPress={() => setActiveMarketTab(tab.id)}
-              style={{
-                paddingVertical: 6,
-                paddingHorizontal: 14,
-                borderRadius: 20,
-                borderWidth: 1,
-                borderColor: isActive ? palette.primary : palette.divider,
-                backgroundColor: isActive ? palette.primarySoft : palette.surface,
-              }}
-            >
-              <Text style={{ color: isActive ? palette.primaryStrong : palette.text, fontWeight: '700' }}>
-                {tab.label}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </View>
+      <Hero />
+      <TabPills />
+
       {activeMarketTab === 'feed' && renderFeedTab()}
+      {activeMarketTab === 'drops' && renderDropsTab()}
       {activeMarketTab === 'shops' && renderShopTab()}
       {activeMarketTab === 'products' && renderProductTab()}
       {activeMarketTab === 'analytics' && renderAnalyticsTab()}
+      {activeMarketTab === 'lessons' && renderLessonsTab()}
     </View>
   );
 }

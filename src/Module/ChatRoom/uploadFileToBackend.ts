@@ -1,4 +1,5 @@
 // src/screens/chat/uploadFileToBackend.ts
+import { API_BASE_URL } from '@/network';
 export type AttachmentKind =
   | 'image'
   | 'video'
@@ -16,18 +17,31 @@ export type AttachmentMeta = {
   width?: number;
   height?: number;
   durationMs?: number;
+  durationSeconds?: number;
+  videoCategory?: string;
 };
 
 export async function uploadFileToBackend(opts: {
-  file: { uri: string; name: string; type: string | null; size?: number | null };
+  file: { uri: string; name: string; type: string | null; size?: number | null; durationMs?: number | null };
   authToken: string;
-  baseUrl: string; // e.g. https://your-api.com
+  baseUrl?: string; // e.g. https://your-api.com
   onProgress?: (progress: number) => void;
   onStatus?: (status: 'uploading' | 'done' | 'failed') => void;
   conversationId?: string;
   clientId?: string;
+  metadata?: Record<string, string | number>;
 }): Promise<AttachmentMeta> {
-  const { file, authToken, baseUrl, onProgress, onStatus, conversationId, clientId } = opts;
+  const {
+    file,
+    authToken,
+    baseUrl: providedBaseUrl,
+    onProgress,
+    onStatus,
+    conversationId,
+    clientId,
+    metadata: optsMetadata,
+  } = opts;
+  const baseUrl = providedBaseUrl ?? API_BASE_URL;
 
   const form = new FormData();
   form.append('file', {
@@ -39,10 +53,28 @@ export async function uploadFileToBackend(opts: {
   onStatus?.('uploading');
   onProgress?.(0);
 
-  const qs = new URLSearchParams();
-  if (conversationId) qs.set('conversationId', conversationId);
-  if (clientId) qs.set('clientId', clientId);
-  const url = qs.toString() ? `${baseUrl}/uploads/file?${qs.toString()}` : `${baseUrl}/uploads/file`;
+  const params = new URLSearchParams();
+  if (conversationId) params.set('conversationId', conversationId);
+  if (clientId) params.set('clientId', clientId);
+  const durationSecondsFromFile =
+    typeof file.durationMs === 'number' && Number.isFinite(file.durationMs)
+      ? Math.round(file.durationMs / 1000)
+      : undefined;
+  const metadata = { ...(optsMetadata ?? {}) };
+  if (
+    durationSecondsFromFile !== undefined &&
+    metadata.duration_seconds == null &&
+    metadata.durationSeconds == null
+  ) {
+    metadata.duration_seconds = durationSecondsFromFile;
+  }
+  Object.entries(metadata).forEach(([key, value]) => {
+    if (value === undefined || value === null) return;
+    params.set(key, String(value));
+  });
+  const url = params.toString()
+    ? `${baseUrl}/uploads/file?${params.toString()}`
+    : `${baseUrl}/uploads/file`;
 
   let json: any;
   try {
@@ -85,15 +117,28 @@ export async function uploadFileToBackend(opts: {
   onProgress?.(1);
   onStatus?.('done');
   const attachment = json?.attachment ?? json;
+  const durationSeconds =
+    typeof attachment.duration_seconds === 'number'
+      ? attachment.duration_seconds
+      : typeof attachment.durationSeconds === 'number'
+        ? attachment.durationSeconds
+        : attachment.durationMs
+          ? Math.round(attachment.durationMs / 1000)
+          : undefined;
+  const kind = (attachment.kind as string | undefined) ?? 'other';
   return {
     id: attachment.id ?? attachment.key,
     url: attachment.url,
     originalName: attachment.originalName ?? attachment.name ?? file.name,
     mimeType: attachment.mimeType ?? attachment.mime ?? file.type ?? 'application/octet-stream',
     size: attachment.size ?? file.size ?? 0,
-    kind: attachment.kind ?? 'other',
+    kind,
     width: attachment.width,
     height: attachment.height,
     durationMs: attachment.durationMs,
+    durationSeconds,
+    videoCategory:
+      attachment.video_category ??
+      (kind === 'short_video' ? 'shorts' : kind === 'video' || kind === 'long_video' ? 'videos' : undefined),
   } as AttachmentMeta;
 }

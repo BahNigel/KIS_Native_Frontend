@@ -133,7 +133,7 @@ export default function FeedCommentsScreen({
           </Pressable>
           <View style={{ flex: 1 }}>
             <Text style={[chatRoomStyles.headerTitle, { color: palette.text }]} numberOfLines={1}>
-              {title || 'Comments'}
+              {title || 'How to see'}
             </Text>
             {previewText ? (
               <Pressable onPress={handleOpenPost}>

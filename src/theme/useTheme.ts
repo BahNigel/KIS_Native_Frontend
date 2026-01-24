@@ -7,6 +7,8 @@ import {
   createPalette,
   KISPalette,
 } from './constants';
+import { getTypographyStyle, TYPOGRAPHY_PRESETS } from './foundations/typography';
+import { ICON_SIZES, IconTone, getIconColor } from './foundations/icons';
 
 export function useKISTheme(forced?: KISTone) {
   const sys = useColorScheme();
@@ -21,5 +23,13 @@ export function useKISTheme(forced?: KISTone) {
     palette,
     tokens,
     brand: KIS_COLORS.brand,
+    typography: {
+      presets: TYPOGRAPHY_PRESETS,
+      getStyle: getTypographyStyle,
+    },
+    icons: {
+      sizes: ICON_SIZES,
+      getColor: (toneParam?: IconTone) => getIconColor(palette, toneParam),
+    },
   };
 }

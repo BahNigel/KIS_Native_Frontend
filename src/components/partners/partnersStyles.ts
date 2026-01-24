@@ -18,7 +18,7 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    borderWidth: 1,
+    borderWidth: 2,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 12,
@@ -90,7 +90,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     paddingHorizontal: 6,
     borderRadius: 12,
-    borderWidth: 1,
+    borderWidth: 2,
   },
   adminAvatar: {
     width: 36,
@@ -98,7 +98,7 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
+    borderWidth: 2,
   },
 
   // Sections
@@ -122,7 +122,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     borderRadius: 8,
     marginBottom: 4,
-    borderWidth: 1,
+    borderWidth: 2,
   },
   groupHash: {
     width: 20,
@@ -133,7 +133,7 @@ const styles = StyleSheet.create({
 
   // Communities
   communityCard: {
-    borderWidth: 1,
+    borderWidth: 2,
     borderRadius: 10,
     paddingHorizontal: 8,
     paddingVertical: 6,
@@ -152,7 +152,7 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     marginBottom: 2,
     marginLeft: 4,
-    borderWidth: 1,
+    borderWidth: 2,
   },
 
   // RIGHT MESSAGES PANE
@@ -284,7 +284,7 @@ const styles = StyleSheet.create({
   },
   settingsSectionCard: {
     borderRadius: 12,
-    borderWidth: 1,
+    borderWidth: 2,
     padding: 12,
     marginBottom: 10,
   },
@@ -358,7 +358,7 @@ const styles = StyleSheet.create({
   },
   settingsFeatureRow: {
     borderRadius: 10,
-    borderWidth: 1,
+    borderWidth: 2,
     padding: 10,
     marginBottom: 8,
   },
@@ -376,7 +376,7 @@ const styles = StyleSheet.create({
     marginTop: 6,
   },
   settingsTextInput: {
-    borderWidth: 1,
+    borderWidth: 2,
     borderRadius: 10,
     paddingHorizontal: 10,
     paddingVertical: 8,
@@ -392,7 +392,7 @@ const styles = StyleSheet.create({
   overviewCard: {
     width: '48%',
     borderRadius: 12,
-    borderWidth: 1,
+    borderWidth: 2,
     padding: 10,
   },
   overviewValue: {

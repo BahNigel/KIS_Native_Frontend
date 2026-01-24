@@ -10,6 +10,7 @@ import {
   Modal,
   Animated,
   useWindowDimensions,
+  DeviceEventEmitter,
 } from 'react-native';
 import { useKISTheme } from '@/theme/useTheme';
 import ROUTES from '@/network';
@@ -301,6 +302,13 @@ export default function CommunitiesTab({ onOpenChat }: CommunitiesTabProps) {
 
   useEffect(() => {
     loadCommunities();
+  }, [loadCommunities]);
+
+  useEffect(() => {
+    const sub = DeviceEventEmitter.addListener('community.refresh', () => {
+      loadCommunities();
+    });
+    return () => sub.remove();
   }, [loadCommunities]);
 
   const header = useMemo(() => {
@@ -600,15 +608,15 @@ const styles = StyleSheet.create({
   container: { flex: 1, padding: 12 },
   headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
   title: { fontSize: 18, fontWeight: '700' },
-  card: { padding: 12, borderRadius: 12, borderWidth: 1, marginBottom: 10 },
+  card: { padding: 12, borderRadius: 12, borderWidth: 2, marginBottom: 10 },
   iconBtn: { padding: 6 },
   segmentRow: { flexDirection: 'row', gap: 8, marginBottom: 12 },
-  segment: { flex: 1, paddingVertical: 8, borderRadius: 10, borderWidth: 1, alignItems: 'center' },
-  composer: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderRadius: 10, paddingHorizontal: 8, marginBottom: 12 },
+  segment: { flex: 1, paddingVertical: 8, borderRadius: 10, borderWidth: 2, alignItems: 'center' },
+  composer: { flexDirection: 'row', alignItems: 'center', borderWidth: 2, borderRadius: 10, paddingHorizontal: 8, marginBottom: 12 },
   input: { flex: 1, paddingVertical: 8, paddingHorizontal: 8 },
   primaryBtn: { paddingVertical: 10, borderRadius: 10, alignItems: 'center', marginBottom: 12 },
   modalOverlay: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.45)' },
-  modalCard: { width: '88%', borderRadius: 14, borderWidth: 1, padding: 16 },
+  modalCard: { width: '88%', borderRadius: 14, borderWidth: 2, padding: 16 },
   modalRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 12 },
-  memberRow: { paddingVertical: 8, paddingHorizontal: 10, borderWidth: 1, borderRadius: 10, marginBottom: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  memberRow: { paddingVertical: 8, paddingHorizontal: 10, borderWidth: 2, borderRadius: 10, marginBottom: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
 });

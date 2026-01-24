@@ -111,7 +111,7 @@ export const PollModal: React.FC<PollModalProps> = ({
               placeholderTextColor={palette.subtext}
               style={{
                 borderRadius: kisRadius.lg,
-                borderWidth: 1,
+                borderWidth: 2,
                 borderColor: palette.inputBorder,
                 backgroundColor: palette.inputBg,
                 paddingHorizontal: KIS_TOKENS.spacing.md,
@@ -147,7 +147,7 @@ export const PollModal: React.FC<PollModalProps> = ({
                   style={{
                     flex: 1,
                     borderRadius: kisRadius.lg,
-                    borderWidth: 1,
+                    borderWidth: 2,
                     borderColor: palette.inputBorder,
                     backgroundColor: palette.inputBg,
                     paddingHorizontal: KIS_TOKENS.spacing.md,

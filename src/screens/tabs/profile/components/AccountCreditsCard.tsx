@@ -18,6 +18,10 @@ export default function AccountCreditsCard({
   walletLedger,
   showCreatePartnerButton,
   onCreatePartner,
+  partnerProfilesCount,
+  partnerProfilesLimitLabel,
+  partnerProfilesLimitValue,
+  partnerProfilesIsUnlimited,
 }: {
   tierName: string;
   tierPriceCents: number;
@@ -30,8 +34,15 @@ export default function AccountCreditsCard({
   walletLedger: any[];
   showCreatePartnerButton?: boolean;
   onCreatePartner?: () => void;
+  partnerProfilesCount?: number;
+  partnerProfilesLimitLabel?: string | null;
+  partnerProfilesLimitValue?: number | null;
+  partnerProfilesIsUnlimited?: boolean;
 }) {
   const { palette } = useKISTheme();
+  const partnerLimitText = partnerProfilesIsUnlimited
+    ? 'Unlimited partner orgs'
+    : partnerProfilesLimitLabel ?? (partnerProfilesLimitValue ?? 0).toString();
 
   return (
     <View style={[styles.sectionCard, { backgroundColor: palette.card, borderColor: palette.divider }]}>
@@ -64,6 +75,13 @@ export default function AccountCreditsCard({
         {showCreatePartnerButton && onCreatePartner ? (
           <KISButton title="Create partner" variant="primary" onPress={onCreatePartner} />
         ) : null}
+      </View>
+
+      <View style={[styles.partnerRow, { justifyContent: 'space-between' }]}>
+        <Text style={[styles.subtext, { color: palette.text }]}>Partner orgs</Text>
+        <Text style={[styles.statMeta, { color: palette.subtext }]}>
+          {partnerProfilesCount ?? 0}/{partnerLimitText}
+        </Text>
       </View>
 
       <View style={{ marginTop: 10, gap: 8 }}>

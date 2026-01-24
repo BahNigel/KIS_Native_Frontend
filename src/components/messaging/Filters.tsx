@@ -333,7 +333,7 @@ export function FilterManager({
             </Pressable>
             <Pressable
               onPress={save}
-              style={[styles.footerBtn, { backgroundColor: palette.primarySoft, borderWidth: 1, borderColor: palette.primary }]}
+              style={[styles.footerBtn, { backgroundColor: palette.primarySoft, borderWidth: 2, borderColor: palette.primary }]}
             >
               <Text style={{ color: palette.primaryStrong, fontWeight: '700' }}>Save filter</Text>
             </Pressable>

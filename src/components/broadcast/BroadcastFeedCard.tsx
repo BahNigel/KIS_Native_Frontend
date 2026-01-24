@@ -1,11 +1,13 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useKISTheme } from '@/theme/useTheme';
 import { KISIcon } from '@/constants/kisIcons';
-import KISButton from '@/constants/KISButton';
+import { resolveBackendAssetUrl } from '@/network';
+import RichTextRenderer from '@/components/feeds/RichTextRenderer';
+import { getAttachmentPreviewInfo } from './attachmentPreview';
 
 type BroadcastSourceMeta = {
-  type: 'community' | 'partner' | 'channel' | 'market' | string;
+  type: 'community' | 'partner' | 'channel' | 'market' | 'lesson' | 'live' | string;
   id?: string | null;
   name?: string;
   conversation_id?: string;
@@ -17,202 +19,495 @@ type BroadcastSourceMeta = {
   methods?: string[];
   is_subscribed?: boolean;
   can_open?: boolean;
+  verified?: boolean;
+  tier?: 'free' | 'pro' | 'business' | 'education';
+  followers_count?: number;
 };
 
-export type BroadcastFeedItem = {
+type BroadcastFeedItem = {
   id: string;
   source_type: string;
   title?: string;
   text?: string;
   styled_text?: { text?: string } | null;
+  text_doc?: any;
+  text_plain?: string;
   attachments?: any[];
-  author?: { display_name?: string };
+  author?: {
+    display_name?: string;
+    avatar_url?: string;
+    id?: string;
+  };
   created_at?: string;
   broadcasted_at?: string;
   reaction_count?: number;
   viewer_reaction?: string | null;
   comment_count?: number;
-  source?: BroadcastSourceMeta;
+  comment_conversation_id?: string | null;
+  share_count?: number;
+  save_count?: number;
+  view_count?: number;
+  is_live?: boolean;
+  live_viewers?: number;
+  is_premium?: boolean;
+  is_lesson?: boolean;
+  lesson_duration?: number;
+  lesson_level?: 'beginner' | 'intermediate' | 'advanced';
   product?: {
     name?: string;
     description?: string;
     price?: string;
     currency?: string;
+    stock_qty?: number;
+    badge?: 'drop' | 'limited' | 'exclusive';
   };
+  video_category?: 'shorts' | 'videos' | 'lessons' | string | null;
+  video_duration_seconds?: number;
+  source?: BroadcastSourceMeta;
 };
 
 type Props = {
   item: BroadcastFeedItem;
   onLike: () => void;
-  onComment: () => void;
   onShare: () => void;
   onOpenSource?: () => void;
-  onJoinSource?: () => void;
-  onSubscribeChannel?: () => void;
   onOpenMarket?: () => void;
+  onMenuPress?: () => void;
+  onVideoPress?: () => void;
+  onSave?: () => void;
+  onJoinLesson?: () => void;
+  commentConversationId?: string | null;
+  fetchConversationId?: () => Promise<string | null>;
+  onConversationResolved?: (conversationId: string | null) => void;
+  onMessageCountChange?: (count: number) => void;
+  contextLabel?: string;
+  showComments?: boolean;
+  onToggleComments?: () => void;
+  onSubscribe?: () => void | Promise<void>;
 };
 
 const fallbackAvatar = require('@/assets/logo-light.png');
 
+const formatDuration = (seconds: number) => {
+  const safe = Number.isFinite(Number(seconds)) ? Math.max(0, Math.floor(Number(seconds))) : 0;
+  const mins = Math.floor(safe / 60);
+  const secs = safe % 60;
+  return `${mins}:${secs.toString().padStart(2, '0')}`;
+};
+
+const safeTimeLabel = (iso?: string) => {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  // lightweight “time ago” feel without extra deps
+  const diff = Date.now() - d.getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins} min ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+};
+
+const getTextExcerpt = (item: BroadcastFeedItem) => {
+  const raw =
+    item.text_plain ??
+    item.styled_text?.text ??
+    (typeof item.text === 'string' ? item.text : '') ??
+    '';
+  return String(raw).replace(/\s+/g, ' ').trim();
+};
+
 export default function BroadcastFeedCard({
   item,
   onLike,
-  onComment,
   onShare,
   onOpenSource,
-  onJoinSource,
-  onSubscribeChannel,
   onOpenMarket,
+  onMenuPress,
+  onVideoPress,
+  onSave,
+  onJoinLesson,
+  onToggleComments,
 }: Props) {
-  const { palette } = useKISTheme();
-  const body = item.text || item.styled_text?.text || item.product?.description || '';
-  const attachment = Array.isArray(item.attachments) ? item.attachments[0] : null;
-  const attachmentUrl =
-    (typeof attachment === 'string' ? attachment : null) ??
-    attachment?.url ??
-    attachment?.uri ??
-    attachment?.file_url ??
-    attachment?.fileUrl ??
-    attachment?.path ??
-    null;
-  const thumbUrl =
-    attachment?.thumbUrl ??
-    attachment?.thumb_url ??
-    attachment?.thumbnail ??
-    attachment?.thumb ??
-    attachment?.preview_url ??
-    attachment?.previewUrl ??
-    null;
-  const kind = attachment?.kind ?? attachment?.mimeType ?? attachment?.type ?? '';
-  const isVideo = String(kind).includes('video') || String(kind).includes('mp4');
-  const source = item.source;
-  const showOpen = source?.can_open;
-  const isChannel = source?.type === 'channel';
-  const showJoin = !source?.can_open && (source?.type === 'community' || source?.type === 'partner');
-  const showSubscribe = isChannel && !source?.is_subscribed;
-  const showMarket = source?.type === 'market';
+  const { palette, tokens } = useKISTheme();
+  const styles = useMemo(() => makeStyles(tokens), [tokens]);
+
+  const when = safeTimeLabel(item.broadcasted_at ?? item.created_at);
+  const sourceName =
+    item.source?.name ||
+    (item.source?.type ? item.source.type.charAt(0).toUpperCase() + item.source.type.slice(1) : '') ||
+    '';
+
+  const excerpt = getTextExcerpt(item);
+  const showTitle = Boolean(item.title && item.title.trim().length);
+  const showExcerpt = Boolean(excerpt && excerpt.length);
+
+  const attachments = Array.isArray(item.attachments) ? item.attachments : [];
+  const thumbs = attachments.slice(0, 3).map((a) => getAttachmentPreviewInfo(a));
+  const durationLabel =
+    typeof item.video_duration_seconds === 'number' ? formatDuration(item.video_duration_seconds) : null;
+
+  const canSubscribe = Boolean(item.source?.allow_subscribe);
+  const isSubscribed = Boolean(item.source?.is_subscribed);
+
+  const onPressPrimary = onVideoPress ?? onOpenMarket ?? onOpenSource;
 
   return (
-    <View style={[styles.card, { borderColor: palette.divider, backgroundColor: palette.card }]}>
-      <View style={styles.header}>
-        <Image source={fallbackAvatar} style={styles.avatar} />
+    <View style={[styles.card, { backgroundColor: palette.card, borderColor: palette.divider }]}>
+      {/* ───── Header (avatar + source + time + menu) ───── */}
+      <View style={styles.headerRow}>
+        <Image
+          source={
+            item.author?.avatar_url
+              ? { uri: resolveBackendAssetUrl(item.author.avatar_url) }
+              : fallbackAvatar
+          }
+          style={[styles.avatar, { backgroundColor: palette.bar }]}
+        />
+
         <View style={{ flex: 1 }}>
-          <Text style={{ color: palette.text, fontWeight: '700' }}>
-            {item.title || source?.name || 'Broadcast'}
-          </Text>
-          <Text style={{ color: palette.subtext, fontSize: 12 }}>
-            {item.broadcasted_at
-              ? new Date(item.broadcasted_at).toLocaleString()
-              : item.created_at
-              ? new Date(item.created_at).toLocaleString()
-              : 'Just now'}
+          <View style={styles.headerTopLine}>
+            <Text style={[styles.headerName, { color: palette.text }]} numberOfLines={1}>
+              {item.author?.display_name || sourceName || 'Broadcast'}
+            </Text>
+
+            {item.source?.verified ? (
+              <View style={[styles.verifiedDot, { backgroundColor: palette.primaryStrong }]}>
+                <KISIcon name="check" size={12} color="#fff" />
+              </View>
+            ) : null}
+          </View>
+
+          <Text style={[styles.headerMeta, { color: palette.subtext }]} numberOfLines={1}>
+            {sourceName ? `${sourceName}${when ? ' • ' : ''}` : ''}
+            {when}
           </Text>
         </View>
+
+        <Pressable
+          onPress={onMenuPress}
+          style={[styles.menuBtn, { backgroundColor: palette.surface, borderColor: palette.divider }]}
+          hitSlop={10}
+        >
+          <KISIcon name="menu" size={18} color={palette.subtext} />
+        </Pressable>
       </View>
 
-      {attachmentUrl ? (
-        <View style={styles.mediaWrap}>
-          {isVideo ? (
-            <>
-              {thumbUrl ? (
-                <Image source={{ uri: thumbUrl }} style={styles.media} />
-              ) : (
-                <View style={[styles.media, styles.mediaFallback, { borderColor: palette.divider }]}>
-                  <KISIcon name="play" size={22} color={palette.subtext} />
-                  <Text style={{ color: palette.subtext, fontSize: 12, marginTop: 6 }}>
-                    Video attachment
-                  </Text>
-                </View>
-              )}
-            </>
-          ) : (
-            <Image source={{ uri: attachmentUrl }} style={styles.media} />
-          )}
-        </View>
-      ) : null}
-
-      {body ? (
-        <Text style={{ color: palette.text, marginTop: 10, fontSize: 14, lineHeight: 20 }}>
-          {body}
+      {/* ───── Title + body (mockup-style) ───── */}
+      {showTitle ? (
+        <Text style={[styles.title, { color: palette.text }]} numberOfLines={2}>
+          {item.title}
         </Text>
       ) : null}
 
-      {item.product ? (
-        <View style={[styles.productChip, { borderColor: palette.divider, backgroundColor: palette.surface }]}>
-          <Text style={{ color: palette.text, fontWeight: '700' }}>{item.product.name}</Text>
-          <Text style={{ color: palette.subtext, fontSize: 12 }}>
-            {item.product.price} {item.product.currency}
-          </Text>
+      {showExcerpt ? (
+        <Text style={[styles.bodyText, { color: palette.subtext }]} numberOfLines={3}>
+          {excerpt}
+          {excerpt.length > 0 ? '  ' : ''}
+          <Text style={{ color: palette.primaryStrong, fontWeight: '900' }}>Read more</Text>
+        </Text>
+      ) : item.text_doc || item.text ? (
+        <View style={{ marginTop: 2 }}>
+          <RichTextRenderer
+            value={item.text ?? item.text_doc}
+            style={{
+              color: palette.subtext,
+              fontSize: 14,
+              lineHeight: 21,
+            }}
+          />
         </View>
       ) : null}
 
-      <View style={styles.actions}>
-        <Pressable onPress={onLike} style={styles.actionPill}>
-          <KISIcon
-            name="heart"
-            size={16}
-            color={item.viewer_reaction ? palette.primary : palette.subtext}
-            focused={Boolean(item.viewer_reaction)}
-          />
-          <Text style={{ color: palette.subtext }}>
-            {item.reaction_count ?? 0}
+      {/* ───── Media rail (3 thumbnails like mockup) ───── */}
+      {thumbs.length > 0 ? (
+        <View style={styles.mediaRow}>
+          {thumbs.map((t, idx) => {
+            const isFirst = idx === 0;
+            return (
+              <Pressable
+                key={`${item.id}-thumb-${idx}`}
+                onPress={onPressPrimary}
+                style={[styles.mediaTile, { borderColor: palette.divider, backgroundColor: palette.surface }]}
+              >
+                {t.previewUri ? (
+                  <Image source={{ uri: t.previewUri }} style={styles.mediaImg} />
+                ) : (
+                  <View style={[styles.mediaImg, { backgroundColor: palette.bar }]} />
+                )}
+
+                {/* LIVE badge (like mockup) */}
+                {Boolean(item.is_live) && isFirst ? (
+                  <View style={[styles.liveBadge, { backgroundColor: palette.danger }]}>
+                    <Text style={styles.liveText}>LIVE</Text>
+                  </View>
+                ) : null}
+
+                {/* Duration pill (bottom-right) */}
+                {durationLabel && isFirst ? (
+                  <View style={[styles.durationPill, { backgroundColor: 'rgba(0,0,0,0.6)' }]}>
+                    <Text style={{ color: '#fff', fontWeight: '900', fontSize: 12 }}>{durationLabel}</Text>
+                  </View>
+                ) : null}
+              </Pressable>
+            );
+          })}
+        </View>
+      ) : null}
+
+      {/* ───── Subscribe row (like mockup buttons under media) ───── */}
+      <View style={styles.ctaRow}>
+        {canSubscribe ? (
+        <Pressable
+          onPress={onSubscribe ?? onOpenSource}
+          style={[
+            styles.subscribeBtn,
+            {
+              backgroundColor: isSubscribed ? palette.surface : palette.primarySoft,
+              borderColor: isSubscribed ? palette.divider : palette.primary,
+            },
+          ]}
+        >
+          <Text
+            style={{
+              color: isSubscribed ? palette.subtext : palette.primaryStrong,
+              fontWeight: '900',
+            }}
+          >
+            {isSubscribed ? 'Subscribed' : 'Subscribe'}
           </Text>
         </Pressable>
-        <Pressable onPress={onComment} style={styles.actionPill}>
-          <KISIcon name="comment" size={16} color={palette.subtext} />
-          <Text style={{ color: palette.subtext }}>{item.comment_count ?? 0}</Text>
-        </Pressable>
-        <Pressable onPress={onShare} style={styles.actionPill}>
-          <KISIcon name="share" size={16} color={palette.subtext} />
-          <Text style={{ color: palette.subtext }}>Share</Text>
-        </Pressable>
+        ) : null}
+
+        {item.is_lesson && onJoinLesson ? (
+          <Pressable
+            onPress={onJoinLesson}
+            style={[styles.primaryPill, { backgroundColor: palette.primaryStrong }]}
+          >
+            <Text style={{ color: '#fff', fontWeight: '900' }}>Enroll</Text>
+          </Pressable>
+        ) : null}
+
+        {item.product && onOpenMarket ? (
+          <Pressable onPress={onOpenMarket} style={[styles.primaryPill, { backgroundColor: palette.primaryStrong }]}>
+            <Text style={{ color: '#fff', fontWeight: '900' }}>Shop</Text>
+          </Pressable>
+        ) : null}
       </View>
 
-      <View style={styles.ctaRow}>
-        {showSubscribe ? (
-          <KISButton title="Follow channel" size="sm" onPress={onSubscribeChannel} />
+      {/* ───── Engagement row (icons + counts like mockup bottom bar) ───── */}
+      <View style={[styles.engagementRow, { borderTopColor: palette.divider }]}>
+        <View style={styles.engItem}>
+          <KISIcon name="heart" size={18} color={palette.primaryStrong} />
+          <Text style={[styles.engText, { color: palette.subtext }]}>
+            {item.reaction_count ?? 0}
+          </Text>
+        </View>
+
+        <View style={styles.engItem}>
+          <KISIcon name="comment" size={18} color={palette.subtext} />
+          <Text style={[styles.engText, { color: palette.subtext }]}>
+            {item.comment_count ?? 0}
+          </Text>
+        </View>
+
+        <Pressable onPress={onShare} style={styles.engItem}>
+          <KISIcon name="share" size={18} color={palette.subtext} />
+          <Text style={[styles.engText, { color: palette.subtext }]}>
+            {item.share_count ?? 0}
+          </Text>
+        </Pressable>
+
+        <View style={{ flex: 1 }} />
+
+        {onSave ? (
+          <Pressable onPress={onSave} style={styles.iconOnlyBtn} hitSlop={10}>
+            <KISIcon name="bookmark" size={18} color={palette.subtext} />
+          </Pressable>
         ) : null}
-        {showJoin ? (
-          <KISButton title="Join" size="sm" variant="outline" onPress={onJoinSource} />
-        ) : null}
-        {showOpen ? (
-          <KISButton title="Open source" size="sm" variant="secondary" onPress={onOpenSource} />
-        ) : null}
-        {showMarket ? (
-          <KISButton title="View store" size="sm" variant="secondary" onPress={onOpenMarket} />
+
+        <Pressable onPress={onLike} style={styles.iconOnlyBtn} hitSlop={10}>
+          <KISIcon name="heart" size={18} color={palette.primaryStrong} />
+        </Pressable>
+
+        {onToggleComments ? (
+          <Pressable onPress={onToggleComments} style={styles.iconOnlyBtn} hitSlop={10}>
+            <KISIcon name="comment" size={18} color={palette.subtext} />
+          </Pressable>
         ) : null}
       </View>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  card: {
-    borderWidth: 1,
-    borderRadius: 14,
-    padding: 14,
-    gap: 8,
-  },
-  header: {
-    flexDirection: 'row',
-    gap: 10,
-    alignItems: 'center',
-  },
-  avatar: { width: 36, height: 36, borderRadius: 18 },
-  mediaWrap: { marginTop: 6 },
-  media: { width: '100%', height: 180, borderRadius: 12 },
-  mediaFallback: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-  },
-  actions: { flexDirection: 'row', gap: 10, marginTop: 8, flexWrap: 'wrap' },
-  actionPill: { flexDirection: 'row', gap: 6, alignItems: 'center' },
-  ctaRow: { flexDirection: 'row', gap: 10, flexWrap: 'wrap', marginTop: 4 },
-  productChip: {
-    borderWidth: 1,
-    borderRadius: 10,
-    padding: 10,
-    marginTop: 6,
-  },
-});
+const makeStyles = (tokens: any) =>
+  StyleSheet.create({
+    card: {
+      borderWidth: 2,
+      borderRadius: 26,
+      padding: 16,
+      gap: 10,
+      shadowColor: '#000',
+      shadowOpacity: 0.06,
+      shadowRadius: 14,
+      shadowOffset: { width: 0, height: 6 },
+      elevation: 2,
+    },
+
+    headerRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+    },
+
+    avatar: {
+      width: 44,
+      height: 44,
+      borderRadius: 16,
+    },
+
+    headerTopLine: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+    },
+
+    headerName: {
+      fontSize: 15,
+      fontWeight: '900',
+      letterSpacing: -0.2,
+      maxWidth: '92%',
+    },
+
+    verifiedDot: {
+      width: 18,
+      height: 18,
+      borderRadius: 9,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+
+    headerMeta: {
+      fontSize: 12,
+      fontWeight: '700',
+      marginTop: 2,
+    },
+
+    menuBtn: {
+      borderWidth: 2,
+      borderRadius: 999,
+      paddingHorizontal: 10,
+      paddingVertical: 8,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+
+    title: {
+      fontSize: 18,
+      fontWeight: '900',
+      letterSpacing: -0.2,
+      marginTop: 2,
+    },
+
+    bodyText: {
+      fontSize: 14,
+      lineHeight: 21,
+      fontWeight: '600',
+    },
+
+    mediaRow: {
+      flexDirection: 'row',
+      gap: 10,
+      marginTop: 4,
+    },
+
+    mediaTile: {
+      flex: 1,
+      borderWidth: 2,
+      borderRadius: 18,
+      overflow: 'hidden',
+      position: 'relative',
+      aspectRatio: 16 / 11,
+    },
+
+    mediaImg: {
+      width: '100%',
+      height: '100%',
+    },
+
+    liveBadge: {
+      position: 'absolute',
+      bottom: 10,
+      left: 10,
+      borderRadius: 10,
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+    },
+
+    liveText: {
+      color: '#fff',
+      fontWeight: '900',
+      fontSize: 11,
+      letterSpacing: 0.4,
+    },
+
+    durationPill: {
+      position: 'absolute',
+      bottom: 10,
+      right: 10,
+      borderRadius: 10,
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+    },
+
+    ctaRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+      flexWrap: 'wrap',
+      marginTop: 2,
+    },
+
+    subscribeBtn: {
+      borderWidth: 2,
+      borderRadius: 999,
+      paddingHorizontal: 14,
+      paddingVertical: 10,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+
+    primaryPill: {
+      borderRadius: 999,
+      paddingHorizontal: 16,
+      paddingVertical: 12,
+    },
+
+    engagementRow: {
+      marginTop: 4,
+      paddingTop: 10,
+      borderTopWidth: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 16,
+    },
+
+    engItem: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+    },
+
+    engText: {
+      fontSize: 13,
+      fontWeight: '900',
+    },
+
+    iconOnlyBtn: {
+      paddingHorizontal: 6,
+      paddingVertical: 6,
+      borderRadius: 12,
+    },
+  });

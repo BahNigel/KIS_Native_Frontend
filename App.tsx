@@ -24,7 +24,7 @@ import { MainTabs } from '@/navigation/AppNavigator';
 import { getRequest } from '@/network/get';
 import ROUTES, { NEST_API_BASE_URL } from '@/network';
 import { postRequest } from '@/network/post';
-import { SocketProvider } from './SocketProvider';
+import { SocketProvider } from '@/SocketProvider';
 import { initPushHandlers } from './src/push/notifications';
 
 type AuthCtx = {

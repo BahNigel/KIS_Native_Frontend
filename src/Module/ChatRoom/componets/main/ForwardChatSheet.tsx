@@ -159,7 +159,7 @@ export const ForwardChatSheet: React.FC<ForwardChatSheetProps> = ({
               borderRadius: 999,
               paddingHorizontal: 12,
               paddingVertical: 6,
-              borderWidth: 1,
+              borderWidth: 2,
               borderColor: palette.divider,
               color: palette.text,
             }}

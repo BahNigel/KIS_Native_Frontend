@@ -549,7 +549,7 @@ export const StickerEditor: React.FC<StickerEditorProps> = ({
                     paddingHorizontal: 10,
                     paddingVertical: 6,
                     borderRadius: 16,
-                    borderWidth: 1,
+                    borderWidth: 2,
                     borderColor: selected ? palette.primary : '#666',
                     backgroundColor: selected
                       ? palette.primary + '33'

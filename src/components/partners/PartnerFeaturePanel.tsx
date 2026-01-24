@@ -162,7 +162,7 @@ export default function PartnerFeaturePanel({
                     marginTop: 10,
                     paddingVertical: 8,
                     borderRadius: 10,
-                    borderWidth: 1,
+                    borderWidth: 2,
                     borderColor: palette.borderMuted,
                     backgroundColor: palette.primarySoft ?? palette.surface,
                     opacity: pressed ? 0.8 : 1,
