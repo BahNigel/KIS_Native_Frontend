@@ -45,13 +45,9 @@ export const NEST_API_BASE_URL = CHAT_BASE_URL; // keep in sync with CHAT_BASE_U
 
 // Centralize endpoints here so you can adjust once if your backend paths differ.
 
-export const FEEDS_ENDPOINT = '/api/v1/broadcast/feeds/';
-export const FEEDS_TRENDING_ENDPOINT = '/api/v1/broadcast/trending/';
-export const FEEDS_CODES_ENDPOINT = '/api/v1/broadcast/codes/';
+export const FEEDS_ENDPOINT = `${API_BASE_URL}/api/v1/broadcasts/`;
 
 // Subscribe/unsubscribe for a source/channel/community/etc
-export const SUBSCRIBE_ENDPOINT = (sourceId: string) => `/api/v1/broadcast/sources/${sourceId}/subscribe/`;
-export const UNSUBSCRIBE_ENDPOINT = (sourceId: string) => `/api/v1/broadcast/sources/${sourceId}/unsubscribe/`;
 
 
 
@@ -384,6 +380,7 @@ const ROUTES = {
       `${API_BASE_URL}/api/v1/broadcasts/channels/${channelId}/features/`,
     videos: (type?: string) =>
       `${API_BASE_URL}/api/v1/broadcasts/videos/${type ? `?type=${encodeURIComponent(type)}` : ''}`,
+    videoStream: (id: string) => `${API_BASE_URL}/api/v1/broadcasts/videos/${id}/stream/`,
     lessons: `${API_BASE_URL}/api/v1/broadcasts/lessons/`,
     lessonEnrollments: `${API_BASE_URL}/api/v1/broadcasts/lessons/enrollments/`,
     lessonEnroll: (lessonId: string) =>

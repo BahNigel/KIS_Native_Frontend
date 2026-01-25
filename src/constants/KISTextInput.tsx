@@ -9,12 +9,48 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   GestureResponderEvent,
+  ViewStyle,
+  TextStyle,
 } from 'react-native';
 import { getTypographyStyle } from '@/theme/foundations/typography';
 import { FONT_FAMILIES, FONT_WEIGHTS } from '@/theme/foundations/fonts';
 import { useKISTheme } from '@/theme/useTheme';
 
 type Adornment = React.ReactNode | ((color: string) => React.ReactNode);
+
+type SizePreset = 'sm' | 'md' | 'lg' | 'xl';
+
+type LayoutOverrides = {
+  /** Outer wrap that contains border/bg */
+  wrapStyle?: ViewStyle;
+  /** Inner TextInput style */
+  inputStyle?: TextStyle;
+
+  /** Turn border on/off (default: true) */
+  bordered?: boolean;
+
+  /** Direct ergonomic knobs (applied to wrap/input). Any of these can be set per-call. */
+  height?: number;
+  minHeight?: number;
+  maxHeight?: number;
+  width?: number | string;
+
+  paddingHorizontal?: number;
+  paddingVertical?: number;
+
+  /** If you want different padding for the actual TextInput */
+  inputPaddingVertical?: number;
+  inputPaddingHorizontal?: number;
+
+  borderRadius?: number;
+  borderWidth?: number;
+
+  /** Control overall density quickly */
+  size?: SizePreset;
+
+  /** Convenience when using multiline fields */
+  multilineMinHeight?: number;
+};
 
 type Props = TextInputProps & {
   label?: string;
@@ -29,7 +65,22 @@ type Props = TextInputProps & {
   allowClear?: boolean;
   /** Called when user taps the clear button; if not provided we call onChangeText('') */
   onClear?: (e: GestureResponderEvent) => void;
-  containerStyle?: any;
+
+  /** Container style around the whole component */
+  containerStyle?: ViewStyle;
+
+  /** Layout overrides you can pass when calling */
+  layout?: LayoutOverrides;
+};
+
+const SIZE_PRESETS: Record<
+  SizePreset,
+  { height: number; px: number; py: number; inputPy: number }
+> = {
+  sm: { height: 44, px: 10, py: 0, inputPy: 10 },
+  md: { height: 52, px: 12, py: 0, inputPy: 12 },
+  lg: { height: 60, px: 14, py: 0, inputPy: 14 },
+  xl: { height: 68, px: 16, py: 0, inputPy: 16 },
 };
 
 export default function KISTextInput({
@@ -45,10 +96,16 @@ export default function KISTextInput({
   containerStyle,
   value,
   onChangeText,
+  layout,
+  allowClear,
+  onClear,
+  multiline,
+  placeholderTextColor,
   ...rest
 }: Props) {
   const { palette, tokens } = useKISTheme();
   const [secure, setSecure] = useState(!!secureTextEntry);
+
   const labelStyle = getTypographyStyle('label', palette.subtext);
   const helperStyle = getTypographyStyle('helper', palette.subtext);
   const errorStyle = getTypographyStyle('helper', palette.danger);
@@ -61,7 +118,78 @@ export default function KISTextInput({
     return palette.inputBorder;
   }, [hasError, palette]);
 
+  const preset = useMemo(() => {
+    const size = layout?.size ?? 'md';
+    return SIZE_PRESETS[size];
+  }, [layout?.size]);
+
+  // Base control height from theme, fallback to preset
+  const baseControlHeight = useMemo(() => {
+    return tokens.controlHeights?.md ?? preset.height;
+  }, [tokens.controlHeights?.md, preset.height]);
+
+  const wrapHeight = useMemo(() => {
+    // If multiline, don’t force fixed height unless user explicitly sets it.
+    if (multiline) return layout?.height ?? undefined;
+    return layout?.height ?? baseControlHeight;
+  }, [layout?.height, multiline, baseControlHeight]);
+
+  const wrapPaddingHorizontal = layout?.paddingHorizontal ?? preset.px;
+  const wrapPaddingVertical = layout?.paddingVertical ?? preset.py;
+
+  const inputPaddingVertical = layout?.inputPaddingVertical ?? preset.inputPy;
+  const inputPaddingHorizontal = layout?.inputPaddingHorizontal ?? 0;
+
+  const isBordered = layout?.bordered !== false;
+
+  const wrapRadius = layout?.borderRadius ?? tokens.radius?.lg ?? 16;
+  const wrapBorderWidth = isBordered ? layout?.borderWidth ?? 2 : 0;
+
+  // Multiline: if user didn't specify any minHeight, use the size preset height as minHeight.
+  const computedMinHeight = useMemo(() => {
+    if (!multiline) return layout?.minHeight;
+
+    if (layout?.multilineMinHeight) return layout.multilineMinHeight;
+    if (layout?.minHeight != null) return layout.minHeight;
+
+    // default multiline minHeight follows the chosen size preset
+    return baseControlHeight;
+  }, [multiline, layout?.multilineMinHeight, layout?.minHeight, baseControlHeight]);
+
+  const computedWrapStyle: ViewStyle = useMemo(
+    () => ({
+      backgroundColor: palette.inputBg,
+      borderColor: isBordered ? borderColor : 'transparent',
+      borderRadius: wrapRadius,
+      borderWidth: wrapBorderWidth,
+
+      // sizing
+      height: wrapHeight,
+      minHeight: computedMinHeight,
+      maxHeight: layout?.maxHeight,
+      width: layout?.width,
+
+      // padding
+      paddingHorizontal: wrapPaddingHorizontal,
+      paddingVertical: wrapPaddingVertical,
+    }),
+    [
+      palette.inputBg,
+      isBordered,
+      borderColor,
+      wrapRadius,
+      wrapBorderWidth,
+      wrapHeight,
+      computedMinHeight,
+      layout?.maxHeight,
+      layout?.width,
+      wrapPaddingHorizontal,
+      wrapPaddingVertical,
+    ],
+  );
+
   const showClear =
+    !!allowClear &&
     !!value &&
     typeof value === 'string' &&
     value.length > 0 &&
@@ -71,12 +199,10 @@ export default function KISTextInput({
     (rest.editable ?? true) !== false;
 
   const handleClear = (e: GestureResponderEvent) => {
-    if (typeof onChangeText === 'function' && !rest.readOnly) {
+    if (typeof onChangeText === 'function' && !(rest as any).readOnly) {
       onChangeText('');
     }
-    if (typeof (rest as any)?.onClear === 'function') {
-      (rest as any).onClear(e);
-    }
+    if (typeof onClear === 'function') onClear(e);
   };
 
   const RightAdornment = useMemo(() => {
@@ -105,7 +231,7 @@ export default function KISTextInput({
       );
     }
 
-    if (showClear && (rest as any).allowClear) {
+    if (showClear) {
       return (
         <TouchableOpacity
           onPress={handleClear}
@@ -126,56 +252,61 @@ export default function KISTextInput({
       );
     }
 
-    if (right)
+    if (right) {
       return (
         <View style={styles.adornment}>
           {typeof right === 'function' ? right(palette.subtext) : right}
         </View>
       );
+    }
 
     return null;
-  }, [loading, secure, secureTextEntry, right, palette, showClear]);
+  }, [loading, secure, secureTextEntry, right, palette.subtext, showClear]);
+
+  // Respect caller-provided placeholderTextColor if present
+  const resolvedPlaceholderTextColor =
+    placeholderTextColor ?? rest.placeholderTextColor ?? palette.subtext;
 
   return (
     <View style={[{ marginBottom: 16 }, containerStyle]}>
-      {label ? (
-        <Text style={[labelStyle, { marginBottom: 6 }]}>{label}</Text>
-      ) : null}
+      {label ? <Text style={[labelStyle, { marginBottom: 6 }]}>{label}</Text> : null}
 
-      <View
-        style={[
-          styles.inputWrap,
-          {
-            backgroundColor: palette.inputBg,
-            borderColor,
-            borderRadius: tokens.radius.lg,
-            height: tokens.controlHeights.md,
-          },
-        ]}
-      >
+      <View style={[styles.inputWrap, computedWrapStyle, layout?.wrapStyle]}>
         {left ? (
-          <View style={[styles.adornment, { marginLeft: 8 }]}>
+          <View style={[styles.adornment, { marginLeft: 2 }]}>
             {typeof left === 'function' ? left(palette.subtext) : left}
           </View>
         ) : null}
 
         <TextInput
           {...rest}
+          multiline={multiline}
           value={value}
           onChangeText={onChangeText}
           secureTextEntry={secure}
-          placeholderTextColor={palette.subtext}
-          style={[styles.input, inputTextStyle, { color: palette.text }, style]}
+          placeholderTextColor={resolvedPlaceholderTextColor}
+          textAlignVertical={multiline ? 'top' : (rest as any).textAlignVertical}
+          style={[
+            styles.input,
+            inputTextStyle,
+            {
+              color: palette.text,
+              paddingVertical: inputPaddingVertical,
+              paddingHorizontal: inputPaddingHorizontal,
+            },
+            layout?.inputStyle,
+            style,
+          ]}
         />
 
         {RightAdornment}
       </View>
 
-      {!!errorText && <Text style={[errorStyle, { marginTop: 6 }]}>{errorText}</Text>}
+      {!!errorText ? <Text style={[errorStyle, { marginTop: 6 }]}>{errorText}</Text> : null}
 
-      {!errorText && !!helperText && (
+      {!errorText && !!helperText ? (
         <Text style={[helperStyle, { marginTop: 6 }]}>{helperText}</Text>
-      )}
+      ) : null}
     </View>
   );
 }
@@ -184,12 +315,9 @@ const styles = StyleSheet.create({
   inputWrap: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderWidth: 2,
-    paddingHorizontal: 12,
   },
   input: {
     flex: 1,
-    paddingVertical: 12,
   },
   adornment: {
     marginHorizontal: 6,

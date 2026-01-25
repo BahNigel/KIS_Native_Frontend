@@ -4,117 +4,84 @@ import { useKISTheme } from '@/theme/useTheme';
 import { KISIcon } from '@/constants/kisIcons';
 import KISTextInput from '@/constants/KISTextInput';
 
-export type BroadcastSubTabId =
-  | 'search'
-  | 'codes'
-  | 'filter'
-  | 'channels'
-  | 'communities'
-  | 'courses'
-  | 'topics';
-
-type Tab = {
-  id: BroadcastSubTabId;
-  label: string;
-  icon: string;
-};
-
 type Props = {
-  tabs: Tab[];
-  value: BroadcastSubTabId;
-  onChange: (next: BroadcastSubTabId) => void;
+  searchPlaceholder: string;
   searchValue: string;
   onSearchChange: (next: string) => void;
+  onFilterPress: () => void;
+  filterLabel: string;
+  filterActive: boolean;
 };
 
 export default function BroadcastSearchRow({
-  tabs,
-  value,
-  onChange,
+  searchPlaceholder,
   searchValue,
   onSearchChange,
+  onFilterPress,
+  filterLabel,
+  filterActive,
 }: Props) {
-  const { palette, tokens } = useKISTheme();
-  const styles = useMemo(() => makeStyles(tokens), [tokens]);
+  const { palette } = useKISTheme();
+  const styles = useMemo(() => makeStyles(), []);
 
   return (
-    <View style={{ gap: 10 }}>
-      <View style={[styles.tabsRow, { backgroundColor: palette.surface, borderColor: palette.divider }]}>
-        {tabs.map((t) => {
-          const active = t.id === value;
-          return (
-            <Pressable
-              key={t.id}
-              onPress={() => onChange(t.id)}
-              style={[
-                styles.tabBtn,
-                {
-                  backgroundColor: active ? palette.primarySoft : 'transparent',
-                  borderColor: active ? palette.primary : 'transparent',
-                },
-              ]}
-            >
-              <KISIcon name={t.icon as any} size={14} color={active ? palette.primaryStrong : palette.subtext} />
-              <Text style={{ color: active ? palette.primaryStrong : palette.subtext, fontWeight: '900' }}>
-                {t.label}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </View>
-
+    <View>
       <View style={[styles.searchWrap, { backgroundColor: palette.surface, borderColor: palette.divider }]}>
-        <View style={styles.searchIcon}>
-          <KISIcon name="search" size={16} color={palette.subtext} />
-        </View>
-        <View style={{ flex: 1 }}>
+        <View style={styles.searchInput}>
+          <View style={styles.searchIcon}>
+            <KISIcon name="search" size={16} color={palette.subtext} />
+          </View>
           <KISTextInput
-            label=""
+            layout={{ size: 'md', bordered: false }}
+            placeholder={searchPlaceholder}
+            placeholderTextColor={palette.subtext}
             value={searchValue}
             onChangeText={onSearchChange}
-            placeholder="Search"
-            style={{
-              borderWidth: 0,
-              paddingHorizontal: 0,
-              paddingVertical: 0,
-              backgroundColor: 'transparent',
-            }}
+            style={styles.textInput}
           />
         </View>
+        <Pressable
+          onPress={onFilterPress}
+          style={[
+            styles.filterBtn,
+            {
+              borderColor: filterActive ? palette.primaryStrong : palette.divider,
+              backgroundColor: filterActive ? palette.primarySoft : 'transparent',
+            },
+          ]}
+        >
+          <KISIcon name="filter" size={16} color={filterActive ? palette.primaryStrong : palette.subtext} />
+          <Text
+            style={{
+              color: filterActive ? palette.primaryStrong : palette.text,
+              fontWeight: '800',
+              fontSize: 12,
+            }}
+          >
+            {filterLabel}
+          </Text>
+        </Pressable>
       </View>
     </View>
   );
 }
 
-const makeStyles = (_tokens: any) =>
+const makeStyles = () =>
   StyleSheet.create({
-    tabsRow: {
-      borderWidth: 2,
-      borderRadius: 18,
-      padding: 6,
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 8,
-    },
-    tabBtn: {
-      flex: 1,
-      borderWidth: 2,
-      borderRadius: 14,
-      paddingVertical: 10,
-      paddingHorizontal: 10,
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'center',
-      gap: 8,
-    },
     searchWrap: {
       borderWidth: 2,
       borderRadius: 18,
       paddingHorizontal: 12,
-      paddingVertical: 10,
+      paddingVertical: 4,
+      height: 44,
       flexDirection: 'row',
       alignItems: 'center',
-      gap: 10,
+    },
+    searchInput: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      height: '100%',
     },
     searchIcon: {
       width: 32,
@@ -122,5 +89,20 @@ const makeStyles = (_tokens: any) =>
       borderRadius: 12,
       alignItems: 'center',
       justifyContent: 'center',
+    },
+    textInput: {
+      flex: 1,
+      height: 32,
+      paddingVertical: 0,
+    },
+    filterBtn: {
+      borderWidth: 2,
+      borderRadius: 16,
+      paddingHorizontal: 14,
+      height: '100%',
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginLeft: 8,
     },
   });

@@ -2,16 +2,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { DeviceEventEmitter } from 'react-native';
 import { getRequest } from '@/network/get';
 import { postRequest } from '@/network/post';
+import ROUTES from '@/network';
 
-import {
-  FEEDS_ENDPOINT,
-  FEEDS_TRENDING_ENDPOINT,
-  SUBSCRIBE_ENDPOINT,
-  UNSUBSCRIBE_ENDPOINT,
-} from '@/screens/broadcast/feeds/api/feeds.endpoints';
-
+import { FEEDS_ENDPOINT } from '@/screens/broadcast/feeds/api/feeds.endpoints';
 import {
   BroadcastFeedItem,
+  BroadcastSourceMeta,
   TrendingClipItem,
   normalizePaginated,
 } from '@/screens/broadcast/feeds/api/feeds.types';
@@ -33,6 +29,21 @@ const buildQuery = (params: Record<string, any>) => {
   return out ? `?${out}` : '';
 };
 
+const buildTrendingItems = (items: BroadcastFeedItem[]): TrendingClipItem[] => {
+  const sorted = [...items].sort((a, b) => (b.reaction_count ?? 0) - (a.reaction_count ?? 0));
+  return sorted.slice(0, 3).map((item) => ({
+    id: item.id,
+    title: item.title ?? item.source?.name ?? 'Broadcast',
+    body: item.text_plain ?? item.text ?? '',
+    broadcastedAt: item.broadcasted_at ?? item.created_at ?? undefined,
+    attachments: item.attachments ?? [],
+    engagement: {
+      reactions: item.reaction_count ?? 0,
+      comments: item.comment_count ?? 0,
+    },
+  }));
+};
+
 export default function useFeedsData({ q = '', code = null }: Params) {
   const [items, setItems] = useState<BroadcastFeedItem[]>([]);
   const [trending, setTrending] = useState<TrendingClipItem[]>([]);
@@ -48,48 +59,24 @@ export default function useFeedsData({ q = '', code = null }: Params) {
   const loadFirstPage = useCallback(async () => {
     setLoading(true);
     const url = `${FEEDS_ENDPOINT}${buildQuery({ q, code })}`;
-
     const res = await getRequest(url, { errorMessage: 'Unable to load feeds.' });
     const payload = res?.data ?? res;
-
     const page = normalizePaginated<BroadcastFeedItem>(payload);
     if (!mountedRef.current) return;
 
-    setItems(page.results ?? []);
+    const nextItems = page.results ?? [];
+    setItems(nextItems);
+    setTrending(buildTrendingItems(nextItems));
     nextUrlRef.current = page.next ?? null;
     setLoading(false);
-  }, [q, code]);
-
-  const loadTrending = useCallback(async () => {
-    const url = `${FEEDS_TRENDING_ENDPOINT}${buildQuery({ q, code })}`;
-    const res = await getRequest(url, { errorMessage: 'Unable to load trending.' });
-    const payload = res?.data ?? res;
-
-    const page = normalizePaginated<any>(payload);
-    if (!mountedRef.current) return;
-
-    // normalize to TrendingClipItem-like for FeedItemCard
-    const mapped: TrendingClipItem[] = (page.results ?? []).map((x: any) => ({
-      id: String(x.id ?? x.pk ?? Math.random()),
-      title: x.title ?? x.source?.name ?? 'Trending',
-      body: x.body ?? x.text_plain ?? x.text ?? '',
-      broadcastedAt: x.broadcasted_at ?? x.created_at ?? x.broadcastedAt,
-      attachments: x.attachments ?? [],
-      engagement: {
-        reactions: x.reaction_count ?? x.engagement?.reactions ?? 0,
-        comments: x.comment_count ?? x.engagement?.comments ?? 0,
-      },
-    }));
-
-    setTrending(mapped);
-  }, [q, code]);
+  }, [code, q]);
 
   const refreshAll = useCallback(async () => {
     setRefreshing(true);
-    await Promise.all([loadFirstPage(), loadTrending()]);
+    await loadFirstPage();
     if (!mountedRef.current) return;
     setRefreshing(false);
-  }, [loadFirstPage, loadTrending]);
+  }, [loadFirstPage]);
 
   const loadMore = useCallback(async () => {
     const nextUrl = nextUrlRef.current;
@@ -98,9 +85,11 @@ export default function useFeedsData({ q = '', code = null }: Params) {
     setLoadingMore(true);
     const res = await getRequest(nextUrl, { errorMessage: 'Unable to load more.' });
     const payload = res?.data ?? res;
-
     const page = normalizePaginated<BroadcastFeedItem>(payload);
-    if (!mountedRef.current) return;
+    if (!mountedRef.current) {
+      setLoadingMore(false);
+      return;
+    }
 
     setItems((prev) => {
       const have = new Set(prev.map((x) => x.id));
@@ -108,6 +97,8 @@ export default function useFeedsData({ q = '', code = null }: Params) {
       for (const it of page.results ?? []) {
         if (!have.has(it.id)) merged.push(it);
       }
+      if (!mountedRef.current) return prev;
+      setTrending(buildTrendingItems(merged));
       return merged;
     });
 
@@ -115,29 +106,67 @@ export default function useFeedsData({ q = '', code = null }: Params) {
     setLoadingMore(false);
   }, [loadingMore]);
 
-  const toggleSubscribe = useCallback(async (sourceId: string, currentlySubscribed: boolean) => {
-    const url = currentlySubscribed ? UNSUBSCRIBE_ENDPOINT(sourceId) : SUBSCRIBE_ENDPOINT(sourceId);
-    const res = await postRequest(url, {}, { errorMessage: 'Unable to update subscription.' });
-    if (res?.success === false) return { ok: false };
+  const toggleSubscribe = useCallback(
+    async (source: BroadcastSourceMeta | undefined, currentlySubscribed: boolean) => {
+      if (!source?.id || !source.allow_subscribe) {
+        return { ok: false };
+      }
 
-    // optimistic update for the cards
-    setItems((prev) =>
-      prev.map((it) => {
-        if (!it.source?.id) return it;
-        if (String(it.source.id) !== String(sourceId)) return it;
-        return {
-          ...it,
-          source: {
-            ...it.source,
-            is_subscribed: !currentlySubscribed,
-          },
-        };
-      }),
-    );
+      const targetType = String(source.type ?? '').toLowerCase();
+      if (!['partner', 'community', 'channel'].includes(targetType)) {
+        return { ok: false };
+      }
 
-    DeviceEventEmitter.emit('broadcast.refresh');
-    return { ok: true };
-  }, []);
+      if (currentlySubscribed) {
+        setItems((prev) =>
+          prev.map((it) => {
+            if (!it.source?.id || String(it.source.id) !== String(source.id)) return it;
+            return {
+              ...it,
+              source: {
+                ...it.source,
+                is_subscribed: false,
+              },
+            };
+          }),
+        );
+        return { ok: true };
+      }
+
+      const payload: Record<string, any> = {
+        target_type: targetType,
+        target_id: source.id,
+      };
+      if (targetType === 'channel' && source.conversation_id) {
+        payload.conversation_id = source.conversation_id;
+      }
+
+      const res = await postRequest(
+        ROUTES.broadcasts.subscribe,
+        payload,
+        { errorMessage: 'Unable to update subscription.' },
+      );
+      if (res?.success === false) return { ok: false };
+
+      setItems((prev) =>
+        prev.map((it) => {
+          if (!it.source?.id || String(it.source.id) !== String(source.id)) return it;
+          if (String(it.source.type) !== targetType) return it;
+          return {
+            ...it,
+            source: {
+              ...it.source,
+              is_subscribed: true,
+            },
+          };
+        }),
+      );
+
+      DeviceEventEmitter.emit('broadcast.refresh');
+      return { ok: true };
+    },
+    [],
+  );
 
   useEffect(() => {
     mountedRef.current = true;

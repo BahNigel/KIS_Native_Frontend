@@ -5,9 +5,12 @@ import Skeleton from '@/components/common/Skeleton';
 
 type Props = {
   searchTerm?: string;
+  searchContext?: string;
 };
 
-export default function BroadcastHealthcarePage(_props: Props) {
+export default function BroadcastHealthcarePage({ searchTerm, searchContext }: Props) {
+  void searchTerm;
+  void searchContext;
   const { palette } = useKISTheme();
 
   return (

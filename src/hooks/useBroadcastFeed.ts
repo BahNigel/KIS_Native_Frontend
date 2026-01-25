@@ -137,6 +137,8 @@ export const useBroadcastFeed = (): UseBroadcastFeedResult => {
         const payload = response.data ?? {};
         const rawList = Array.isArray(payload)
           ? payload
+          : Array.isArray(payload?.results)
+          ? payload.results
           : Array.isArray(payload?.data)
           ? payload.data
           : [];

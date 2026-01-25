@@ -1,5 +1,5 @@
-import React, { useMemo } from 'react';
-import { ScrollView, View } from 'react-native';
+import React, { useMemo, useState } from 'react';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useKISTheme } from '@/theme/useTheme';
 
 import FeedsMainListSection from '@/screens/broadcast/feeds/sections/FeedsMainListSection';
@@ -10,15 +10,23 @@ import useFeedsData from '@/screens/broadcast/feeds/hooks/useFeedsData';
 
 type Props = {
   searchTerm?: string;
+  searchContext?: string;
   code?: string | null;
+  onTrendingSeeAll?: () => void;
 };
 
-export default function FeedsDiscoverPage({ searchTerm = '', code = null }: Props) {
+export default function FeedsDiscoverPage({
+  searchTerm = '',
+  searchContext = '',
+  code = null,
+  onTrendingSeeAll,
+}: Props) {
   const { palette } = useKISTheme();
+  const [showTrendingOnly, setShowTrendingOnly] = useState(false);
+  const styles = useMemo(() => makeStyles(), []);
 
   const {
     items,
-    trending,
     loading,
     loadingMore,
     refreshAll,
@@ -37,6 +45,47 @@ export default function FeedsDiscoverPage({ searchTerm = '', code = null }: Prop
     });
   }, [items, searchTerm]);
 
+  const displayItems = useMemo(() => {
+    const context = (searchContext ?? '').trim().toLowerCase();
+    if (!context || context === 'latest') {
+      return filteredFeed;
+    }
+
+    if (context === 'saved') {
+      return filteredFeed.filter((item) => Boolean(item.source?.is_subscribed));
+    }
+
+    if (context === 'trending') {
+      return [...filteredFeed].sort((a, b) => (b.reaction_count ?? 0) - (a.reaction_count ?? 0));
+    }
+
+    return filteredFeed;
+  }, [filteredFeed, searchContext]);
+
+  const baseForTrending = useMemo(
+    () => (filteredFeed.length > 0 ? filteredFeed : items),
+    [filteredFeed, items],
+  );
+  const sortedTrendingFeed = useMemo(
+    () => [...baseForTrending]
+      .sort((a, b) => (b.reaction_count ?? 0) - (a.reaction_count ?? 0))
+      .slice(0, 20),
+    [baseForTrending],
+  );
+
+  const handleTrendingSeeAll = () => {
+    setShowTrendingOnly(true);
+    if (typeof onTrendingSeeAll === 'function') {
+      onTrendingSeeAll();
+    }
+  };
+
+  const handleTrendingBack = () => {
+    setShowTrendingOnly(false);
+  };
+
+  const activeFeedItems = showTrendingOnly ? sortedTrendingFeed : displayItems;
+
   return (
     <ScrollView
       contentContainerStyle={{ paddingBottom: 120 }}
@@ -50,35 +99,51 @@ export default function FeedsDiscoverPage({ searchTerm = '', code = null }: Prop
       scrollEventThrottle={16}
     >
       <View style={{ paddingHorizontal: 12, gap: 12 }}>
+          {!showTrendingOnly ? (
+            <TrendingClipsSection
+              items={sortedTrendingFeed}
+              onSeeAll={handleTrendingSeeAll}
+              onOpen={() => {}}
+              onReact={() => {}}
+            />
+          ) : (
+            <View style={styles.trendingButtonRow}>
+              <Pressable
+                onPress={handleTrendingBack}
+                style={[styles.trendingButton, { backgroundColor: palette.primarySoft, borderColor: palette.primary }]}
+              >
+                <Text style={{ color: palette.primaryStrong, fontWeight: '900' }}>Trending feeds</Text>
+              </Pressable>
+            </View>
+          )}
+
         <FeedsMainListSection
-          items={filteredFeed}
+          items={activeFeedItems}
           loading={loading}
           loadingMore={loadingMore}
           onRefresh={refreshAll}
           onOpenItem={() => {}}
           onShare={() => {}}
           onLike={() => {}}
-          onSubscribe={async (sourceId, isSubscribed) => {
-            await toggleSubscribe(sourceId, isSubscribed);
+          onSubscribe={async (source, isSubscribed) => {
+            await toggleSubscribe(source, isSubscribed);
           }}
-        />
-
-        <TrendingClipsSection
-          items={trending}
-          onSeeAll={() => {}}
-          onOpen={() => {}}
-          onReact={() => {}}
-        />
-
-        <PromoEducationCard
-          title="Postgraduate"
-          subtitle="The Future of Artificial Intelligence"
-          footerLeft="Live Sessions Start May 21st"
-          ctaLabel="Enroll"
-          onPress={() => {}}
-          backgroundColor={palette.surface}
         />
       </View>
     </ScrollView>
   );
 }
+
+const makeStyles = () =>
+  StyleSheet.create({
+    trendingButtonRow: {
+      alignItems: 'center',
+      marginVertical: 12,
+    },
+    trendingButton: {
+      paddingHorizontal: 28,
+      paddingVertical: 10,
+      borderRadius: 999,
+      borderWidth: 2,
+    },
+  });

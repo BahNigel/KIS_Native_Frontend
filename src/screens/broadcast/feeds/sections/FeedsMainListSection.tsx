@@ -42,7 +42,7 @@ type Props = {
   onOpenItem: (item: BroadcastFeedItem) => void;
   onShare: (item: BroadcastFeedItem) => void;
   onLike: (item: BroadcastFeedItem) => void;
-  onSubscribe: (sourceId: string, isSubscribed: boolean) => Promise<void> | void;
+  onSubscribe: (source: BroadcastSourceMeta, isSubscribed: boolean) => Promise<void> | void;
 };
 
 export default function FeedsMainListSection({
@@ -107,6 +107,11 @@ export default function FeedsMainListSection({
             const sourceId = item.source?.id ? String(item.source.id) : null;
             const canSubscribe = Boolean(item.source?.allow_subscribe && sourceId);
             const subscribed = Boolean(item.source?.is_subscribed);
+            const enrichedSource: BroadcastSourceMeta = {
+              ...(item.source ?? {}),
+              allow_subscribe: canSubscribe,
+              is_subscribed: subscribed,
+            };
 
             return (
               <BroadcastFeedCard
@@ -127,9 +132,9 @@ export default function FeedsMainListSection({
                 onSave={() => {}}
                 onToggleComments={() => {}}
                 onSubscribe={
-                  canSubscribe && sourceId
+                  canSubscribe
                     ? async () => {
-                        await onSubscribe(sourceId, subscribed);
+                        await onSubscribe(enrichedSource, subscribed);
                       }
                     : undefined
                 }

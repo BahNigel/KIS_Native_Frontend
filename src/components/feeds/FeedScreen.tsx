@@ -874,8 +874,13 @@ export default function FeedScreen<T extends FeedPost>({
             const isVideo =
               String(kind).toLowerCase().includes('video') || String(kind).toLowerCase().includes('mp4');
 
+            const videoStreamFn = ROUTES.broadcasts?.videoStream;
             const streamUrl =
-              isVideo && attachment?.id ? ensureTrailingSlash(ROUTES.broadcasts.videoStream(attachment.id)) : undefined;
+              isVideo &&
+              attachment?.id &&
+              typeof videoStreamFn === 'function'
+                ? ensureTrailingSlash(videoStreamFn(attachment.id))
+                : undefined;
 
             const thumbUrl =
               resolveMediaUrl(
