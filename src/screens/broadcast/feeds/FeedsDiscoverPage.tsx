@@ -27,6 +27,8 @@ export default function FeedsDiscoverPage({
 
   const {
     items,
+    trending,
+    trendingFeeds,
     loading,
     loadingMore,
     refreshAll,
@@ -62,17 +64,6 @@ export default function FeedsDiscoverPage({
     return filteredFeed;
   }, [filteredFeed, searchContext]);
 
-  const baseForTrending = useMemo(
-    () => (filteredFeed.length > 0 ? filteredFeed : items),
-    [filteredFeed, items],
-  );
-  const sortedTrendingFeed = useMemo(
-    () => [...baseForTrending]
-      .sort((a, b) => (b.reaction_count ?? 0) - (a.reaction_count ?? 0))
-      .slice(0, 20),
-    [baseForTrending],
-  );
-
   const handleTrendingSeeAll = () => {
     setShowTrendingOnly(true);
     if (typeof onTrendingSeeAll === 'function') {
@@ -84,7 +75,7 @@ export default function FeedsDiscoverPage({
     setShowTrendingOnly(false);
   };
 
-  const activeFeedItems = showTrendingOnly ? sortedTrendingFeed : displayItems;
+  const activeFeedItems = showTrendingOnly ? trendingFeeds : displayItems;
 
   return (
     <ScrollView
@@ -101,7 +92,7 @@ export default function FeedsDiscoverPage({
       <View style={{ paddingHorizontal: 12, gap: 12 }}>
           {!showTrendingOnly ? (
             <TrendingClipsSection
-              items={sortedTrendingFeed}
+              items={trending}
               onSeeAll={handleTrendingSeeAll}
               onOpen={() => {}}
               onReact={() => {}}

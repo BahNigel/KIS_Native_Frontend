@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Image,
   Pressable,
@@ -49,7 +49,30 @@ type Props = {
 
 export default function FeedItemCard({ item, onPress, onReact }: Props) {
   const { palette } = useKISTheme();
-  const attachment = resolveBackendAssetUrl(pickAttachmentUrl(item.attachments?.[0]));
+
+  const normalizedAttachments = (item.attachments ?? [])
+    .filter(Boolean)
+    .map((att) => ({
+      url: resolveBackendAssetUrl(pickAttachmentUrl(att)),
+      label: att?.name ?? att?.title ?? att?.caption ?? undefined,
+    }));
+
+  const attachments = normalizedAttachments.filter((att) => att.url);
+  const [activeAttachmentIndex, setActiveAttachmentIndex] = useState(0);
+
+  useEffect(() => {
+    setActiveAttachmentIndex(0);
+  }, [attachments.length]);
+
+  const handlePrevAttachment = () => {
+    setActiveAttachmentIndex((prev) =>
+      prev === 0 ? attachments.length - 1 : prev - 1,
+    );
+  };
+
+  const handleNextAttachment = () => {
+    setActiveAttachmentIndex((prev) => (prev + 1) % attachments.length);
+  };
 
   return (
     <Pressable
@@ -76,8 +99,36 @@ export default function FeedItemCard({ item, onPress, onReact }: Props) {
         </Text>
       ) : null}
 
-      {attachment ? (
-        <Image source={{ uri: attachment }} style={styles.image} resizeMode="cover" />
+      {attachments.length > 0 ? (
+        attachments.length === 1 ? (
+          <Image source={{ uri: attachments[0].url! }} style={styles.image} resizeMode="cover" />
+        ) : (
+          <View style={styles.slideshowWrap}>
+            <Image
+              source={{ uri: attachments[activeAttachmentIndex].url! }}
+              style={styles.slideshowImage}
+              resizeMode="cover"
+            />
+            <Pressable style={[styles.navButton, styles.navLeft]} onPress={handlePrevAttachment}>
+              <Text style={[styles.navButtonText, { color: palette.primaryStrong }]}>{'‹'}</Text>
+            </Pressable>
+            <Pressable style={[styles.navButton, styles.navRight]} onPress={handleNextAttachment}>
+              <Text style={[styles.navButtonText, { color: palette.primaryStrong }]}>{'›'}</Text>
+            </Pressable>
+            <View style={styles.dotRow}>
+              {attachments.map((_, dotIndex) => (
+                <View
+                  key={`dot-${dotIndex}`}
+                  style={[
+                    styles.dot,
+                    dotIndex === activeAttachmentIndex ? styles.dotActive : null,
+                    { backgroundColor: dotIndex === activeAttachmentIndex ? palette.primaryStrong : palette.surface },
+                  ]}
+                />
+              ))}
+            </View>
+          </View>
+        )
       ) : null}
 
       <View style={styles.actions}>
@@ -147,6 +198,62 @@ const styles = StyleSheet.create({
     aspectRatio: 16 / 9,
     borderRadius: 16,
     backgroundColor: '#111',
+  },
+  slideshowWrap: {
+    position: 'relative',
+    borderRadius: 16,
+    overflow: 'hidden',
+    width: '100%',
+    aspectRatio: 16 / 9,
+    backgroundColor: '#111',
+  },
+  slideshowImage: {
+    width: '100%',
+    height: '100%',
+  },
+  navButton: {
+    position: 'absolute',
+    top: '50%',
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    borderWidth: 2,
+    borderColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: -19,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    zIndex: 2,
+  },
+  navLeft: {
+    left: 12,
+  },
+  navRight: {
+    right: 12,
+  },
+  navButtonText: {
+    fontSize: 20,
+    fontWeight: '900',
+    color: '#fff',
+  },
+  dotRow: {
+    position: 'absolute',
+    bottom: 10,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  dot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: '#fff',
+  },
+  dotActive: {
+    borderColor: '#fff',
   },
   actions: {
     flexDirection: 'row',

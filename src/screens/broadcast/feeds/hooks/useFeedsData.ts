@@ -29,24 +29,59 @@ const buildQuery = (params: Record<string, any>) => {
   return out ? `?${out}` : '';
 };
 
-const buildTrendingItems = (items: BroadcastFeedItem[]): TrendingClipItem[] => {
-  const sorted = [...items].sort((a, b) => (b.reaction_count ?? 0) - (a.reaction_count ?? 0));
-  return sorted.slice(0, 3).map((item) => ({
-    id: item.id,
-    title: item.title ?? item.source?.name ?? 'Broadcast',
-    body: item.text_plain ?? item.text ?? '',
-    broadcastedAt: item.broadcasted_at ?? item.created_at ?? undefined,
-    attachments: item.attachments ?? [],
-    engagement: {
-      reactions: item.reaction_count ?? 0,
-      comments: item.comment_count ?? 0,
+const toTrendingClipItem = (item: BroadcastFeedItem): TrendingClipItem => ({
+  id: item.id,
+  title: item.title ?? item.source?.name ?? 'Broadcast',
+  body: item.text_plain ?? item.text ?? '',
+  broadcastedAt: item.broadcasted_at ?? item.created_at ?? undefined,
+  attachments: item.attachments ?? [],
+  engagement: {
+    reactions: item.reaction_count ?? 0,
+    comments: item.comment_count ?? 0,
+  },
+});
+
+const getTopTrendingFeeds = (items: BroadcastFeedItem[], limit = 20) => {
+  return [...items]
+    .sort((a, b) => (b.reaction_count ?? 0) - (a.reaction_count ?? 0))
+    .slice(0, limit);
+};
+
+const mapProfileFeedToBroadcastItem = (entry: any): BroadcastFeedItem => {
+  const attachments = ([] as any[])
+    .concat(entry.attachment ? [entry.attachment] : [])
+    .concat(Array.isArray(entry.attachments) ? entry.attachments : [])
+    .filter(Boolean);
+
+  const timestamp = entry.created_at ?? entry.updated_at ?? new Date().toISOString();
+
+  return {
+    id: `profile-${entry.id}`,
+    source_type: 'broadcast_profile',
+    source_id: String(entry.id),
+    title: entry.title,
+    text: entry.summary,
+    text_plain: entry.summary,
+    broadcasted_at: timestamp,
+    created_at: timestamp,
+    attachments,
+    reaction_count: entry.reaction_count ?? 0,
+    comment_count: entry.comment_count ?? 0,
+    source: {
+      type: 'broadcast_profile',
+      id: 'main',
+      name: 'My broadcast feed',
+      is_subscribed: true,
+      allow_subscribe: false,
+      can_open: true,
     },
-  }));
+  };
 };
 
 export default function useFeedsData({ q = '', code = null }: Params) {
   const [items, setItems] = useState<BroadcastFeedItem[]>([]);
   const [trending, setTrending] = useState<TrendingClipItem[]>([]);
+  const [trendingFeeds, setTrendingFeeds] = useState<BroadcastFeedItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -56,20 +91,44 @@ export default function useFeedsData({ q = '', code = null }: Params) {
 
   const paramsKey = useMemo(() => `${q}::${code ?? ''}`, [q, code]);
 
+  const fetchProfileFeeds = useCallback(async () => {
+    try {
+      const res = await getRequest(ROUTES.broadcasts.createProfile, {
+        errorMessage: 'Unable to load broadcast profiles.',
+      });
+      if (!res?.success) return [];
+      const profile = res.data?.profiles?.broadcast_feed;
+      const feeds = Array.isArray(profile?.feeds) ? profile.feeds : [];
+      return feeds.map(mapProfileFeedToBroadcastItem);
+    } catch (error) {
+      console.warn('[useFeedsData] profile feeds failed', error);
+      return [];
+    }
+  }, []);
+
   const loadFirstPage = useCallback(async () => {
     setLoading(true);
     const url = `${FEEDS_ENDPOINT}${buildQuery({ q, code })}`;
-    const res = await getRequest(url, { errorMessage: 'Unable to load feeds.' });
-    const payload = res?.data ?? res;
-    const page = normalizePaginated<BroadcastFeedItem>(payload);
-    if (!mountedRef.current) return;
-
-    const nextItems = page.results ?? [];
-    setItems(nextItems);
-    setTrending(buildTrendingItems(nextItems));
-    nextUrlRef.current = page.next ?? null;
-    setLoading(false);
-  }, [code, q]);
+    try {
+      const [res, profileFeeds] = await Promise.all([
+        getRequest(url, { errorMessage: 'Unable to load feeds.' }),
+        fetchProfileFeeds(),
+      ]);
+      if (!mountedRef.current) return;
+      const payload = res?.data ?? res;
+      const page = normalizePaginated<BroadcastFeedItem>(payload);
+      const nextItems = [...profileFeeds, ...(page.results ?? [])];
+      setItems(nextItems);
+      const topTrending = getTopTrendingFeeds(nextItems);
+      setTrendingFeeds(topTrending);
+      setTrending(topTrending.map(toTrendingClipItem));
+      nextUrlRef.current = page.next ?? null;
+    } finally {
+      if (mountedRef.current) {
+        setLoading(false);
+      }
+    }
+  }, [code, fetchProfileFeeds, q]);
 
   const refreshAll = useCallback(async () => {
     setRefreshing(true);
@@ -98,7 +157,9 @@ export default function useFeedsData({ q = '', code = null }: Params) {
         if (!have.has(it.id)) merged.push(it);
       }
       if (!mountedRef.current) return prev;
-      setTrending(buildTrendingItems(merged));
+      const topTrending = getTopTrendingFeeds(merged);
+      setTrendingFeeds(topTrending);
+      setTrending(topTrending.map(toTrendingClipItem));
       return merged;
     });
 
@@ -187,6 +248,7 @@ export default function useFeedsData({ q = '', code = null }: Params) {
   return {
     items,
     trending,
+    trendingFeeds,
     loading,
     loadingMore,
     refreshing,

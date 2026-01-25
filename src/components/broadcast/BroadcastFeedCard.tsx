@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useKISTheme } from '@/theme/useTheme';
 import { KISIcon } from '@/constants/kisIcons';
@@ -145,7 +145,32 @@ export default function BroadcastFeedCard({
   const showExcerpt = Boolean(excerpt && excerpt.length);
 
   const attachments = Array.isArray(item.attachments) ? item.attachments : [];
-  const thumbs = attachments.slice(0, 3).map((a) => getAttachmentPreviewInfo(a));
+  const attachmentPreviews = useMemo(
+    () =>
+      attachments
+        .map((a) => getAttachmentPreviewInfo(a))
+        .filter((info) => Boolean(info.previewUri || info.url)),
+    [attachments],
+  );
+  const [activeAttachmentIndex, setActiveAttachmentIndex] = useState(0);
+
+  const handlePrevAttachment = useCallback(() => {
+    if (attachmentPreviews.length === 0) return;
+    setActiveAttachmentIndex((prev) =>
+      prev === 0 ? attachmentPreviews.length - 1 : prev - 1,
+    );
+  }, [attachmentPreviews.length]);
+
+  const handleNextAttachment = useCallback(() => {
+    if (attachmentPreviews.length === 0) return;
+    setActiveAttachmentIndex((prev) => (prev + 1) % attachmentPreviews.length);
+  }, [attachmentPreviews.length]);
+
+  useEffect(() => {
+    setActiveAttachmentIndex(0);
+  }, [attachmentPreviews.length]);
+
+  const activeAttachment = attachmentPreviews[activeAttachmentIndex];
   const durationLabel =
     typeof item.video_duration_seconds === 'number' ? formatDuration(item.video_duration_seconds) : null;
 
@@ -221,39 +246,62 @@ export default function BroadcastFeedCard({
         </View>
       ) : null}
 
-      {/* ───── Media rail (3 thumbnails like mockup) ───── */}
-      {thumbs.length > 0 ? (
-        <View style={styles.mediaRow}>
-          {thumbs.map((t, idx) => {
-            const isFirst = idx === 0;
-            return (
-              <Pressable
-                key={`${item.id}-thumb-${idx}`}
-                onPress={onPressPrimary}
-                style={[styles.mediaTile, { borderColor: palette.divider, backgroundColor: palette.surface }]}
-              >
-                {t.previewUri ? (
-                  <Image source={{ uri: t.previewUri }} style={styles.mediaImg} />
-                ) : (
-                  <View style={[styles.mediaImg, { backgroundColor: palette.bar }]} />
-                )}
+      {/* ───── Media slideshow (full-width slide per attachment) ───── */}
+      {activeAttachment ? (
+        <View
+          style={[
+            styles.slideshowWrap,
+            { borderColor: palette.divider, backgroundColor: palette.surface },
+          ]}
+        >
+          <Pressable onPress={onPressPrimary} style={styles.slideshowPressable}>
+            {activeAttachment.previewUri || activeAttachment.url ? (
+              <Image
+                source={{ uri: activeAttachment.previewUri ?? activeAttachment.url! }}
+                style={styles.slideshowImage}
+              />
+            ) : (
+              <View style={[styles.slideshowImage, { backgroundColor: palette.bar }]} />
+            )}
+          </Pressable>
 
-                {/* LIVE badge (like mockup) */}
-                {Boolean(item.is_live) && isFirst ? (
-                  <View style={[styles.liveBadge, { backgroundColor: palette.danger }]}>
-                    <Text style={styles.liveText}>LIVE</Text>
-                  </View>
-                ) : null}
+          {Boolean(item.is_live) ? (
+            <View style={[styles.liveBadge, { backgroundColor: palette.danger }]}>
+              <Text style={styles.liveText}>LIVE</Text>
+            </View>
+          ) : null}
 
-                {/* Duration pill (bottom-right) */}
-                {durationLabel && isFirst ? (
-                  <View style={[styles.durationPill, { backgroundColor: 'rgba(0,0,0,0.6)' }]}>
-                    <Text style={{ color: '#fff', fontWeight: '900', fontSize: 12 }}>{durationLabel}</Text>
-                  </View>
-                ) : null}
+          {durationLabel ? (
+            <View style={[styles.durationPill, { backgroundColor: 'rgba(0,0,0,0.6)' }]}>
+              <Text style={{ color: '#fff', fontWeight: '900', fontSize: 12 }}>{durationLabel}</Text>
+            </View>
+          ) : null}
+
+          {attachmentPreviews.length > 1 ? (
+            <>
+              <Pressable style={[styles.navButton, styles.navLeft]} onPress={handlePrevAttachment}>
+                <Text style={[styles.navButtonText, { color: palette.primaryStrong }]}>{'‹'}</Text>
               </Pressable>
-            );
-          })}
+              <Pressable style={[styles.navButton, styles.navRight]} onPress={handleNextAttachment}>
+                <Text style={[styles.navButtonText, { color: palette.primaryStrong }]}>{'›'}</Text>
+              </Pressable>
+              <View style={styles.dotRow}>
+                {attachmentPreviews.map((_, dotIndex) => (
+                  <View
+                    key={`dot-${dotIndex}`}
+                    style={[
+                      styles.dot,
+                      dotIndex === activeAttachmentIndex ? styles.dotActive : null,
+                      {
+                        backgroundColor:
+                          dotIndex === activeAttachmentIndex ? palette.primaryStrong : palette.surface,
+                      },
+                    ]}
+                  />
+                ))}
+              </View>
+            </>
+          ) : null}
         </View>
       ) : null}
 
@@ -417,24 +465,73 @@ const makeStyles = (tokens: any) =>
       fontWeight: '600',
     },
 
-    mediaRow: {
-      flexDirection: 'row',
-      gap: 10,
-      marginTop: 4,
-    },
-
-    mediaTile: {
-      flex: 1,
-      borderWidth: 2,
+    slideshowWrap: {
       borderRadius: 18,
       overflow: 'hidden',
       position: 'relative',
-      aspectRatio: 16 / 11,
+      width: '100%',
+      aspectRatio: 16 / 9,
+      borderWidth: 2,
     },
 
-    mediaImg: {
+    slideshowPressable: {
       width: '100%',
       height: '100%',
+    },
+
+    slideshowImage: {
+      width: '100%',
+      height: '100%',
+    },
+
+    navButton: {
+      position: 'absolute',
+      top: '50%',
+      width: 38,
+      height: 38,
+      borderRadius: 19,
+      borderWidth: 2,
+      borderColor: '#fff',
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginTop: -19,
+      backgroundColor: 'rgba(0,0,0,0.35)',
+      zIndex: 3,
+    },
+
+    navLeft: {
+      left: 12,
+    },
+
+    navRight: {
+      right: 12,
+    },
+
+    navButtonText: {
+      fontSize: 20,
+      fontWeight: '900',
+    },
+
+    dotRow: {
+      position: 'absolute',
+      bottom: 10,
+      left: 0,
+      right: 0,
+      flexDirection: 'row',
+      justifyContent: 'center',
+      gap: 6,
+    },
+
+    dot: {
+      width: 8,
+      height: 8,
+      borderRadius: 4,
+      borderWidth: 1,
+      borderColor: '#fff',
+    },
+
+    dotActive: {
+      borderColor: '#fff',
     },
 
     liveBadge: {

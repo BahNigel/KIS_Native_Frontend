@@ -2,6 +2,7 @@ import React from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { useKISTheme } from '@/theme/useTheme';
 import CourseCard from '@/screens/broadcast/education/components/CourseCard';
+import KISButton from '@/constants/KISButton';
 
 type Course = {
   id: string;
@@ -10,6 +11,9 @@ type Course = {
   price?: string | number;
   currency?: string;
   cover_url?: string | null;
+  partner?: string | null;
+  source?: string;
+  is_custom?: boolean;
 };
 
 type Props = {
@@ -17,6 +21,8 @@ type Props = {
   items: Course[];
   onSeeAll?: () => void;
   onEnroll?: (courseId: string) => void;
+  onBroadcast?: (course: Course) => void;
+  broadcastingCourseId?: string | null;
 };
 
 export default function PopularCoursesSection({
@@ -24,6 +30,8 @@ export default function PopularCoursesSection({
   items,
   onSeeAll,
   onEnroll,
+  onBroadcast,
+  broadcastingCourseId,
 }: Props) {
   const { palette } = useKISTheme();
 
@@ -43,15 +51,25 @@ export default function PopularCoursesSection({
           const priceLabel = price ? `Price ${currency ? `${currency} ` : ''}${price}` : '';
 
           return (
-            <CourseCard
-              key={c.id}
-              title={c.title ?? 'Course'}
-              subtitle={c.subtitle}
-              priceLabel={priceLabel}
-              coverUrl={c.cover_url ?? null}
-              ctaLabel="Enroll"
-              onPress={() => onEnroll?.(c.id)}
-            />
+            <View key={c.id} style={{ gap: 6 }}>
+              <CourseCard
+                title={c.title ?? 'Course'}
+                subtitle={c.subtitle}
+                priceLabel={priceLabel}
+                coverUrl={c.cover_url ?? null}
+                ctaLabel="Enroll"
+                onPress={() => onEnroll?.(c.id)}
+              />
+              {onBroadcast && (c.partner || c.source === 'education_profile') ? (
+                <KISButton
+                  title={broadcastingCourseId === c.id ? 'Broadcasting…' : 'Broadcast'}
+                  variant="outline"
+                  size="xs"
+                  onPress={() => onBroadcast(c)}
+                  disabled={broadcastingCourseId === c.id}
+                />
+              ) : null}
+            </View>
           );
         })}
       </View>

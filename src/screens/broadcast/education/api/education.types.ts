@@ -1,24 +1,38 @@
 export type EducationLesson = {
   id: string;
   title?: string;
-  subtitle?: string;
-  starts_at?: string;
-  duration_minutes?: number;
-  level?: 'beginner' | 'intermediate' | 'advanced' | string;
-  cover_url?: string | null;
-  is_live?: boolean;
+  summary?: string;
+  lesson_url?: string;
+  lesson_type?: 'partner' | 'community' | 'global' | string;
+  partner_name?: string | null;
+  community_name?: string | null;
+  starts_at?: string | null;
+  ends_at?: string | null;
+  price_cents?: number | null;
+  currency?: string | null;
+  public_info?: Record<string, any> | null;
 };
 
 export type EducationCourse = {
   id: string;
+  partner?: string | null;
+  partner_name?: string | null;
   title?: string;
   subtitle?: string;
-  price?: string | number;
-  currency?: string;
+  description?: string;
+  cover_image?: string | null;
   cover_url?: string | null;
-  starts_at?: string;
-  is_popular?: boolean;
-  category?: string;
+  level?: string;
+  duration_minutes?: number;
+  is_bible_course?: boolean;
+  is_free?: boolean;
+  is_public?: boolean;
+  price_amount?: number | null;
+  price_currency?: string | null;
+  created_at?: string;
+  source?: string;
+  is_custom?: boolean;
+  metadata?: Record<string, any>;
 };
 
 export type EducationHomePayload = {
@@ -29,7 +43,7 @@ export type EducationHomePayload = {
 };
 
 export const normalizeHome = (data: any): EducationHomePayload => {
-  const d = data?.data ?? data ?? {};
+  const d = data ?? {};
   return {
     featured: d.featured ?? null,
     live_lessons: Array.isArray(d.live_lessons) ? d.live_lessons : [],

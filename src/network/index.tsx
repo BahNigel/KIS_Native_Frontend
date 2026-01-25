@@ -391,6 +391,7 @@ const ROUTES = {
     profileAttachment: `${API_BASE_URL}/api/v1/broadcasts/profiles/attachment/`,
     profileManage: `${API_BASE_URL}/api/v1/broadcasts/profiles/manage/`,
     subscribe: `${API_BASE_URL}/api/v1/broadcasts/subscribe/`,
+    educationCourseBroadcast: `${API_BASE_URL}/api/v1/broadcasts/education/courses/broadcast/`,
   },
   commerce: {
     shops: `${API_BASE_URL}/api/v1/commerce/shops/`,
