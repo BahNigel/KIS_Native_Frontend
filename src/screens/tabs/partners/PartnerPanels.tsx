@@ -11,7 +11,9 @@ import PartnerPolicyPanel from '@/components/partners/PartnerPolicyPanel';
 import PartnerRecruitmentPanel from '@/components/partners/PartnerRecruitmentPanel';
 import PartnerReportsPanel from '@/components/partners/PartnerReportsPanel';
 import PartnerSettingsPanel from '@/components/partners/settings/PartnerSettingsPanel';
+import PartnerLinksPanel from '@/components/partners/PartnerLinksPanel';
 import PartnerCoursesPanel from '@/components/partners/PartnerCoursesPanel';
+import type { PartnerProfileLink } from '@/screens/broadcast/education/api/education.models';
 
 type Props = {
   selectedPartnerId?: string | null;
@@ -110,6 +112,17 @@ type Props = {
     partnerName?: string | null;
     onClose: () => void;
   };
+  linksPanel: {
+    isOpen: boolean;
+    panelWidth: number;
+    panelTranslateX: any;
+    links: PartnerProfileLink[];
+    loading: boolean;
+    error?: string | null;
+    onToggleLink: (profileKey: PartnerProfileLink['profileKey'], link: boolean) => void;
+    onSetRole: (profileKey: PartnerProfileLink['profileKey'], role: PartnerProfileLink['role']) => void;
+    onRefresh: () => void;
+  };
 };
 
 export default function PartnerPanels({
@@ -127,6 +140,7 @@ export default function PartnerPanels({
   featurePanel,
   orgProfilePanel,
   coursesPanel,
+  linksPanel,
 }: Props) {
   return (
     <>
@@ -240,14 +254,27 @@ export default function PartnerPanels({
         onClose={orgProfilePanel.onClose}
       />
 
-      <PartnerCoursesPanel
-        isOpen={coursesPanel.isOpen}
-        panelWidth={coursesPanel.panelWidth}
-        panelTranslateX={coursesPanel.panelTranslateX}
-        partnerId={selectedPartnerId}
-        partnerName={coursesPanel.partnerName}
-        onClose={coursesPanel.onClose}
-      />
-    </>
-  );
-}
+        <PartnerCoursesPanel
+          isOpen={coursesPanel.isOpen}
+          panelWidth={coursesPanel.panelWidth}
+          panelTranslateX={coursesPanel.panelTranslateX}
+          partnerId={selectedPartnerId}
+          partnerName={coursesPanel.partnerName}
+          onClose={coursesPanel.onClose}
+        />
+        <PartnerLinksPanel
+          isOpen={linksPanel.isOpen}
+          panelWidth={linksPanel.panelWidth}
+          panelTranslateX={linksPanel.panelTranslateX}
+          partnerId={selectedPartnerId}
+          links={linksPanel.links}
+          loading={linksPanel.loading}
+          error={linksPanel.error}
+          onClose={linksPanel.onClose}
+          onToggleLink={linksPanel.onToggleLink}
+          onSetRole={linksPanel.onSetRole}
+          onRefresh={linksPanel.onRefresh}
+        />
+      </>
+    );
+  }

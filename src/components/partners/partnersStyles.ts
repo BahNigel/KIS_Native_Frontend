@@ -407,6 +407,23 @@ const styles = StyleSheet.create({
     fontSize: 10,
     marginTop: 2,
   },
+  insightsBadge: {
+    position: 'absolute',
+    top: 12,
+    right: 16,
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    zIndex: 50,
+  },
+  insightsBadgeText: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
 });
 
 export default styles;

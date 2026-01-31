@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   DeviceEventEmitter,
@@ -91,10 +91,33 @@ export default function BroadcastDetailScreen() {
     }
   }, [broadcastId, broadcastItem]);
 
-  const attachmentUrl = useMemo(
-    () => resolveBackendAssetUrl(pickAttachmentUrl(broadcastItem?.attachments?.[0])),
-    [broadcastItem?.attachments],
-  );
+  const attachmentUrls = useMemo(() => {
+    const rawAttachments = Array.isArray(broadcastItem?.attachments) ? broadcastItem.attachments : [];
+    return rawAttachments
+      .map((attachment) => pickAttachmentUrl(attachment))
+      .filter(Boolean)
+      .map((url) => resolveBackendAssetUrl(url!))
+      .filter(Boolean);
+  }, [broadcastItem?.attachments]);
+  const [activeAttachmentIndex, setActiveAttachmentIndex] = useState(0);
+
+  useEffect(() => {
+    setActiveAttachmentIndex(0);
+  }, [attachmentUrls.length]);
+
+  const attachmentUrl = attachmentUrls[activeAttachmentIndex] ?? null;
+  const showCarousel = attachmentUrls.length > 0;
+  const showControls = attachmentUrls.length > 1;
+  const handlePrevAttachment = () => {
+    setActiveAttachmentIndex((prev) =>
+      attachmentUrls.length ? (prev === 0 ? attachmentUrls.length - 1 : prev - 1) : 0,
+    );
+  };
+  const handleNextAttachment = () => {
+    setActiveAttachmentIndex((prev) =>
+      attachmentUrls.length ? (prev + 1) % attachmentUrls.length : 0,
+    );
+  };
 
   if (loading) {
     return (
@@ -135,8 +158,40 @@ export default function BroadcastDetailScreen() {
         <Text style={[styles.backLabel, { color: palette.text }]}>Back</Text>
       </Pressable>
       <Text style={[styles.heading, { color: palette.text }]}>{broadcastItem.title ?? 'Community broadcast'}</Text>
-      {attachmentUrl ? (
-        <Image source={{ uri: attachmentUrl }} style={styles.image} resizeMode="cover" />
+      {showCarousel ? (
+        <View style={[styles.slideshowWrap, { borderColor: palette.divider, backgroundColor: palette.surface }]}>
+          {attachmentUrl ? (
+            <Image source={{ uri: attachmentUrl }} style={styles.image} resizeMode="cover" />
+          ) : (
+            <View style={[styles.image, { backgroundColor: palette.bar }]} />
+          )}
+
+          {showControls ? (
+            <>
+              <Pressable style={[styles.navButton, styles.navLeft]} onPress={handlePrevAttachment}>
+                <Text style={[styles.navButtonText, { color: palette.primaryStrong }]}>{'‹'}</Text>
+              </Pressable>
+              <Pressable style={[styles.navButton, styles.navRight]} onPress={handleNextAttachment}>
+                <Text style={[styles.navButtonText, { color: palette.primaryStrong }]}>{'›'}</Text>
+              </Pressable>
+              <View style={styles.dotRow}>
+                {attachmentUrls.map((_, dotIndex) => (
+                  <View
+                    key={`dot-${dotIndex}`}
+                    style={[
+                      styles.dot,
+                      dotIndex === activeAttachmentIndex ? styles.dotActive : null,
+                      {
+                        backgroundColor:
+                          dotIndex === activeAttachmentIndex ? palette.primaryStrong : palette.surface,
+                      },
+                    ]}
+                  />
+                ))}
+              </View>
+            </>
+          ) : null}
+        </View>
       ) : null}
       {broadcastItem.body ? (
         <Text style={[styles.body, { color: palette.text }]}>{broadcastItem.body}</Text>
@@ -181,6 +236,58 @@ const styles = StyleSheet.create({
     aspectRatio: 16 / 9,
     borderRadius: 14,
     backgroundColor: '#000',
+  },
+  slideshowWrap: {
+    position: 'relative',
+    borderRadius: 14,
+    overflow: 'hidden',
+    width: '100%',
+    aspectRatio: 16 / 9,
+    backgroundColor: '#111',
+    borderWidth: 2,
+  },
+  navButton: {
+    position: 'absolute',
+    top: '50%',
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    borderWidth: 2,
+    borderColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: -19,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    zIndex: 2,
+  },
+  navLeft: {
+    left: 12,
+  },
+  navRight: {
+    right: 12,
+  },
+  navButtonText: {
+    fontSize: 20,
+    fontWeight: '900',
+  },
+  dotRow: {
+    position: 'absolute',
+    bottom: 10,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  dot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: '#fff',
+  },
+  dotActive: {
+    borderColor: '#fff',
   },
   body: {
     fontSize: 16,

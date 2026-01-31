@@ -12,6 +12,9 @@ import {
   View,
 } from 'react-native';
 import { useKISTheme } from '@/theme/useTheme';
+import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
+import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import KISButton from '@/constants/KISButton';
 import KISTextInput from '@/constants/KISTextInput';
 import Skeleton from '@/components/common/Skeleton';
@@ -26,17 +29,24 @@ import { formatMoney } from './profile/profile.utils';
 import UpgradeSheet from './profile/profile/sheets/UpgradeSheet';
 import { fieldLabels, visibilityOptions, walletModes, paymentProviders } from './profile/profile.constants';
 import { getAttachmentPreviewInfo } from '@/components/broadcast/attachmentPreview';
+import { getRequest } from '@/network/get';
+import ROUTES from '@/network';
 
 import HeroHeader from './profile/components/HeroHeader';
 import AccountCreditsCard from './profile/components/AccountCreditsCard';
 import SectionCard from './profile/components/SectionCard';
+import EducationCreatorConsole from './profile/components/EducationCreatorConsole';
 import { isPartnerTier } from '@/services/tierAccess';
 
 import BottomSheet from './profile/sheets/BottomSheet';
 import SheetHeader from './profile/sheets/SheetHeader';
-import type { BroadcastTabId, BroadcastCreationType } from '@/navigation/types';
-
-type BroadcastProfileKey = 'broadcast_feed' | 'health' | 'market' | 'education';
+import type {
+  BroadcastTabId,
+  BroadcastCreationType,
+  BroadcastProfileKey,
+  MainTabsParamList,
+  RootStackParamList,
+} from '@/navigation/types';
 
 type HealthInstitutionType =
   | 'clinic'
@@ -213,7 +223,10 @@ export default function ProfileScreen() {
   const { palette } = useKISTheme();
   const { setAuth, setPhone } = useAuth();
   const c = useProfileController({ setAuth, setPhone });
+  const tabsNavigation = useNavigation<BottomTabNavigationProp<MainTabsParamList, 'Profile'>>();
+  const route = useRoute<RouteProp<MainTabsParamList, 'Profile'>>();
   const broadcastProfiles = c.broadcastProfiles;
+  const requestedBroadcastProfileKey = route.params?.broadcastProfileKey ?? null;
   const [managementPanelKey, setManagementPanelKey] = useState<BroadcastProfileKey | null>(null);
   const [panelFeedItemTitle, setPanelFeedItemTitle] = useState('');
   const [panelFeedItemSummary, setPanelFeedItemSummary] = useState('');
@@ -244,6 +257,15 @@ export default function ProfileScreen() {
   });
   const [educationFormMode, setEducationFormMode] = useState<'add' | 'edit'>('add');
   const [educationFormLoading, setEducationFormLoading] = useState(false);
+  const [educationModuleForm, setEducationModuleForm] = useState({
+    title: '',
+    summary: '',
+    resource_url: '',
+  });
+  const [educationModuleSubmitting, setEducationModuleSubmitting] = useState(false);
+  const [educationLessonsData, setEducationLessonsData] = useState<any[]>([]);
+  const [educationAnalyticsLoading, setEducationAnalyticsLoading] = useState(false);
+  const [educationAnalyticsError, setEducationAnalyticsError] = useState<string | null>(null);
 
   const detectMediaTypeFromAsset = useCallback((asset?: Asset | null): FeedMediaType => {
     if (!asset?.type) return 'file';
@@ -326,6 +348,12 @@ export default function ProfileScreen() {
   const creditsValue = c.profile?.account?.credits_value_cents ?? 0;
   const points = c.profile?.account?.points ?? 0;
   const currentTier = accountTier || c.profile?.tier || c.profile?.subscription?.tier;
+  const tierLabel =
+    currentTier?.name ??
+    currentTier?.label ??
+    currentTier?.tier_label ??
+    currentTier?.tierName ??
+    null;
   const partnerProfiles = c.profile?.partner_profiles || [];
   const partnerProfilesCount = c.profile?.partner_profiles_count ?? 0;
   const partnerProfilesLimitLabel = c.profile?.partner_profiles_limit_label;
@@ -487,6 +515,26 @@ export default function ProfileScreen() {
     openManagementPanel(def.profileKey);
   };
 
+  const rootNavigation =
+    tabsNavigation.getParent<NativeStackNavigationProp<RootStackParamList>>();
+
+  useEffect(() => {
+    const requestedKey = requestedBroadcastProfileKey;
+    if (!requestedKey) return;
+    if (requestedKey !== managementPanelKey) {
+      openManagementPanel(requestedKey);
+    }
+    tabsNavigation.setParams({ broadcastProfileKey: undefined });
+  }, [tabsNavigation, managementPanelKey, openManagementPanel, requestedBroadcastProfileKey]);
+
+  const openProfileInsights = useCallback(() => {
+    rootNavigation?.navigate('ProfileInsights');
+  }, [rootNavigation]);
+
+  const openAdminTools = useCallback(() => {
+    rootNavigation?.navigate('AdminTools');
+  }, [rootNavigation]);
+
   const managementPanelData = managementPanelKey ? broadcastProfiles?.[managementPanelKey] : null;
   const managementPanelDefinition =
     managementPanelKey &&
@@ -525,6 +573,27 @@ export default function ProfileScreen() {
     setEducationFormMode('add');
   }, []);
 
+  const resetEducationModuleForm = useCallback(() => {
+    setEducationModuleForm({
+      title: '',
+      summary: '',
+      resource_url: '',
+    });
+  }, []);
+
+  const openModuleResource = useCallback(async (url?: string | null) => {
+    if (!url) {
+      Alert.alert('Module', 'No resource link provided.');
+      return;
+    }
+    const canOpen = await Linking.canOpenURL(url);
+    if (!canOpen) {
+      Alert.alert('Module', 'Unable to open the resource URL.');
+      return;
+    }
+    Linking.openURL(url);
+  }, []);
+
   const beginHealthEdit = useCallback((inst: any) => {
     setHealthForm({
       id: inst.id,
@@ -552,6 +621,102 @@ export default function ProfileScreen() {
     });
     setEducationFormMode('edit');
   }, []);
+
+  const unwrapList = useCallback((payload: any) => {
+    if (!payload) return [];
+    if (Array.isArray(payload)) return payload;
+    if (Array.isArray(payload?.results)) return payload.results;
+    return [];
+  }, []);
+
+  const formatLessonTime = useCallback((value?: string | null) => {
+    if (!value) return 'Starts soon';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return 'TBD';
+    return date.toLocaleString();
+  }, []);
+
+  const loadEducationAnalytics = useCallback(async () => {
+    setEducationAnalyticsLoading(true);
+    try {
+      const lessonRes = await getRequest(ROUTES.broadcasts.lessons, {
+        errorMessage: 'Unable to load lessons.',
+      });
+      if (lessonRes.success) {
+        const lessons = unwrapList(lessonRes.data);
+        setEducationLessonsData(lessons);
+        setEducationAnalyticsError(null);
+      } else {
+        setEducationAnalyticsError(lessonRes.message);
+      }
+    } catch (error: any) {
+      setEducationAnalyticsError(error?.message || 'Unable to load lesson insights.');
+    } finally {
+      setEducationAnalyticsLoading(false);
+    }
+  }, [unwrapList]);
+
+  useEffect(() => {
+    if (managementPanelKey === 'education') {
+      void loadEducationAnalytics();
+    }
+  }, [managementPanelKey, loadEducationAnalytics]);
+
+  const upcomingLessons = useMemo(() => {
+    const now = Date.now();
+    return educationLessonsData
+      .filter((lesson) => {
+        if (!lesson?.starts_at) return false;
+        const startsAt = new Date(lesson.starts_at).getTime();
+        return !Number.isNaN(startsAt) && startsAt >= now;
+      })
+      .sort((a, b) => new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime());
+  }, [educationLessonsData]);
+
+  const totalEnrollments = useMemo(
+    () =>
+      educationLessonsData.reduce<number>((sum, lesson) => {
+        const count = Number(lesson?.enrollment_count ?? 0);
+        return sum + (Number.isFinite(count) ? count : 0);
+      }, 0),
+    [educationLessonsData],
+  );
+
+  const nextLesson = upcomingLessons[0] ?? null;
+
+  const handlePlanLesson = useCallback(() => {
+    Alert.alert('Lesson', 'Lesson scheduling tools coming soon (Phase 2).');
+  }, []);
+
+  const handleRecordSession = useCallback(() => {
+    Alert.alert('Recording', 'Live session capture will appear here once enabled.');
+  }, []);
+
+  const handleEducationModuleSave = useCallback(async () => {
+    const title = educationModuleForm.title.trim();
+    if (!title) {
+      Alert.alert('Module', 'Please provide a title for the module.');
+      return;
+    }
+    setEducationModuleSubmitting(true);
+    try {
+      await c.manageProfileSection('education_profile', {
+        modules: [
+          {
+            title,
+            summary: educationModuleForm.summary.trim(),
+            resource_url: educationModuleForm.resource_url.trim(),
+          },
+        ],
+      });
+      Alert.alert('Module', 'Module joined your education profile.');
+      resetEducationModuleForm();
+    } catch (error: any) {
+      Alert.alert('Module', error?.message || 'Unable to add module.');
+    } finally {
+      setEducationModuleSubmitting(false);
+    }
+  }, [educationModuleForm, c, resetEducationModuleForm]);
 
   const handleHealthFormSave = useCallback(async () => {
     const name = healthForm.name.trim();
@@ -998,6 +1163,81 @@ export default function ProfileScreen() {
               <Text style={[styles.managementStatLabel, { color: palette.subtext }]}>Active staff</Text>
             </View>
           </View>
+          <View
+            style={{
+              borderWidth: 2,
+              borderColor: palette.divider,
+              backgroundColor: palette.surface,
+              borderRadius: 22,
+              padding: 12,
+              gap: 10,
+            }}
+          >
+            <View
+              style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}
+            >
+              <Text style={[styles.managementFormLabel, { color: palette.text }]}>Learner insights</Text>
+              <KISButton
+                title="Refresh"
+                size="xs"
+                variant="outline"
+                onPress={() => void loadEducationAnalytics()}
+                disabled={educationAnalyticsLoading}
+              />
+            </View>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+              <View>
+                <Text style={{ color: palette.text, fontWeight: '900' }}>{upcomingLessons.length}</Text>
+                <Text style={{ color: palette.subtext, fontSize: 12 }}>upcoming lessons</Text>
+              </View>
+              <View>
+                <Text style={{ color: palette.text, fontWeight: '900' }}>{totalEnrollments}</Text>
+                <Text style={{ color: palette.subtext, fontSize: 12 }}>total enrollments</Text>
+              </View>
+            </View>
+            {educationAnalyticsLoading ? (
+              <Text style={{ color: palette.subtext }}>Loading lesson data…</Text>
+            ) : educationAnalyticsError ? (
+              <Text style={{ color: dangerColor }}>{educationAnalyticsError}</Text>
+            ) : nextLesson ? (
+              <View>
+                <Text style={{ color: palette.primaryStrong, fontWeight: '900' }}>
+                  Next lesson: {nextLesson.title}
+                </Text>
+                <Text style={{ color: palette.subtext, fontSize: 12 }}>
+                  {formatLessonTime(nextLesson.starts_at)} · {nextLesson.enrollment_count ?? 0} enrollments
+                </Text>
+              </View>
+            ) : (
+              <Text style={{ color: palette.subtext }}>No upcoming lessons yet.</Text>
+            )}
+            {upcomingLessons.slice(0, 2).map((lesson: any, idx: number) => (
+              <View
+                key={`overview-lesson-${lesson.id ?? idx}`}
+                style={{
+                  borderWidth: 1,
+                  borderColor: palette.divider,
+                  borderRadius: 16,
+                  padding: 10,
+                  backgroundColor: palette.card,
+                }}
+              >
+                <Text style={{ color: palette.text, fontWeight: '700' }}>{lesson.title ?? 'Lesson'}</Text>
+                <Text style={{ color: palette.subtext, fontSize: 12 }}>
+                  Starts {formatLessonTime(lesson.starts_at)} · {lesson.enrollment_count ?? 0} enrolled
+                </Text>
+              </View>
+            ))}
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              <KISButton title="Plan lesson" onPress={handlePlanLesson} size="xs" />
+              <KISButton
+                title="Log recording"
+                variant="outline"
+                size="xs"
+                onPress={handleRecordSession}
+              />
+            </View>
+          </View>
           <View style={{ gap: 10 }}>
             {institutions.map((inst, index) => (
               <View
@@ -1227,11 +1467,13 @@ export default function ProfileScreen() {
 
     if (managementPanelKey === 'education') {
       const courses: any[] = Array.isArray(managementPanelData?.courses) ? managementPanelData.courses : [];
+      const modules: any[] = Array.isArray(managementPanelData?.modules) ? managementPanelData.modules : [];
       const extraCourses = Math.max(0, courses.length - 10);
       const creditUsage = extraCourses * 2;
       return (
         <ScrollView contentContainerStyle={styles.managementPanelBody}>
           {baseHeader}
+          <EducationCreatorConsole managementData={managementPanelData} tierLabel={tierLabel} />
           <View style={styles.managementStatsRow}>
             <View style={styles.managementStat}>
               <Text style={[styles.managementStatValue, { color: palette.text }]}>{courses.length}</Text>
@@ -1277,6 +1519,59 @@ export default function ProfileScreen() {
                 </Text>
               ))}
             </View>
+            <View
+              style={{
+                borderWidth: 2,
+                borderColor: palette.divider,
+                borderRadius: 22,
+                padding: 12,
+                backgroundColor: palette.surface,
+                gap: 10,
+              }}
+            >
+              <Text style={{ color: palette.text, fontWeight: '900', fontSize: 16 }}>Modules & workshops</Text>
+              {modules.length === 0 ? (
+                <Text style={{ color: palette.subtext }}>
+                  Add modules to keep learners on track and share resources with your broadcast.
+                </Text>
+              ) : (
+                modules.map((module, index) => (
+                  <View
+                    key={`module-${module.id ?? index}`}
+                    style={{
+                      borderWidth: 2,
+                      borderColor: palette.divider,
+                      borderRadius: 16,
+                      padding: 10,
+                      backgroundColor: palette.card,
+                      gap: 6,
+                    }}
+                  >
+                    <Text style={{ color: palette.text, fontWeight: '900' }}>{module.title || 'Module'}</Text>
+                    {module.summary ? (
+                      <Text style={{ color: palette.subtext, fontSize: 12 }} numberOfLines={2}>
+                        {module.summary}
+                      </Text>
+                    ) : null}
+                    {module.resource_url ? (
+                      <View style={{ flexDirection: 'row', gap: 8 }}>
+                        <KISButton
+                          title="Open resource"
+                          variant="outline"
+                          size="xs"
+                          onPress={() => openModuleResource(module.resource_url)}
+                        />
+                        <Text style={{ color: palette.subtext, fontSize: 12 }}>
+                          {module.resource_url}
+                        </Text>
+                      </View>
+                    ) : (
+                      <Text style={{ color: palette.subtext, fontSize: 12 }}>Resource link pending.</Text>
+                    )}
+                  </View>
+                ))
+              )}
+            </View>
           </View>
           <View
             style={[
@@ -1321,13 +1616,53 @@ export default function ProfileScreen() {
               disabled={educationFormLoading}
             />
           </View>
-          {renderAttachmentsSection()}
+        {renderAttachmentsSection()}
+          <View
+            style={[
+              styles.managementForm,
+              { borderColor: palette.divider, backgroundColor: palette.surface },
+            ]}
+          >
+            <Text style={[styles.managementFormLabel, { color: palette.text }]}>Add module</Text>
+            <KISTextInput
+              label="Module title"
+              value={educationModuleForm.title}
+              onChangeText={(value) => setEducationModuleForm((prev) => ({ ...prev, title: value }))}
+            />
+            <KISTextInput
+              label="Summary"
+              value={educationModuleForm.summary}
+              onChangeText={(value) => setEducationModuleForm((prev) => ({ ...prev, summary: value }))}
+              multiline
+              style={{ minHeight: 70 }}
+            />
+            <KISTextInput
+              label="Resource URL"
+              value={educationModuleForm.resource_url}
+              onChangeText={(value) => setEducationModuleForm((prev) => ({ ...prev, resource_url: value }))}
+              autoCapitalize="none"
+              keyboardType="url"
+            />
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              <KISButton
+                title="Add module"
+                onPress={handleEducationModuleSave}
+                disabled={educationModuleSubmitting}
+              />
+              <KISButton
+                title="Reset form"
+                variant="secondary"
+                onPress={resetEducationModuleForm}
+                disabled={educationModuleSubmitting}
+              />
+            </View>
+          </View>
           <View style={styles.managementActionRow}>
             <KISButton title="Send learning reminder" onPress={() => Alert.alert('Education', 'Reminder sent.')} />
             <KISButton
-              title="Add course module"
+              title="Plan live session"
               variant="outline"
-              onPress={() => Alert.alert('Modules', 'Module builder launched.')}
+              onPress={() => Alert.alert('Education', 'Live session planning coming soon.')}
             />
           </View>
         </ScrollView>
@@ -1341,6 +1676,8 @@ export default function ProfileScreen() {
       </View>
     );
   };
+
+  const dangerColor = palette.danger ?? palette.primaryStrong;
 
   return (
     <View style={[styles.wrap, { backgroundColor: palette.bg }]}>
@@ -1431,6 +1768,32 @@ export default function ProfileScreen() {
               partnerProfilesLimitValue={partnerProfilesLimitValue}
               partnerProfilesIsUnlimited={partnerProfilesIsUnlimited}
             />
+
+            <View
+              style={[
+                styles.card,
+                {
+                  borderColor: palette.divider,
+                  backgroundColor: palette.surface,
+                  borderWidth: 1,
+                  marginTop: 12,
+                },
+              ]}
+            >
+              <Text style={[styles.title, { color: palette.text }]}>Profile analytics</Text>
+              <Text style={[styles.subtext, { color: palette.subtext, marginTop: 4 }]}>
+                Surface-level KPIs directly from the analytics backend.
+              </Text>
+            <View style={{ marginTop: 10 }}>
+              <KISButton title="View insights" onPress={openProfileInsights} />
+              <KISButton
+                title="Developer tools"
+                variant="outline"
+                onPress={openAdminTools}
+                style={{ marginTop: 8 }}
+              />
+            </View>
+          </View>
 
             <View
               style={[

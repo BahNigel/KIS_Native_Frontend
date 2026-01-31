@@ -4,7 +4,11 @@ import { DeviceEventEmitter } from 'react-native';
 import ROUTES from '@/network';
 import { getRequest } from '@/network/get';
 import { postRequest } from '@/network/post';
-import { EducationCourse, EducationHomePayload } from '@/screens/broadcast/education/api/education.types';
+import {
+  EducationCourse,
+  EducationHomePayload,
+  EducationModule,
+} from '@/screens/broadcast/education/api/education.types';
 
 type Params = { q?: string };
 
@@ -12,6 +16,7 @@ const DEFAULT_HOME: EducationHomePayload = {
   featured: null,
   live_lessons: [],
   popular_courses: [],
+  modules: [],
   categories: [],
 };
 
@@ -77,9 +82,22 @@ const normalizeProfileCourse = (course: any): EducationCourse => ({
   source: 'education_profile',
 });
 
+const normalizeProfileModule = (module: any, index: number): EducationModule | null => {
+  if (!module) return null;
+  const title = (module?.title ?? '').trim();
+  if (!title) return null;
+  return {
+    id: String(module?.id ?? `module-${generateId()}-${index}`),
+    title,
+    summary: module?.summary ?? module?.description ?? null,
+    resource_url: module?.resource_url ?? module?.resourceUrl ?? null,
+  };
+};
+
 export default function useEducationData({ q = '' }: Params) {
   const [home, setHome] = useState<EducationHomePayload>(DEFAULT_HOME);
   const [loading, setLoading] = useState(false);
+  const [broadcastProfiles, setBroadcastProfiles] = useState<Record<string, any> | null>(null);
   const mountedRef = useRef(true);
 
   const loadHome = useCallback(async () => {
@@ -106,21 +124,31 @@ export default function useEducationData({ q = '' }: Params) {
       const profileCourses = Array.isArray(educationProfile?.courses)
         ? educationProfile.courses
         : [];
+      const profileModules = Array.isArray(educationProfile?.modules)
+        ? educationProfile.modules
+        : [];
 
       const combinedCourses = [
         ...profileCourses.map(normalizeProfileCourse),
         ...bibleCourses.map(normalizeBibleCourse),
       ];
 
+      const normalizedModules = profileModules
+        .map((mod, index) => normalizeProfileModule(mod, index))
+        .filter((mod): mod is EducationModule => Boolean(mod));
+
+      const profilesPayload = profilesRes?.data?.profiles ?? {};
       const next: EducationHomePayload = {
         featured: lessons[0] ?? null,
         live_lessons: lessons,
         popular_courses: combinedCourses,
+        modules: normalizedModules,
         categories: buildCategories(combinedCourses),
       };
 
       if (mountedRef.current) {
         setHome(next);
+        setBroadcastProfiles(profilesPayload);
       }
     } catch (error: any) {
       console.log('[useEducationData] load failed', error?.message ?? error);
@@ -166,11 +194,12 @@ export default function useEducationData({ q = '' }: Params) {
     return () => sub.remove();
   }, [loadHome]);
 
-  return {
-    home,
-    loading,
-    reload: loadHome,
-    enrollLesson,
-    updateCourse,
-  };
-}
+    return {
+      home,
+      loading,
+      reload: loadHome,
+      enrollLesson,
+      updateCourse,
+      broadcastProfiles,
+    };
+  }

@@ -1,14 +1,15 @@
 import React from 'react';
-import { View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 import styles from '@/components/partners/partnersStyles';
 import PartnersLeftRail from '@/components/partners/PartnersLeftRail';
 import PartnersCenterPane from '@/components/partners/PartnersCenterPane';
 import PartnersMessagesPane from '@/components/partners/PartnersMessagesPane';
 import PartnerSheet from '@/components/partners/PartnerSheet';
 import PartnerPanels from './PartnerPanels';
+import { useKISTheme } from '@/theme/useTheme';
+import { KISIcon } from '@/constants/kisIcons';
 
 type Props = {
-  palette: any;
   rootPanHandlers: Record<string, any>;
   partners: any[];
   selectedPartnerId: string | null;
@@ -38,6 +39,7 @@ type Props = {
   toggleMessagesPane: () => void;
   handleCloseMessages: () => void;
   onOpenInfo: any;
+  onOpenInsights?: () => void;
   isPartnerSheetOpen: boolean;
   sheetHeight: number;
   sheetOffsetAnim: any;
@@ -50,6 +52,7 @@ type Props = {
   settingsSections: any[];
   openSection: (sectionKey: string) => void;
   onOpenCreate: (kind: 'community' | 'group' | 'channel') => void;
+  onOpenLinks: () => void;
   animatePartnerSheet: (open: boolean) => void;
   panels: {
     settingsPanel: any;
@@ -62,14 +65,14 @@ type Props = {
     automationPanel: any;
     reportsPanel: any;
     governancePanel: any;
-    featurePanel: any;
-    orgProfilePanel: any;
-    coursesPanel: any;
-  };
+  featurePanel: any;
+  orgProfilePanel: any;
+  coursesPanel: any;
+  linksPanel: any;
+};
 };
 
 export default function PartnerLayout({
-  palette,
   rootPanHandlers,
   partners,
   selectedPartnerId,
@@ -111,14 +114,30 @@ export default function PartnerLayout({
   settingsSections,
   openSection,
   onOpenCreate,
+  onOpenLinks,
   animatePartnerSheet,
   panels,
+  onOpenInsights,
 }: Props) {
+  const { palette } = useKISTheme();
   return (
     <View
       style={[styles.root, { backgroundColor: palette.bg }]}
       {...rootPanHandlers}
     >
+      {onOpenInsights ? (
+        <Pressable
+          onPress={onOpenInsights}
+          style={[
+            styles.insightsBadge,
+            { borderColor: palette.divider, backgroundColor: palette.surface },
+          ]}
+        >
+          <KISIcon name="chart" size={16} color={palette.primaryStrong} />
+          <Text style={[styles.insightsBadgeText, { color: palette.text }]}>Insights</Text>
+        </Pressable>
+      ) : null}
+
       <PartnersLeftRail
         partners={partners}
         selectedPartnerId={selectedPartnerId}
@@ -177,6 +196,7 @@ export default function PartnerLayout({
         onOpenSettingsSection={openSection}
         onOpenCreate={onOpenCreate}
         animatePartnerSheet={animatePartnerSheet}
+        onOpenLinks={onOpenLinks}
       />
 
       <PartnerPanels
@@ -194,6 +214,7 @@ export default function PartnerLayout({
         featurePanel={panels.featurePanel}
         orgProfilePanel={panels.orgProfilePanel}
         coursesPanel={panels.coursesPanel}
+        linksPanel={panels.linksPanel}
       />
     </View>
   );

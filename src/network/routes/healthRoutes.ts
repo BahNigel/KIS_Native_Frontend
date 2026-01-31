@@ -1,0 +1,67 @@
+import { API_BASE_URL } from '../config';
+
+const healthRoutes = {
+  healthcare: {
+    organizations: `${API_BASE_URL}/api/v1/medical/organizations/`,
+    organization: (id: string) => `${API_BASE_URL}/api/v1/medical/organizations/${id}/`,
+    profiles: `${API_BASE_URL}/api/v1/medical/profiles/`,
+    profile: (id: string) => `${API_BASE_URL}/api/v1/medical/profiles/${id}/`,
+    staff: `${API_BASE_URL}/api/v1/medical/staff/`,
+  },
+  telemedicine: {
+    sessions: `${API_BASE_URL}/api/v1/telemedicine/sessions/`,
+    session: (id: string) => `${API_BASE_URL}/api/v1/telemedicine/sessions/${id}/`,
+    sessionStart: (id: string) => `${API_BASE_URL}/api/v1/telemedicine/sessions/${id}/start/`,
+    sessionEnd: (id: string) => `${API_BASE_URL}/api/v1/telemedicine/sessions/${id}/end/`,
+    devices: `${API_BASE_URL}/api/v1/telemedicine/devices/`,
+    dictations: `${API_BASE_URL}/api/v1/telemedicine/dictations/`,
+  },
+  patients: {
+    master: `${API_BASE_URL}/api/v1/patients/master/`,
+    family: `${API_BASE_URL}/api/v1/patients/family/`,
+    consents: `${API_BASE_URL}/api/v1/patients/consents/`,
+    encounters: `${API_BASE_URL}/api/v1/patients/encounters/`,
+    appointments: `${API_BASE_URL}/api/v1/patients/appointments/`,
+    summary: (id: string) => `${API_BASE_URL}/api/v1/core/patients/master/${id}/summary/`,
+    medications: `${API_BASE_URL}/api/v1/patients/medications/`,
+    allergies: `${API_BASE_URL}/api/v1/patients/allergies/`,
+    vitals: `${API_BASE_URL}/api/v1/patients/vitals/`,
+  },
+  wallet: {
+    me: `${API_BASE_URL}/api/v1/wallet/me/`,
+    ledger: `${API_BASE_URL}/api/v1/wallet/ledger/`,
+    transactions: `${API_BASE_URL}/api/v1/wallet/transactions/`,
+    billingHistory: `${API_BASE_URL}/api/v1/wallet/billing-history/`,
+    subscription: `${API_BASE_URL}/api/v1/wallet/subscription/`,
+    subscriptionCancel: `${API_BASE_URL}/api/v1/wallet/subscription-cancel/`,
+    subscriptionResume: `${API_BASE_URL}/api/v1/wallet/subscription-resume/`,
+    subscriptionDowngrade: `${API_BASE_URL}/api/v1/wallet/subscription-downgrade/`,
+    transactionRetry: `${API_BASE_URL}/api/v1/wallet/transaction-retry/`,
+    deposit: `${API_BASE_URL}/api/v1/wallet/deposit/`,
+    convert: `${API_BASE_URL}/api/v1/wallet/convert/`,
+    transfer: `${API_BASE_URL}/api/v1/wallet/transfer/`,
+    upgrade: `${API_BASE_URL}/api/v1/wallet/upgrade/`,
+    redeem: `${API_BASE_URL}/api/v1/wallet/redeem/`,
+  },
+  ai: {
+    groqStream: `${API_BASE_URL}/api/v1/ai-integration/groq-stream/`,
+    groqTask: `${API_BASE_URL}/api/v1/ai-integration/groq-task/`,
+  },
+  core: {
+    organizations: `${API_BASE_URL}/api/v1/core/medical/organizations/`,
+    profiles: `${API_BASE_URL}/api/v1/core/medical/profiles/`,
+    locations: `${API_BASE_URL}/api/v1/core/medical/locations/`,
+    wards: `${API_BASE_URL}/api/v1/core/medical/wards/`,
+    services: `${API_BASE_URL}/api/v1/core/medical/services/`,
+    equipment: `${API_BASE_URL}/api/v1/core/medical/equipment/`,
+    context: `${API_BASE_URL}/api/v1/core/medical/context/`,
+    setActiveProfile: (id: string) => `${API_BASE_URL}/api/v1/core/medical/profiles/${id}/set-active/`,
+    staff: `${API_BASE_URL}/api/v1/core/medical/staff/`,
+    staffDetail: (id: string) => `${API_BASE_URL}/api/v1/core/medical/staff/${id}/`,
+    staffAssignRole: (id: string) => `${API_BASE_URL}/api/v1/core/medical/staff/${id}/assign-role/`,
+    staffAssignShift: (id: string) => `${API_BASE_URL}/api/v1/core/medical/staff/${id}/assign-shift/`,
+    staffAudits: `${API_BASE_URL}/api/v1/core/medical/staff-audits/`,
+  },
+};
+
+export default healthRoutes;

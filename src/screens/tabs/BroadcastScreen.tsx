@@ -1,6 +1,9 @@
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useKISTheme } from '@/theme/useTheme';
+import { useNavigation } from '@react-navigation/native';
+import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
+import type { MainTabsParamList, BroadcastProfileKey } from '@/navigation/types';
 
 import BroadcastHeaderBar from '@/components/broadcast/BroadcastHeaderBar';
 import BroadcastMainTabs, { type BroadcastMainTabId } from '@/components/broadcast/BroadcastMainTabs';
@@ -25,6 +28,14 @@ const SEARCH_PLACEHOLDERS: Record<BroadcastMainTabId, string> = {
 };
 
 
+const PROFILE_KEY_BY_TAB: Record<BroadcastMainTabId, BroadcastProfileKey> = {
+  feeds: 'broadcast_feed',
+  education: 'education',
+  market: 'market',
+  healthcare: 'health',
+};
+
+
 export default function BroadcastScreen() {
   const { palette } = useKISTheme();
   const styles = useMemo(() => makeStyles(palette), [palette]);
@@ -45,6 +56,11 @@ export default function BroadcastScreen() {
 
   const currentFilter = selectedFilters[activeMainTab];
   const showFilterPanel = filterVisible && FILTER_OPTIONS[activeMainTab]?.length > 0;
+  const navigation = useNavigation<BottomTabNavigationProp<MainTabsParamList, 'Broadcast'>>();
+  const handleCreate = useCallback(() => {
+    const profileKey = PROFILE_KEY_BY_TAB[activeMainTab];
+    navigation.navigate('Profile', { broadcastProfileKey: profileKey });
+  }, [activeMainTab, navigation]);
 
   return (
     <View style={{ flex: 1, backgroundColor: palette.bg }}>
@@ -56,7 +72,7 @@ export default function BroadcastScreen() {
       >
         <View style={styles.headerContainer}>
           <View style={styles.headerSection}>
-            <BroadcastHeaderBar title="Broadcast" tierLabel="Business Pro" onCreate={() => {}} />
+            <BroadcastHeaderBar title="Broadcast" tierLabel="Business Pro" onCreate={handleCreate} />
           </View>
           <View style={styles.headerSection}>
             <BroadcastMainTabs value={activeMainTab} onChange={setActiveMainTab} />

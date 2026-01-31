@@ -4,22 +4,27 @@ import {
   Alert,
   DeviceEventEmitter,
   Linking,
+  Pressable,
   RefreshControl,
   ScrollView,
   Text,
   View,
 } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
 import { useKISTheme } from '@/theme/useTheme';
 import KISButton from '@/constants/KISButton';
+import KISTextInput from '@/constants/KISTextInput';
 import useEducationData from '@/screens/broadcast/education/hooks/useEducationData';
 import FeaturedLessonHero from '@/screens/broadcast/education/sections/FeaturedLessonHero';
 import PopularCoursesSection from '@/screens/broadcast/education/sections/PopularCoursesSection';
 import EducationCategoryPills from '@/screens/broadcast/education/components/EducationCategoryPills';
+import EducationWorkshopsSection from '@/screens/broadcast/education/sections/EducationWorkshopsSection';
 import BibleCourseDetailSheet from '@/components/Bible/BibleCourseDetailSheet';
 import Skeleton from '@/components/common/Skeleton';
-import { EducationCourse, EducationLesson } from '@/screens/broadcast/education/api/education.types';
+import { EducationCourse, EducationLesson, EducationModule } from '@/screens/broadcast/education/api/education.types';
 import ROUTES from '@/network';
 import { postRequest } from '@/network/post';
+import useEducationTier from '@/screens/broadcast/education/hooks/useEducationTier';
 
 type Props = {
   searchTerm?: string;
@@ -107,12 +112,26 @@ const toPrettyCategory = (raw: string | undefined) => {
 
 export default function EducationDiscoverPage({ searchTerm = '', searchContext = 'Courses' }: Props) {
   const { palette } = useKISTheme();
-  const { home, loading, reload, enrollLesson, updateCourse } = useEducationData({ q: searchTerm });
+  const { home, loading, reload, enrollLesson, updateCourse, broadcastProfiles } = useEducationData({ q: searchTerm });
+  const { tierLabel } = useEducationTier();
+  const navigation = useNavigation<any>();
   const [activeCategoryId, setActiveCategoryId] = useState<string | null>(null);
   const [selectedCourse, setSelectedCourse] = useState<EducationCourse | null>(null);
   const [detailVisible, setDetailVisible] = useState(false);
   const [broadcastingCourseId, setBroadcastingCourseId] = useState<string | null>(null);
   const [enrollingLessonId, setEnrollingLessonId] = useState<string | null>(null);
+  const [levelFilter, setLevelFilter] = useState<'all' | 'beginner' | 'intermediate' | 'advanced'>('all');
+  const [partnerFilter, setPartnerFilter] = useState('');
+  const modules = home.modules ?? [];
+  const showWorkshops = modules.length > 0;
+  const partnerOptions = useMemo(() => {
+    const list: string[] = [];
+    (home.popular_courses ?? []).forEach((course) => {
+      if (course.partner_name) list.push(course.partner_name);
+    });
+    return Array.from(new Set(list));
+  }, [home.popular_courses]);
+  const levelOptions: Array<'all' | 'beginner' | 'intermediate' | 'advanced'> = ['all', 'beginner', 'intermediate', 'advanced'];
 
   const contextKey = (searchContext ?? 'Courses').toLowerCase();
   const heroCourse = home.popular_courses?.[0] ?? null;
@@ -123,20 +142,27 @@ export default function EducationDiscoverPage({ searchTerm = '', searchContext =
     : heroCourse?.cover_image ?? heroCourse?.cover_url ?? null;
 
   const filteredCourses = useMemo(() => {
-    const base = (home.popular_courses ?? []).filter((course) => {
+    const needle = searchTerm.trim().toLowerCase();
+    const partnerNeedle = partnerFilter.trim().toLowerCase();
+    return (home.popular_courses ?? []).filter((course) => {
       if (activeCategoryId && (!course.level || course.level.toLowerCase() !== activeCategoryId)) {
         return false;
       }
-      const needle = searchTerm.trim().toLowerCase();
+      if (levelFilter !== 'all' && (!course.level || course.level.toLowerCase() !== levelFilter)) {
+        return false;
+      }
+      if (partnerNeedle) {
+        const partnerName = (course.partner_name ?? course.partner ?? '').toLowerCase();
+        if (!partnerName.includes(partnerNeedle)) return false;
+      }
       if (!needle) return true;
       return (
         (course.title ?? '').toLowerCase().includes(needle) ||
         (course.subtitle ?? '').toLowerCase().includes(needle) ||
-        (course.description ?? '').toLowerCase().includes(needle ?? '')
+        (course.description ?? '').toLowerCase().includes(needle)
       );
     });
-    return base;
-  }, [activeCategoryId, home.popular_courses, searchTerm]);
+  }, [activeCategoryId, home.popular_courses, searchTerm, levelFilter, partnerFilter]);
 
   const filteredLessons = useMemo(() => {
     const base = (home.live_lessons ?? []).filter((lesson) => {
@@ -153,6 +179,11 @@ export default function EducationDiscoverPage({ searchTerm = '', searchContext =
 
   const showLessons = contextKey === 'lessons' || contextKey === 'workshops' || !contextKey;
   const showCourses = contextKey !== 'lessons';
+
+  const hasEducationProfile = Boolean(broadcastProfiles?.education);
+  const openEducationProfile = useCallback(() => {
+    navigation.navigate('Profile');
+  }, [navigation]);
 
   const handleCourseSelect = useCallback((course: EducationCourse) => {
     setSelectedCourse(course);
@@ -221,6 +252,19 @@ export default function EducationDiscoverPage({ searchTerm = '', searchContext =
     Linking.openURL(lesson.lesson_url);
   }, []);
 
+  const handleOpenModuleResource = useCallback(async (module?: EducationModule | null) => {
+    if (!module?.resource_url) {
+      Alert.alert('Workshop', 'No resource link is available for this module yet.');
+      return;
+    }
+    const canOpen = await Linking.canOpenURL(module.resource_url);
+    if (!canOpen) {
+      Alert.alert('Workshop', 'Unable to open the provided resource link.');
+      return;
+    }
+    Linking.openURL(module.resource_url);
+  }, []);
+
   const heroTitle = heroIsLesson ? heroLesson?.title ?? 'Upcoming Lesson' : heroCourse?.title ?? 'Education';
   const heroSubtitle = heroIsLesson
     ? heroLesson?.summary ?? heroLesson?.public_info?.tagline
@@ -263,6 +307,58 @@ export default function EducationDiscoverPage({ searchTerm = '', searchContext =
           style={{
             borderWidth: 2,
             borderColor: palette.divider,
+            borderRadius: 22,
+            backgroundColor: palette.card,
+            padding: 12,
+            gap: 10,
+          }}
+        >
+          <Text style={{ color: palette.text, fontWeight: '900' }}>Filters</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              {levelOptions.map((level) => (
+                <Pressable
+                  key={level}
+                  onPress={() => setLevelFilter(level)}
+                  style={{
+                    borderWidth: 2,
+                    borderColor: levelFilter === level ? palette.primary : palette.divider,
+                    borderRadius: 18,
+                    paddingHorizontal: 14,
+                    paddingVertical: 6,
+                    backgroundColor: levelFilter === level ? palette.primarySoft : palette.surface,
+                  }}
+                >
+                  <Text
+                    style={{
+                      color: levelFilter === level ? palette.primaryStrong : palette.text,
+                      fontWeight: '700',
+                    }}
+                  >
+                    {level === 'all' ? 'All levels' : level.charAt(0).toUpperCase() + level.slice(1)}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          </ScrollView>
+          <KISTextInput
+            label="Partner filter"
+            value={partnerFilter}
+            onChangeText={setPartnerFilter}
+            placeholder="Partner or school name..."
+          />
+          {partnerOptions.length ? (
+            <Text style={{ color: palette.subtext, fontSize: 12 }}>
+              Partners: {partnerOptions.slice(0, 3).join(', ')}
+              {partnerOptions.length > 3 ? '...' : ''}
+            </Text>
+          ) : null}
+        </View>
+
+        <View
+          style={{
+            borderWidth: 2,
+            borderColor: palette.divider,
             backgroundColor: palette.card,
             borderRadius: 22,
             padding: 12,
@@ -285,33 +381,82 @@ export default function EducationDiscoverPage({ searchTerm = '', searchContext =
             activeId={activeCategoryId}
             onSelect={setActiveCategoryId}
           />
+          {hasEducationProfile ? (
+            <KISButton
+              title="Manage education profile"
+              size="sm"
+              variant="outline"
+              onPress={openEducationProfile}
+            />
+          ) : null}
         </View>
 
         {showCourses && (
-          <View
-            style={{
-              borderWidth: 2,
-              borderColor: palette.divider,
-              backgroundColor: palette.card,
-              borderRadius: 22,
-              padding: 12,
-              gap: 12,
-            }}
-          >
-            <PopularCoursesSection
-              title="Featured courses"
-              items={filteredCourses}
-              onSeeAll={() => {}}
-              onEnroll={(courseId) => {
-                const course = home.popular_courses?.find((c) => c.id === courseId);
-                if (course) {
-                  handleCourseSelect(course);
-                }
+          <>
+            <View
+              style={{
+                borderWidth: 2,
+                borderColor: palette.divider,
+                backgroundColor: palette.card,
+                borderRadius: 22,
+                padding: 12,
+                gap: 12,
               }}
-              onBroadcast={(course) => handleBroadcastCourse(course)}
-              broadcastingCourseId={broadcastingCourseId}
-            />
-          </View>
+            >
+              <Text style={{ color: palette.subtext, fontSize: 12 }}>
+                Paid courses require {tierLabel ?? 'Business Pro'} tier or higher.
+              </Text>
+              <PopularCoursesSection
+                title="Featured courses"
+                items={filteredCourses}
+                onSeeAll={() => {}}
+                onEnroll={(courseId) => {
+                  const course = home.popular_courses?.find((c) => c.id === courseId);
+                  if (course) {
+                    handleCourseSelect(course);
+                  }
+                }}
+                onBroadcast={(course) => handleBroadcastCourse(course)}
+                broadcastingCourseId={broadcastingCourseId}
+              />
+            </View>
+            {showWorkshops ? (
+              <View
+                style={{
+                  borderWidth: 2,
+                  borderColor: palette.divider,
+                  backgroundColor: palette.card,
+                  borderRadius: 22,
+                  padding: 12,
+                  gap: 12,
+                }}
+              >
+                <EducationWorkshopsSection
+                  items={modules}
+                  onOpenResource={handleOpenModuleResource}
+                />
+              </View>
+            ) : (
+              <View
+                style={{
+                  borderWidth: 2,
+                  borderColor: palette.divider,
+                  backgroundColor: palette.card,
+                  borderRadius: 22,
+                  padding: 12,
+                  gap: 8,
+                }}
+              >
+                <Text style={{ color: palette.text, fontWeight: '900', fontSize: 16 }}>
+                  No workshops yet
+                </Text>
+                <Text style={{ color: palette.subtext }}>
+                  Create your education profile under Broadcast profiles to share modules and workshops.
+                </Text>
+                <KISButton title="Open Broadcast profiles" onPress={openEducationProfile} />
+              </View>
+            )}
+          </>
         )}
 
         {showLessons && (

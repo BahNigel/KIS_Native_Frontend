@@ -21,6 +21,18 @@ import LoginScreen from './src/screens/LoginScreen';
 import RegisterScreen from './src/screens/RegisterScreen';
 import DeviceVerificationScreen from './src/screens/DeviceVerificationScreen';
 import { MainTabs } from '@/navigation/AppNavigator';
+import ProfileInsightsScreen from './src/screens/insights/ProfileInsightsScreen';
+import PartnerInsightsScreen from './src/screens/insights/PartnerInsightsScreen';
+import AdminToolsScreen from './src/screens/insights/AdminToolsScreen';
+import AdminDashboardScreen from './src/screens/insights/AdminDashboardScreen';
+import AnalyticsDashboardScreen from './src/screens/insights/AnalyticsDashboardScreen';
+import EventsDashboardScreen from './src/screens/insights/EventsDashboardScreen';
+import ContentDashboardScreen from './src/screens/insights/ContentDashboardScreen';
+import SurveysDashboardScreen from './src/screens/insights/SurveysDashboardScreen';
+import MediaDashboardScreen from './src/screens/insights/MediaDashboardScreen';
+import BridgeDashboardScreen from './src/screens/insights/BridgeDashboardScreen';
+import TiersDashboardScreen from './src/screens/insights/TiersDashboardScreen';
+import NotificationsDashboardScreen from './src/screens/insights/NotificationsDashboardScreen';
 import { getRequest } from '@/network/get';
 import ROUTES, { NEST_API_BASE_URL } from '@/network';
 import { postRequest } from '@/network/post';
@@ -166,7 +178,69 @@ export default function App() {
         <NavigationContainer theme={scheme === 'dark' ? DarkTheme : DefaultTheme}>
           <RootStack.Navigator screenOptions={{ headerShown: false }}>
             {isAuth ? (
-              <RootStack.Screen name="MainTabs" component={MainTabs} />
+              <>
+                <RootStack.Screen name="MainTabs" component={MainTabs} />
+                <RootStack.Screen
+                  name="ProfileInsights"
+                  component={ProfileInsightsScreen}
+                  options={{ presentation: 'modal' }}
+                />
+                <RootStack.Screen
+                  name="PartnerInsights"
+                  component={PartnerInsightsScreen}
+                  options={{ presentation: 'modal' }}
+                />
+                <RootStack.Screen
+                  name="AdminTools"
+                  component={AdminToolsScreen}
+                  options={{ presentation: 'modal' }}
+                />
+                <RootStack.Screen
+                  name="AnalyticsDashboard"
+                  component={AnalyticsDashboardScreen}
+                  options={{ presentation: 'modal' }}
+                />
+                <RootStack.Screen
+                  name="EventsDashboard"
+                  component={EventsDashboardScreen}
+                  options={{ presentation: 'modal' }}
+                />
+                <RootStack.Screen
+                  name="ContentDashboard"
+                  component={ContentDashboardScreen}
+                  options={{ presentation: 'modal' }}
+                />
+                <RootStack.Screen
+                  name="SurveysDashboard"
+                  component={SurveysDashboardScreen}
+                  options={{ presentation: 'modal' }}
+                />
+                <RootStack.Screen
+                  name="MediaDashboard"
+                  component={MediaDashboardScreen}
+                  options={{ presentation: 'modal' }}
+                />
+                <RootStack.Screen
+                  name="BridgeDashboard"
+                  component={BridgeDashboardScreen}
+                  options={{ presentation: 'modal' }}
+                />
+                <RootStack.Screen
+                  name="TiersDashboard"
+                  component={TiersDashboardScreen}
+                  options={{ presentation: 'modal' }}
+                />
+                <RootStack.Screen
+                  name="NotificationsDashboard"
+                  component={NotificationsDashboardScreen}
+                  options={{ presentation: 'modal' }}
+                />
+                <RootStack.Screen
+                  name="AdminDashboard"
+                  component={AdminDashboardScreen}
+                  options={{ presentation: 'modal' }}
+                />
+              </>
             ) : (
               <>
                 <RootStack.Screen name="Welcome" component={WelcomeScreen} />

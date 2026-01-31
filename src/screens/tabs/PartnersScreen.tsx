@@ -26,12 +26,21 @@ import { usePartnerFeaturePanel } from './partners/usePartnerFeaturePanel';
 import { usePartnerOrgProfilePanel } from './partners/usePartnerOrgProfilePanel';
 import { usePartnerScreenActions } from './partners/usePartnerScreenActions';
 import { usePartnerCoursesPanel } from './partners/usePartnerCoursesPanel';
+import { usePartnerLinksPanel } from './partners/usePartnerLinksPanel';
+import usePartnerProfileLinks from './partners/usePartnerProfileLinks';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import type { RootStackParamList } from '@/navigation/types';
 
 export default function PartnersScreen({ setHidNav, onOpenInfo }: any) {
   const navigation = useNavigation<any>();
   const { palette } = useKISTheme();
   const { setAuth } = useAuth();
   const { width, height } = useWindowDimensions();
+  const rootNavigation =
+    navigation.getParent<NativeStackNavigationProp<RootStackParamList>>();
+  const openInsights = useCallback(() => {
+    rootNavigation?.navigate('PartnerInsights');
+  }, [rootNavigation]);
 
   // 🔽 When leaving PartnersScreen, always restore the tab bar
   useFocusEffect(
@@ -65,6 +74,14 @@ export default function PartnersScreen({ setHidNav, onOpenInfo }: any) {
     reloadSelectedPartner,
     reloadPartners,
   } = usePartnersData();
+  const {
+    links,
+    loading: linksLoading,
+    error: linksError,
+    toggleLink,
+    setRole,
+    refresh: refreshLinks,
+  } = usePartnerProfileLinks(selectedPartner?.id);
 
   useEffect(() => {
     const sub = DeviceEventEmitter.addListener('partner.open', (payload: any) => {
@@ -207,6 +224,13 @@ export default function PartnersScreen({ setHidNav, onOpenInfo }: any) {
     close: closeCoursesPanel,
   } = usePartnerCoursesPanel(width);
   const {
+    panelWidth: linksPanelWidth,
+    panelTranslateX: linksPanelTranslateX,
+    isOpen: isLinksPanelOpen,
+    open: openLinksPanel,
+    close: closeLinksPanel,
+  } = usePartnerLinksPanel(width);
+  const {
     onGroupPress,
     onFeedPress,
     onCommunityFeedPress,
@@ -285,9 +309,8 @@ export default function PartnersScreen({ setHidNav, onOpenInfo }: any) {
   });
 
   return (
-    <PartnerLayout
-      palette={palette}
-      rootPanHandlers={rootPanHandlers}
+      <PartnerLayout
+        rootPanHandlers={rootPanHandlers}
       partners={partners}
       selectedPartnerId={selectedPartnerId}
       setSelectedPartnerId={setSelectedPartnerId}
@@ -328,8 +351,10 @@ export default function PartnersScreen({ setHidNav, onOpenInfo }: any) {
       settingsSections={settingsSections}
       openSection={openSection}
       onOpenCreate={onOpenCreate}
-      animatePartnerSheet={animatePartnerSheet}
-      panels={{
+        onOpenLinks={openLinksPanel}
+        animatePartnerSheet={animatePartnerSheet}
+        onOpenInsights={openInsights}
+        panels={{
         settingsPanel: {
           isOpen: isSettingsPanelOpen,
           panelWidth,
@@ -424,6 +449,18 @@ export default function PartnersScreen({ setHidNav, onOpenInfo }: any) {
           panelTranslateX: coursesPanelTranslateX,
           partnerName: selectedPartner?.name ?? null,
           onClose: closeCoursesPanel,
+        },
+        linksPanel: {
+          isOpen: isLinksPanelOpen,
+          panelWidth: linksPanelWidth,
+          panelTranslateX: linksPanelTranslateX,
+          links,
+          loading: linksLoading,
+          error: linksError,
+          onClose: closeLinksPanel,
+          onToggleLink: toggleLink,
+          onSetRole: setRole,
+          onRefresh: refreshLinks,
         },
       }}
     />

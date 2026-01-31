@@ -26,6 +26,7 @@ type Props = {
   onOpenSettingsSection: (sectionKey: string) => void;
   onOpenCreate: (kind: 'community' | 'group' | 'channel') => void;
   animatePartnerSheet: (open: boolean) => void;
+  onOpenLinks: () => void;
 };
 
 export default function PartnerSheet({
@@ -42,6 +43,7 @@ export default function PartnerSheet({
   sections,
   onOpenSettingsSection,
   onOpenCreate,
+  onOpenLinks,
   animatePartnerSheet,
 }: Props) {
   const { palette } = useKISTheme();
@@ -154,6 +156,17 @@ export default function PartnerSheet({
                 size="sm"
                 variant="outline"
                 onPress={() => onOpenCreate('channel')}
+              />
+            </View>
+            <View style={{ marginTop: 8, flexDirection: 'row', gap: 8 }}>
+              <KISButton
+                title="Link profiles"
+                size="sm"
+                variant="secondary"
+                onPress={() => {
+                  animatePartnerSheet(false);
+                  onOpenLinks();
+                }}
               />
             </View>
           </View>
