@@ -23,6 +23,7 @@ type Params = {
   isFeaturePanelOpen: boolean;
   isOrgProfilePanelOpen: boolean;
   isCoursesPanelOpen: boolean;
+  isOrganizationAppsPanelOpen: boolean;
 };
 
 export const usePartnerScreenActions = ({
@@ -47,6 +48,7 @@ export const usePartnerScreenActions = ({
   isFeaturePanelOpen,
   isOrgProfilePanelOpen,
   isCoursesPanelOpen,
+  isOrganizationAppsPanelOpen,
 }: Params) => {
   const rootPanHandlers =
     isSettingsPanelOpen ||
@@ -61,7 +63,8 @@ export const usePartnerScreenActions = ({
     isGovernancePanelOpen ||
     isFeaturePanelOpen ||
     isOrgProfilePanelOpen ||
-    isCoursesPanelOpen
+    isCoursesPanelOpen ||
+    isOrganizationAppsPanelOpen
       ? {}
       : panHandlers;
 

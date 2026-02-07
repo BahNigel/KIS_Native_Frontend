@@ -93,7 +93,7 @@ export default function useFeedsData({ q = '', code = null }: Params) {
 
   const fetchProfileFeeds = useCallback(async () => {
     try {
-      const res = await getRequest(ROUTES.broadcasts.createProfile, {
+      const res = await getRequest(ROUTES.broadcasts.list, {
         errorMessage: 'Unable to load broadcast profiles.',
       });
       if (!res?.success) return [];

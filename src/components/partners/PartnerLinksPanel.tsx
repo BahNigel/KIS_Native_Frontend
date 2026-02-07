@@ -64,55 +64,65 @@ export default function PartnerLinksPanel({
           </View>
         ) : null}
         <ScrollView showsVerticalScrollIndicator={false}>
-          {links.map((link) => (
-            <View
-              key={link.profileKey}
-              style={{
-                borderWidth: 1,
-                borderColor: palette.divider,
-                borderRadius: 16,
-                padding: 12,
-                marginBottom: 12,
-                backgroundColor: palette.surface,
-              }}
-            >
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                <Text style={{ color: palette.text, fontWeight: '900' }}>
-                  {PROFILE_LABELS[link.profileKey]}
-                </Text>
-                <KISButton
-                  title={link.linked ? 'Unlink' : 'Link'}
-                  size="sm"
-                  variant={link.linked ? 'outline' : 'primary'}
-                  onPress={() => onToggleLink(link.profileKey, !link.linked)}
-                />
-              </View>
-              <Text style={{ color: palette.subtext, fontSize: 12 }}>Role: {link.role.toUpperCase()}</Text>
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: 6, gap: 6 }}>
-                {ROLE_ORDER.map((role) => (
-                  <PressableChip
-                    key={`${link.profileKey}-${role}`}
-                    label={role}
-                    active={link.role === role}
-                    onPress={() => onSetRole(link.profileKey, role)}
-                    palette={palette}
+          {links.map((link) => {
+            const safeRole = link.role ?? 'viewer';
+            const safeProfile = link.profileKey ?? 'unknown';
+            const uniqueKey = link.id ?? `${safeProfile}-${safeRole}-${link.linked ? '1' : '0'}`;
+
+            return (
+              <View
+                key={uniqueKey}
+                style={{
+                  borderWidth: 1,
+                  borderColor: palette.divider,
+                  borderRadius: 16,
+                  padding: 12,
+                  marginBottom: 12,
+                  backgroundColor: palette.surface,
+                }}
+              >
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Text style={{ color: palette.text, fontWeight: '900' }}>
+                    {PROFILE_LABELS[link.profileKey]}
+                  </Text>
+                  <KISButton
+                    title={link.linked ? 'Unlink' : 'Link'}
+                    size="sm"
+                    variant={link.linked ? 'outline' : 'primary'}
+                    onPress={() => onToggleLink(link.profileKey, !link.linked)}
                   />
-                ))}
+                </View>
+                <Text style={{ color: palette.subtext, fontSize: 12 }}>Role: {link.role.toUpperCase()}</Text>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: 6, gap: 6 }}>
+                  {ROLE_ORDER.map((role) => (
+                    <PressableChip
+                      key={`${link.profileKey}-${role}`}
+                      label={role}
+                      active={link.role === role}
+                      onPress={() => onSetRole(link.profileKey, role)}
+                      palette={palette}
+                    />
+                  ))}
+                </View>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 10 }}>
+                  <Text style={{ color: palette.subtext, fontSize: 12 }}>
+                    Enrollments: {link.analytics.enrollments}
+                  </Text>
+                  <Text style={{ color: palette.subtext, fontSize: 12 }}>
+                    Completions: {link.analytics.completions}
+                  </Text>
+                </View>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 6 }}>
+                  <Text style={{ color: palette.subtext, fontSize: 12 }}>
+                    Watch min: {Math.round(link.analytics.watchMinutes)}
+                  </Text>
+                  <Text style={{ color: palette.subtext, fontSize: 12 }}>
+                    Revenue: ${(link.analytics.revenueCents / 100).toFixed(2)}
+                  </Text>
+                </View>
               </View>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 10 }}>
-                <Text style={{ color: palette.subtext, fontSize: 12 }}>Enrollments: {link.analytics.enrollments}</Text>
-                <Text style={{ color: palette.subtext, fontSize: 12 }}>Completions: {link.analytics.completions}</Text>
-              </View>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 6 }}>
-                <Text style={{ color: palette.subtext, fontSize: 12 }}>
-                  Watch min: {Math.round(link.analytics.watchMinutes)}
-                </Text>
-                <Text style={{ color: palette.subtext, fontSize: 12 }}>
-                  Revenue: ${(link.analytics.revenueCents / 100).toFixed(2)}
-                </Text>
-              </View>
-            </View>
-          ))}
+            );
+          })}
         </ScrollView>
       </View>
     </Animated.View>

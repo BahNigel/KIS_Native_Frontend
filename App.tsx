@@ -33,6 +33,8 @@ import MediaDashboardScreen from './src/screens/insights/MediaDashboardScreen';
 import BridgeDashboardScreen from './src/screens/insights/BridgeDashboardScreen';
 import TiersDashboardScreen from './src/screens/insights/TiersDashboardScreen';
 import NotificationsDashboardScreen from './src/screens/insights/NotificationsDashboardScreen';
+import OrganizationAppScreen from './src/screens/partners/OrganizationAppScreen';
+import OrganizationAppFormScreen from './src/screens/partners/OrganizationAppFormScreen';
 import { getRequest } from '@/network/get';
 import ROUTES, { NEST_API_BASE_URL } from '@/network';
 import { postRequest } from '@/network/post';
@@ -188,6 +190,16 @@ export default function App() {
                 <RootStack.Screen
                   name="PartnerInsights"
                   component={PartnerInsightsScreen}
+                  options={{ presentation: 'modal' }}
+                />
+                <RootStack.Screen
+                  name="OrganizationApp"
+                  component={OrganizationAppScreen}
+                  options={{ presentation: 'modal' }}
+                />
+                <RootStack.Screen
+                  name="OrganizationAppForm"
+                  component={OrganizationAppFormScreen}
                   options={{ presentation: 'modal' }}
                 />
                 <RootStack.Screen

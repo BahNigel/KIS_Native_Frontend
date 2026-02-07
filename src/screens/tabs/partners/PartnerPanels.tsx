@@ -2,6 +2,7 @@ import React from 'react';
 import PartnerAuditPanel from '@/components/partners/PartnerAuditPanel';
 import PartnerAutomationPanel from '@/components/partners/PartnerAutomationPanel';
 import PartnerFeaturePanel from '@/components/partners/PartnerFeaturePanel';
+import PartnerOrganizationAppsPanel from '@/components/partners/PartnerOrganizationAppsPanel';
 import PartnerOrganizationProfilePanel from '@/components/partners/PartnerOrganizationProfilePanel';
 import PartnerGovernancePanel from '@/components/partners/PartnerGovernancePanel';
 import PartnerCreatePanel from '@/components/partners/PartnerCreatePanel';
@@ -14,6 +15,7 @@ import PartnerSettingsPanel from '@/components/partners/settings/PartnerSettings
 import PartnerLinksPanel from '@/components/partners/PartnerLinksPanel';
 import PartnerCoursesPanel from '@/components/partners/PartnerCoursesPanel';
 import type { PartnerProfileLink } from '@/screens/broadcast/education/api/education.models';
+import type { PartnerOrganizationApp } from '@/screens/tabs/partners/hooks/usePartnerOrganizationApps';
 
 type Props = {
   selectedPartnerId?: string | null;
@@ -105,6 +107,19 @@ type Props = {
     panelTranslateX: any;
     onClose: () => void;
   };
+  appsPanel: {
+    isOpen: boolean;
+    panelWidth: number;
+    panelTranslateX: any;
+    partnerId?: string | null;
+    onClose: () => void;
+    apps: PartnerOrganizationApp[];
+    loading: boolean;
+    error?: string | null;
+    onReload: () => void;
+    canManageApps: boolean;
+    onLaunchApp: (app: PartnerOrganizationApp) => void;
+  };
   coursesPanel: {
     isOpen: boolean;
     panelWidth: number;
@@ -139,6 +154,7 @@ export default function PartnerPanels({
   governancePanel,
   featurePanel,
   orgProfilePanel,
+  appsPanel,
   coursesPanel,
   linksPanel,
 }: Props) {
@@ -252,6 +268,20 @@ export default function PartnerPanels({
         panelTranslateX={orgProfilePanel.panelTranslateX}
         partnerId={selectedPartnerId}
         onClose={orgProfilePanel.onClose}
+      />
+
+      <PartnerOrganizationAppsPanel
+        isOpen={appsPanel.isOpen}
+        panelWidth={appsPanel.panelWidth}
+        panelTranslateX={appsPanel.panelTranslateX}
+        partnerId={selectedPartnerId}
+        onClose={appsPanel.onClose}
+        apps={appsPanel.apps}
+        loading={appsPanel.loading}
+        error={appsPanel.error}
+        onRefresh={appsPanel.onReload}
+        onLaunchApp={appsPanel.onLaunchApp}
+        canManageApps={appsPanel.canManageApps}
       />
 
         <PartnerCoursesPanel

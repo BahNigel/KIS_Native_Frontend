@@ -27,8 +27,8 @@ export default function BroadcastSearchRow({
   return (
     <View>
       <View style={[styles.searchWrap, { backgroundColor: palette.surface, borderColor: palette.divider }]}>
-        <View style={styles.searchInput}>
-          <View style={styles.searchIcon}>
+        <View style={[styles.searchInput,]}>
+          <View style={[styles.searchIcon, { backgroundColor: palette.surface }]}>
             <KISIcon name="search" size={16} color={palette.subtext} />
           </View>
           <KISTextInput
@@ -76,6 +76,7 @@ const makeStyles = () =>
       height: 44,
       flexDirection: 'row',
       alignItems: 'center',
+      justifyContent: 'center',
     },
     searchInput: {
       flex: 1,

@@ -37,6 +37,7 @@ export default function CommunityFeedScreen({ community, onBack }: CommunityFeed
       commentRoomEndpoint={(postId) => ROUTES.community.postCommentRoom(postId)}
       deleteEndpoint={(postId) => ROUTES.community.postDelete(postId)}
       broadcastEndpoint={(postId) => ROUTES.community.postBroadcast(postId)}
+      feedType="community"
       commentChatContext={() => ({
         communityId: community.id,
         communityName: community.name,

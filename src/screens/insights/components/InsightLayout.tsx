@@ -33,6 +33,7 @@ export default function InsightLayout({
   onTimeRangeChange,
   onRefresh,
   subtitle,
+  footer,
 }: Props) {
   const { palette } = useKISTheme();
   const displayEmpty = !loading && !error && !data;

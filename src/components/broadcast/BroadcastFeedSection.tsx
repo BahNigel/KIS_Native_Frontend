@@ -23,6 +23,7 @@ import { getRequest } from '@/network/get';
 import { postRequest } from '@/network/post';
 import { KISIcon } from '@/constants/kisIcons';
 import ROUTES, { buildMediaSource, resolveBackendAssetUrl, useMediaHeaders } from '@/network';
+import { logFeedEvent } from '@/network/personalization';
 
 import BroadcastFeedCard, { type BroadcastFeedItem } from './BroadcastFeedCard';
 export type { BroadcastFeedItem } from './BroadcastFeedCard';
@@ -442,11 +443,23 @@ export default function BroadcastFeedSection({
     if (res?.success) {
       const payload = res.data?.results ?? res.data ?? [];
       const list: BroadcastFeedItem[] = Array.isArray(payload) ? payload : [];
-      setBroadcasts(list.map(enrichWithVideoMetadata));
+      const enriched = list.map(enrichWithVideoMetadata);
+      setBroadcasts(enriched);
+      void logFeedEvent({
+        feedType: 'broadcast',
+        event: 'impression',
+        metadata: {
+          mainSection,
+          filterSource,
+          sourceChip,
+          sortMode,
+          count: enriched.length,
+        },
+      });
     }
 
     setLoadingBroadcasts(false);
-  }, []);
+  }, [filterSource, mainSection, sourceChip, sortMode]);
 
   useEffect(() => {
     loadBroadcasts();
@@ -524,12 +537,6 @@ export default function BroadcastFeedSection({
         const bScore = (b.reaction_count ?? 0) + (b.comment_count ?? 0) + (b.share_count ?? 0);
         return bScore - aScore;
       });
-    } else {
-      items.sort((a, b) => {
-        const ad = new Date(a.broadcasted_at || a.created_at || 0).getTime();
-        const bd = new Date(b.broadcasted_at || b.created_at || 0).getTime();
-        return bd - ad;
-      });
     }
 
     return items;
@@ -574,6 +581,8 @@ export default function BroadcastFeedSection({
   const openVideoModal = (item: BroadcastFeedItem) => {
     const v = resolveVideoAttachment(item);
     if (!v) return;
+
+    void logFeedEvent({ feedType: 'broadcast', event: 'video_open', targetId: item.id });
 
     const prepareAndOpen = async () => {
       if (v.url?.includes('/stream/')) {

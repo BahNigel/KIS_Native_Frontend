@@ -10,7 +10,7 @@ import {
   EducationModule,
 } from '@/screens/broadcast/education/api/education.types';
 
-type Params = { q?: string };
+type Params = { q?: string; activeProfileId?: string | null };
 
 const DEFAULT_HOME: EducationHomePayload = {
   featured: null,
@@ -94,10 +94,11 @@ const normalizeProfileModule = (module: any, index: number): EducationModule | n
   };
 };
 
-export default function useEducationData({ q = '' }: Params) {
+export default function useEducationData({ q = '', activeProfileId = null }: Params) {
   const [home, setHome] = useState<EducationHomePayload>(DEFAULT_HOME);
   const [loading, setLoading] = useState(false);
   const [broadcastProfiles, setBroadcastProfiles] = useState<Record<string, any> | null>(null);
+  const [activeEducationProfile, setActiveEducationProfile] = useState<any | null>(null);
   const mountedRef = useRef(true);
 
   const loadHome = useCallback(async () => {
@@ -120,13 +121,16 @@ export default function useEducationData({ q = '' }: Params) {
 
       const bibleCourses = unwrapList(coursesRes);
       const lessons = unwrapList(lessonsRes);
-      const educationProfile = profilesRes?.data?.profiles?.education ?? {};
-      const profileCourses = Array.isArray(educationProfile?.courses)
-        ? educationProfile.courses
+      const educationProfiles = Array.isArray(profilesRes?.data?.profiles)
+        ? profilesRes?.data?.profiles
         : [];
-      const profileModules = Array.isArray(educationProfile?.modules)
-        ? educationProfile.modules
-        : [];
+      const activeProfile =
+        (activeProfileId && educationProfiles.find((profile) => profile.id === activeProfileId)) ??
+        educationProfiles.find((profile) => profile.is_default) ??
+        educationProfiles[0] ??
+        null;
+      const profileCourses = Array.isArray(activeProfile?.courses) ? activeProfile.courses : [];
+      const profileModules = Array.isArray(activeProfile?.modules) ? activeProfile.modules : [];
 
       const combinedCourses = [
         ...profileCourses.map(normalizeProfileCourse),
@@ -149,6 +153,7 @@ export default function useEducationData({ q = '' }: Params) {
       if (mountedRef.current) {
         setHome(next);
         setBroadcastProfiles(profilesPayload);
+        setActiveEducationProfile(activeProfile);
       }
     } catch (error: any) {
       console.log('[useEducationData] load failed', error?.message ?? error);
@@ -157,7 +162,7 @@ export default function useEducationData({ q = '' }: Params) {
         setLoading(false);
       }
     }
-  }, [q]);
+  }, [q, activeProfileId]);
 
   const enrollLesson = useCallback(async (lessonId: string) => {
     const res = await postRequest(ROUTES.broadcasts.lessonEnroll(lessonId), {}, {
@@ -201,5 +206,6 @@ export default function useEducationData({ q = '' }: Params) {
       enrollLesson,
       updateCourse,
       broadcastProfiles,
+      activeEducationProfile,
     };
   }

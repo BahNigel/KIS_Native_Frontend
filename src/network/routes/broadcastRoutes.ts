@@ -105,6 +105,11 @@ const broadcastRoutes = {
     settingsConfigDetail: (id: string, key: string) =>
       `${API_BASE_URL}/api/v1/partners/${id}/settings-config/${key}/`,
     organizationProfile: (id: string) => `${API_BASE_URL}/api/v1/partners/${id}/organization-profile/`,
+    organizationApps: (id: string) => `${API_BASE_URL}/api/v1/partners/${id}/organization-apps/`,
+    organizationApp: (id: string, appId: string) =>
+      `${API_BASE_URL}/api/v1/partners/${id}/organization-apps/${appId}/`,
+    organizationAppAccessLog: (id: string, appId: string) =>
+      `${API_BASE_URL}/api/v1/partners/${id}/organization-apps/${appId}/access-log/`,
     policy: (id: string) => `${API_BASE_URL}/api/v1/partners/${id}/policy/`,
     auditEvents: (id: string) => `${API_BASE_URL}/api/v1/partners/${id}/audit-events/`,
     roles: (id: string) => `${API_BASE_URL}/api/v1/partners/${id}/roles/`,
@@ -171,10 +176,19 @@ const broadcastRoutes = {
     createProfile: `${API_BASE_URL}/api/v1/broadcasts/profiles/create/`,
     feedProfile: `${API_BASE_URL}/api/v1/broadcasts/profiles/feeds/`,
     feedEntry: (id: string) => `${API_BASE_URL}/api/v1/broadcasts/profiles/feeds/${id}/`,
+    feedEntryBroadcast: (id: string) =>
+      `${API_BASE_URL}/api/v1/broadcasts/profiles/feeds/${id}/broadcast/`,
+    feedEntryAttachment: (id: string) =>
+      `${API_BASE_URL}/api/v1/broadcasts/profiles/feeds/${id}/attachments/`,
     profileAttachment: `${API_BASE_URL}/api/v1/broadcasts/profiles/attachment/`,
     profileManage: `${API_BASE_URL}/api/v1/broadcasts/profiles/manage/`,
     subscribe: `${API_BASE_URL}/api/v1/broadcasts/subscribe/`,
     educationCourseBroadcast: `${API_BASE_URL}/api/v1/broadcasts/education/courses/broadcast/`,
+    educationProfiles: `${API_BASE_URL}/api/v1/broadcasts/education/profiles/`,
+    educationProfile: (id: string) => `${API_BASE_URL}/api/v1/broadcasts/education/profiles/${id}/`,
+    educationProfileBroadcast: (id: string) =>
+      `${API_BASE_URL}/api/v1/broadcasts/education/profiles/${id}/broadcast/`,
+    educationProfilePermissions: `${API_BASE_URL}/api/v1/broadcasts/education/profiles/permissions/`,
   },
   commerce: {
     shops: `${API_BASE_URL}/api/v1/commerce/shops/`,

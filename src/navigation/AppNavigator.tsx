@@ -18,13 +18,6 @@ import {
   createBottomTabNavigator,
   BottomTabBarProps,
 } from '@react-navigation/bottom-tabs';
-import Animated, {
-  interpolate,
-  useAnimatedStyle,
-  useSharedValue,
-  withSpring,
-  withTiming,
-} from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useKISTheme } from '../theme/useTheme';
@@ -97,28 +90,13 @@ function AnimatedKISTabBar({
   const { palette: p } = theme;
   const focusedTextColor = p.text;
   const unfocusedTextColor = p.subtext;
-
-  const barBg    = p.bar ?? p.surface;
-  const cutoutBg = p.surface;
-
-  const knobX = useSharedValue(state.index * tabWidth);
-  React.useEffect(() => {
-    knobX.value = withSpring(state.index * tabWidth, {
-      damping: 18,
-      stiffness: 220,
-      mass: 0.55,
-    });
-  }, [state.index, tabWidth]);
-
-  const knobStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: knobX.value }],
-  }));
+  const barBg = p.bar ?? p.surface;
 
   return (
     <View
       style={[
         styles.wrap,
-        { padding: 6, backgroundColor: barBg, paddingBottom: Math.max(insets.bottom - 6, 0) },
+        { backgroundColor: barBg, paddingBottom: Math.max(insets.bottom, 0) },
       ]}
     >
       <View
@@ -130,81 +108,9 @@ function AnimatedKISTabBar({
           },
         ]}
       >
-        {/* Moving circular active bubble */}
-        <Animated.View
-          pointerEvents="none"
-          style={[styles.knobWrap, { width: tabWidth }, knobStyle]}
-        >
-          <View style={[styles.knob, { backgroundColor: barBg }]}>
-            <View
-              style={{
-                width: width,
-                height: 22,
-                borderBottomRightRadius: 22,
-                backgroundColor: cutoutBg,
-                position: 'absolute',
-                top: 24,
-                right: '97%',
-                zIndex: 99,
-              }}
-            />
-            <View
-              style={{
-                width: 80,
-                height: 62,
-                borderTopLeftRadius: 999,
-                backgroundColor: barBg,
-                position: 'absolute',
-                top: 9,
-                right: 24,
-              }}
-            />
-            <View
-              style={{
-                width: width,
-                height: 22,
-                borderBottomLeftRadius: 22,
-                backgroundColor: cutoutBg,
-                position: 'absolute',
-                top: 24,
-                left: '97%',
-                zIndex: 99,
-              }}
-            />
-            <View
-              style={{
-                width: 80,
-                height: 62,
-                borderTopRightRadius: 999,
-                backgroundColor: barBg,
-                position: 'absolute',
-                top: 9,
-                left: 24,
-              }}
-            />
-          </View>
-        </Animated.View>
-
-        {/* Tabs */}
         {state.routes.map((route, index) => {
           const focused = state.index === index;
           const label = descriptors[route.key].options.title ?? route.name;
-
-          const progress = useSharedValue(focused ? 1 : 0);
-          React.useEffect(() => {
-            progress.value = withTiming(focused ? 1 : 0, { duration: 180 });
-          }, [focused]);
-
-          const iconA = useAnimatedStyle(() => ({
-            transform: [
-              { translateY: interpolate(progress.value, [0, 1], [0, -33]) },
-              { scale: interpolate(progress.value, [0, 1], [1.15, 1.95]) },
-            ],
-          }));
-
-          const textA = useAnimatedStyle(() => ({
-            transform: [{ translateY: interpolate(progress.value, [1, 0], [-12, 0]) }],
-          }));
 
           const onPress = () => {
             const event = navigation.emit({
@@ -223,26 +129,32 @@ function AnimatedKISTabBar({
               onPress={onPress}
               style={[styles.tab, { width: tabWidth }]}
             >
-              <Animated.View style={styles.tabInner}>
-                <Animated.View style={iconA}>
+              <View style={styles.tabInner}>
+                <View
+                  style={[
+                    styles.iconCircle,
+                    {
+                      backgroundColor: focused ? p.primary : p.surfaceElevated,
+                    },
+                  ]}
+                >
                   <KISIcon
                     name={routeIconMap[route.name as RouteKey]}
                     size={24}
-                    color={focused ? focusedTextColor : unfocusedTextColor}
+                    color={focused ? p.onPrimary : unfocusedTextColor}
                     focused={focused}
                   />
-                </Animated.View>
+                </View>
 
-                <Animated.Text
+                <Text
                   style={[
                     styles.label,
                     { color: focused ? focusedTextColor : unfocusedTextColor },
-                    textA,
                   ]}
                 >
                   {label}
-                </Animated.Text>
-              </Animated.View>
+                </Text>
+              </View>
             </Pressable>
           );
         })}
@@ -510,14 +422,10 @@ export function MainTabs() {
           headerShown: false,
           tabBarShowLabel: false,
         }}
-        // 👇 inject hidNav into custom tab bar
         tabBar={(p) => <AnimatedKISTabBar {...p} hidNav={hidNav} />}
       >
-        <Tabs.Screen
-          name="Partners"
-          options={{ title: 'Partners' }}
-        >
-          {() => <PartnersScreen setHidNav={setHidNav} onOpenInfo={openInfo} />}
+        <Tabs.Screen name="Messages" options={{ title: 'Messages' }}>
+          {() => <MessagesScreen onOpenChat={openChat} onOpenInfo={openInfo} />}
         </Tabs.Screen>
 
         <Tabs.Screen
@@ -526,15 +434,19 @@ export function MainTabs() {
           options={{ title: 'Bible' }}
         />
 
-        <Tabs.Screen name="Messages" options={{ title: 'Messages' }}>
-          {() => <MessagesScreen onOpenChat={openChat} onOpenInfo={openInfo} />}
-        </Tabs.Screen>
-
         <Tabs.Screen
           name="Broadcast"
           component={BroadcastScreen}
           options={{ title: 'Broadcast' }}
         />
+
+        <Tabs.Screen
+          name="Partners"
+          options={{ title: 'Partners' }}
+        >
+          {() => <PartnersScreen setHidNav={setHidNav} onOpenInfo={openInfo} />}
+        </Tabs.Screen>
+
         <Tabs.Screen
           name="Profile"
           component={ProfileScreen}
@@ -645,33 +557,30 @@ export function MainTabs() {
 }
 
 const styles = StyleSheet.create({
-  wrap: { paddingHorizontal: 2 },
+  wrap: { paddingHorizontal: 6 },
   bar: {
     height: 70,
     flexDirection: 'row',
     alignItems: 'center',
-    overflow: 'visible',
-  },
-  knobWrap: {
-    position: 'absolute',
-    top: -46,
-    height: 64,
-    alignItems: 'center',
-  },
-  knob: {
-    width: 86,
-    height: 86,
-    borderTopLeftRadius: 999,
-    borderTopRightRadius: 999,
-    shadowOpacity: 0,
-    elevation: 0,
+    justifyContent: 'space-between',
   },
   tab: {
     height: 70,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  tabInner: { alignItems: 'center', justifyContent: 'center', gap: 3 },
+  tabInner: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  iconCircle: {
+    width: 42,
+    height: 42,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   label: {
     fontSize: 11,
     fontWeight: Platform.select({ ios: '600', android: '700' }),

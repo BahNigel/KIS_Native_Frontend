@@ -1,4 +1,6 @@
 // src/navigation/types.ts
+import type { PartnerOrganizationApp } from '@/screens/tabs/partners/hooks/usePartnerOrganizationApps';
+
 export type RootStackParamList = {
   Login: undefined;
   Register: undefined;
@@ -16,6 +18,8 @@ export type RootStackParamList = {
   BridgeDashboard: undefined;
   TiersDashboard: undefined;
   NotificationsDashboard: undefined;
+  OrganizationApp: { app: PartnerOrganizationApp };
+  OrganizationAppForm: { partnerId: string; app?: PartnerOrganizationApp };
 };
 
 export type BroadcastTabId = 'feeds' | 'education' | 'market' | 'health';
@@ -36,5 +40,5 @@ export type MainTabsParamList = {
   Bible: undefined;
   Messages: undefined;
   Broadcast: BroadcastRouteParams | undefined;
-  Profile: { broadcastProfileKey?: BroadcastProfileKey } | undefined;
+  Profile: { broadcastProfileKey?: BroadcastProfileKey; educationProfileId?: string } | undefined;
 };

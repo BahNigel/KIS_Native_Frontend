@@ -8,6 +8,9 @@ import PartnerSheet from '@/components/partners/PartnerSheet';
 import PartnerPanels from './PartnerPanels';
 import { useKISTheme } from '@/theme/useTheme';
 import { KISIcon } from '@/constants/kisIcons';
+import PartnerAppLaunchBar from '@/components/partners/PartnerAppLaunchBar';
+import { usePartnerOrganizationAppsContext } from '@/context/partners/PartnerOrganizationAppsContext';
+import type { PartnerOrganizationApp } from '@/screens/tabs/partners/hooks/usePartnerOrganizationApps';
 
 type Props = {
   rootPanHandlers: Record<string, any>;
@@ -64,12 +67,15 @@ type Props = {
     integrationsPanel: any;
     automationPanel: any;
     reportsPanel: any;
-    governancePanel: any;
+  governancePanel: any;
   featurePanel: any;
   orgProfilePanel: any;
   coursesPanel: any;
   linksPanel: any;
+  appsPanel: any;
 };
+  onLaunchOrganizationApp: (app: PartnerOrganizationApp) => void;
+  onOpenOrganizationApps: () => void;
 };
 
 export default function PartnerLayout({
@@ -118,26 +124,21 @@ export default function PartnerLayout({
   animatePartnerSheet,
   panels,
   onOpenInsights,
+  onLaunchOrganizationApp,
+  onOpenOrganizationApps,
 }: Props) {
   const { palette } = useKISTheme();
+  const {
+    apps: organizationApps,
+    loading: organizationAppsLoading,
+    error: organizationAppsError,
+    reload: reloadOrganizationApps,
+  } = usePartnerOrganizationAppsContext();
   return (
     <View
       style={[styles.root, { backgroundColor: palette.bg }]}
       {...rootPanHandlers}
     >
-      {onOpenInsights ? (
-        <Pressable
-          onPress={onOpenInsights}
-          style={[
-            styles.insightsBadge,
-            { borderColor: palette.divider, backgroundColor: palette.surface },
-          ]}
-        >
-          <KISIcon name="chart" size={16} color={palette.primaryStrong} />
-          <Text style={[styles.insightsBadgeText, { color: palette.text }]}>Insights</Text>
-        </Pressable>
-      ) : null}
-
       <PartnersLeftRail
         partners={partners}
         selectedPartnerId={selectedPartnerId}
@@ -162,6 +163,13 @@ export default function PartnerLayout({
         onFeedPress={onFeedPress}
         onCommunityFeedPress={onCommunityFeedPress}
         onPartnerHeaderPress={onPartnerHeaderPress}
+      />
+
+      <PartnerAppLaunchBar
+        apps={organizationApps}
+        loading={organizationAppsLoading}
+        onLaunchApp={onLaunchOrganizationApp}
+        onOpenMore={onOpenOrganizationApps}
       />
 
       <PartnersMessagesPane
@@ -213,6 +221,13 @@ export default function PartnerLayout({
         governancePanel={panels.governancePanel}
         featurePanel={panels.featurePanel}
         orgProfilePanel={panels.orgProfilePanel}
+        appsPanel={{
+          ...panels.appsPanel,
+          apps: organizationApps,
+          loading: organizationAppsLoading,
+          error: organizationAppsError,
+          onReload: reloadOrganizationApps,
+        }}
         coursesPanel={panels.coursesPanel}
         linksPanel={panels.linksPanel}
       />

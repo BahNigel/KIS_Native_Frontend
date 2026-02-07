@@ -8,6 +8,7 @@ import healthRoutes from './routes/healthRoutes';
 import miscRoutes from './routes/miscRoutes';
 import socialRoutes from './routes/socialRoutes';
 import adminRoutes from './routes/adminRoutes';
+import personalizationRoutes from './routes/personalizationRoutes';
 import {
   API_BASE_URL,
   BG_REMOVAL_START_URL,
@@ -32,6 +33,7 @@ const ROUTES = {
   ...healthRoutes,
   ...miscRoutes,
   ...adminRoutes,
+  ...personalizationRoutes,
 };
 
 export default ROUTES;

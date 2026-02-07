@@ -167,7 +167,7 @@ export default function KISTextInput({
       height: wrapHeight,
       minHeight: computedMinHeight,
       maxHeight: layout?.maxHeight,
-      width: layout?.width,
+      width: layout?.width as any,
 
       // padding
       paddingHorizontal: wrapPaddingHorizontal,
@@ -268,10 +268,10 @@ export default function KISTextInput({
     placeholderTextColor ?? rest.placeholderTextColor ?? palette.subtext;
 
   return (
-    <View style={[{ marginBottom: 16 }, containerStyle]}>
-      {label ? <Text style={[labelStyle, { marginBottom: 6 }]}>{label}</Text> : null}
+    <View style={[{ marginBottom: 16,position: 'relative', height: 40 }, containerStyle]}>
+      {label ? <Text style={{ marginBottom: 6 }}>{label}</Text> : null}
 
-      <View style={[styles.inputWrap, computedWrapStyle, layout?.wrapStyle]}>
+      <View style={[styles.inputWrap, computedWrapStyle, layout?.wrapStyle, { minWidth: "90%", justifyContent: 'center',}]}>
         {left ? (
           <View style={[styles.adornment, { marginLeft: 2 }]}>
             {typeof left === 'function' ? left(palette.subtext) : left}
@@ -288,11 +288,9 @@ export default function KISTextInput({
           textAlignVertical={multiline ? 'top' : (rest as any).textAlignVertical}
           style={[
             styles.input,
-            inputTextStyle,
             {
               color: palette.text,
-              paddingVertical: inputPaddingVertical,
-              paddingHorizontal: inputPaddingHorizontal,
+              paddingVertical: 0,
             },
             layout?.inputStyle,
             style,

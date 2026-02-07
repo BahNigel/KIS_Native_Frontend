@@ -130,9 +130,15 @@ export default function BroadcastFeedCard({
   onSave,
   onJoinLesson,
   onToggleComments,
+  onSubscribe,
 }: Props) {
   const { palette, tokens } = useKISTheme();
   const styles = useMemo(() => makeStyles(tokens), [tokens]);
+  const [excerptExpanded, setExcerptExpanded] = useState(false);
+
+  useCallback(()=>{
+    console.log('BroadcastFeedCard rendered with item 2:', item);
+  },[]);
 
   const when = safeTimeLabel(item.broadcasted_at ?? item.created_at);
   const sourceName =
@@ -228,11 +234,19 @@ export default function BroadcastFeedCard({
       ) : null}
 
       {showExcerpt ? (
-        <Text style={[styles.bodyText, { color: palette.subtext }]} numberOfLines={3}>
-          {excerpt}
-          {excerpt.length > 0 ? '  ' : ''}
-          <Text style={{ color: palette.primaryStrong, fontWeight: '900' }}>Read more</Text>
-        </Text>
+        <View style={{ marginTop: 4 }}>
+          <Text
+            style={[styles.bodyText, { color: palette.subtext }]}
+            numberOfLines={excerptExpanded ? undefined : 3}
+          >
+            {excerpt}
+          </Text>
+          {!excerptExpanded ? (
+            <Pressable onPress={() => setExcerptExpanded(true)} style={{ marginTop: 2 }}>
+              <Text style={{ color: palette.primaryStrong, fontWeight: '900' }}>Read more</Text>
+            </Pressable>
+          ) : null}
+        </View>
       ) : item.text_doc || item.text ? (
         <View style={{ marginTop: 2 }}>
           <RichTextRenderer

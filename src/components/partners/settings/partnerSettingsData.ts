@@ -84,6 +84,25 @@ export const PARTNER_SETTINGS_SECTIONS: PartnerSettingsSection[] = [
     ],
   },
   {
+    key: 'organization_apps',
+    title: 'Organization Apps',
+    description: 'Manage the KIS, Bible, and external apps for your organization.',
+    features: [
+      {
+        key: 'org_apps_catalog',
+        title: 'App catalog',
+        description: 'List and launch organization-specific apps.',
+        access: admins,
+      },
+      {
+        key: 'org_apps_bible',
+        title: 'Bible app',
+        description: 'Bible experience maintained by CC for partner accounts.',
+        access: admins,
+      },
+    ],
+  },
+  {
     key: 'community_ops',
     title: 'Communities, Groups & Channels',
     description: 'Create spaces and set posting rules.',

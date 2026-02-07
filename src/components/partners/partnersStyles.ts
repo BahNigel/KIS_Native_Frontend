@@ -1,10 +1,32 @@
 // src/screens/tabs/partnersStyles.ts
 import { StyleSheet } from 'react-native';
+import { LEFT_RAIL_WIDTH } from '@/components/partners/partnersTypes';
+import { KIS_COLORS } from '@/theme/constants';
 
 const styles = StyleSheet.create({
   root: {
     flex: 1,
     flexDirection: 'row',
+  },
+
+  appLaunchBar: {
+    position: 'absolute',
+    right: 24 ,
+    bottom: 40,
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: 8,
+    zIndex: 99,
+  },
+  appLaunchButton: {
+    borderWidth: 2,
+    borderRadius: 16,
+    paddingHorizontal: 18,
+    paddingVertical: 14,
+  },
+  appLaunchIcon: {
+    width: 20,
+    height: 20,
   },
 
   // LEFT RAIL

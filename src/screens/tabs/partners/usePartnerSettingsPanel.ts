@@ -7,6 +7,7 @@ export const usePartnerSettingsPanel = (
   sections: PartnerSettingsSection[],
 ) => {
   const [activeSectionKey, setActiveSectionKey] = useState<string | null>(null);
+  const [activeSection, setActiveSection] = useState<PartnerSettingsSection | null>(null);
   const panelWidth = useMemo(() => width, [width]);
   const panelTranslateX = useRef(new Animated.Value(panelWidth)).current;
 
@@ -18,6 +19,10 @@ export const usePartnerSettingsPanel = (
 
   const openSection = (sectionKey: string) => {
     setActiveSectionKey(sectionKey);
+    const section = sections.find((s) => s.key === sectionKey) ?? null;
+    if (section) {
+      setActiveSection(section);
+    }
     requestAnimationFrame(() => {
       panelTranslateX.setValue(panelWidth);
       Animated.timing(panelTranslateX, {
@@ -35,13 +40,20 @@ export const usePartnerSettingsPanel = (
       useNativeDriver: true,
     }).start(() => {
       setActiveSectionKey(null);
+      setActiveSection(null);
     });
   };
 
-  const activeSection = useMemo(
-    () => sections.find((s) => s.key === activeSectionKey),
-    [activeSectionKey, sections],
-  );
+  useEffect(() => {
+    if (!activeSectionKey) {
+      setActiveSection(null);
+      return;
+    }
+    const section = sections.find((s) => s.key === activeSectionKey) ?? null;
+    if (section) {
+      setActiveSection(section);
+    }
+  }, [activeSectionKey, sections]);
 
   return {
     panelWidth,

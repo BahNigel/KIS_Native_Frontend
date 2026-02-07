@@ -266,6 +266,21 @@ export const useProfileController = (opts: { setAuth: (v: boolean) => void; setP
     [loadBroadcastProfiles],
   );
 
+  const removeBroadcastFeedAttachment = useCallback(
+    async (entryId: string, key: string) => {
+      const endpoint = `${ROUTES.broadcasts.feedEntryAttachment(entryId)}?key=${encodeURIComponent(key)}`;
+      const res = await deleteRequest(endpoint, {
+        errorMessage: 'Unable to remove attachment.',
+      });
+      if (res?.success) {
+        await loadBroadcastProfiles();
+        return res.data?.feed ?? null;
+      }
+      throw new Error(res?.message || 'Unable to remove attachment.');
+    },
+    [loadBroadcastProfiles],
+  );
+
   const loadProfile = useCallback(async () => {
     const now = Date.now();
     if (loadingRef.current) return;
@@ -795,6 +810,7 @@ export const useProfileController = (opts: { setAuth: (v: boolean) => void; setP
     addBroadcastFeedEntry,
     updateBroadcastFeedEntry,
     deleteBroadcastFeedEntry,
+    removeBroadcastFeedAttachment,
 
     // derived
     sectionList,

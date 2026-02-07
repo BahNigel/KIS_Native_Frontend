@@ -24,6 +24,7 @@ export type AttachmentMeta = {
 export async function uploadFileToBackend(opts: {
   file: { uri: string; name: string; type: string | null; size?: number | null; durationMs?: number | null };
   authToken: string;
+  deviceId?: string;
   baseUrl?: string; // e.g. https://your-api.com
   onProgress?: (progress: number) => void;
   onStatus?: (status: 'uploading' | 'done' | 'failed') => void;
@@ -56,6 +57,7 @@ export async function uploadFileToBackend(opts: {
   const params = new URLSearchParams();
   if (conversationId) params.set('conversationId', conversationId);
   if (clientId) params.set('clientId', clientId);
+  if (opts.deviceId) params.set('device_id', opts.deviceId);
   const durationSecondsFromFile =
     typeof file.durationMs === 'number' && Number.isFinite(file.durationMs)
       ? Math.round(file.durationMs / 1000)
@@ -82,6 +84,9 @@ export async function uploadFileToBackend(opts: {
       const xhr = new XMLHttpRequest();
       xhr.open('POST', url);
       xhr.setRequestHeader('Authorization', `Bearer ${authToken}`);
+      if (opts.deviceId) {
+        xhr.setRequestHeader('X-Device-Id', opts.deviceId);
+      }
 
       xhr.onload = () => {
         if (xhr.status >= 200 && xhr.status < 300) {

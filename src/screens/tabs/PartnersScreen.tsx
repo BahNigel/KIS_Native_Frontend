@@ -1,6 +1,6 @@
 // src/screens/tabs/PartnersScreen.tsx
 import React, { useCallback, useEffect } from 'react';
-import { DeviceEventEmitter, View, useWindowDimensions } from 'react-native';
+import { Alert, DeviceEventEmitter, View, useWindowDimensions } from 'react-native';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useKISTheme } from '../../theme/useTheme';
 import { useAuth } from '../../../App';
@@ -24,10 +24,12 @@ import { usePartnerGovernancePanel } from './partners/usePartnerGovernancePanel'
 import { usePartnerPanelOpeners } from './partners/usePartnerPanelOpeners';
 import { usePartnerFeaturePanel } from './partners/usePartnerFeaturePanel';
 import { usePartnerOrgProfilePanel } from './partners/usePartnerOrgProfilePanel';
+import { usePartnerOrganizationAppsPanel } from './partners/usePartnerOrganizationAppsPanel';
 import { usePartnerScreenActions } from './partners/usePartnerScreenActions';
 import { usePartnerCoursesPanel } from './partners/usePartnerCoursesPanel';
 import { usePartnerLinksPanel } from './partners/usePartnerLinksPanel';
 import usePartnerProfileLinks from './partners/usePartnerProfileLinks';
+import { PartnerOrganizationAppsProvider } from '@/context/partners/PartnerOrganizationAppsContext';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '@/navigation/types';
 
@@ -82,7 +84,6 @@ export default function PartnersScreen({ setHidNav, onOpenInfo }: any) {
     setRole,
     refresh: refreshLinks,
   } = usePartnerProfileLinks(selectedPartner?.id);
-
   useEffect(() => {
     const sub = DeviceEventEmitter.addListener('partner.open', (payload: any) => {
       const partnerId = String(payload?.partnerId ?? '');
@@ -111,6 +112,7 @@ export default function PartnersScreen({ setHidNav, onOpenInfo }: any) {
     sections: settingsSections,
     role: settingsRole,
   } = usePartnerSettingsCatalog(selectedPartner?.id, partnerRole);
+  const canManageOrganizationApps = ['owner', 'admin', 'manager'].includes(settingsRole);
   const {
     messagesOffsetAnim,
     isMessagesExpanded,
@@ -217,6 +219,13 @@ export default function PartnersScreen({ setHidNav, onOpenInfo }: any) {
     close: closeOrgProfilePanel,
   } = usePartnerOrgProfilePanel(width);
   const {
+    panelWidth: orgAppsPanelWidth,
+    panelTranslateX: orgAppsPanelTranslateX,
+    isOpen: isOrgAppsPanelOpen,
+    open: openOrgAppsPanel,
+    close: closeOrgAppsPanel,
+  } = usePartnerOrganizationAppsPanel(width);
+  const {
     panelWidth: coursesPanelWidth,
     panelTranslateX: coursesPanelTranslateX,
     isOpen: isCoursesPanelOpen,
@@ -263,14 +272,33 @@ export default function PartnersScreen({ setHidNav, onOpenInfo }: any) {
     openGovernance: openGovernancePanel,
   });
 
+  const handleOpenOrganizationApps = useCallback(() => {
+    closePanel();
+    setTimeout(() => {
+      openOrgAppsPanel();
+    }, 240);
+  }, [closePanel, openOrgAppsPanel]);
+
   const handleOpenFeature = (feature: { key: string; title: string; description?: string }) => {
     closePanel();
     if (['course_builder', 'lesson_library', 'course_pricing', 'course_enrollments'].includes(feature.key)) {
       openCoursesPanel();
       return;
     }
+    if (['org_apps_catalog', 'org_apps_bible'].includes(feature.key)) {
+      handleOpenOrganizationApps();
+      return;
+    }
     openFeaturePanel(feature);
   };
+
+  const handleLaunchOrganizationApp = useCallback(
+    (app: PartnerOrganizationApp) => {
+      closeOrgAppsPanel();
+      rootNavigation?.navigate('OrganizationApp', { app });
+    },
+    [closeOrgAppsPanel, rootNavigation],
+  );
 
   const handleOpenOrgProfile = () => {
     closePanel();
@@ -306,73 +334,77 @@ export default function PartnersScreen({ setHidNav, onOpenInfo }: any) {
     isFeaturePanelOpen,
     isOrgProfilePanelOpen,
     isCoursesPanelOpen,
+    isOrganizationAppsPanelOpen: isOrgAppsPanelOpen,
   });
 
   return (
+    <PartnerOrganizationAppsProvider partnerId={selectedPartner?.id}>
       <PartnerLayout
         rootPanHandlers={rootPanHandlers}
-      partners={partners}
-      selectedPartnerId={selectedPartnerId}
-      setSelectedPartnerId={setSelectedPartnerId}
-      onAddPartnerPress={onAddPartnerPress}
-      onLogout={onLogout}
-      selectedPartner={selectedPartner}
-      selectedGroupId={selectedGroupId}
-      selectedChannelId={selectedChannelId}
-      selectedFeed={selectedFeed}
-      selectedCommunityFeedId={selectedCommunityFeedId}
-      rootGroups={rootGroups}
-      rootChannels={rootChannels}
-      groupsForPartner={groupsForPartner}
-      channelsForPartner={channelsForPartner}
-      communitiesForPartner={communitiesForPartner}
-      expandedCommunities={expandedCommunities}
-      toggleCommunity={toggleCommunity}
-      onGroupPress={onGroupPress}
-      onChannelPress={onChannelPress}
-      onFeedPress={onFeedPress}
-      onCommunityFeedPress={onCommunityFeedPress}
-      onPartnerHeaderPress={onPartnerHeaderPress}
-      width={width}
-      messagesOffsetAnim={messagesOffsetAnim}
-      isMessagesExpanded={isMessagesExpanded}
-      toggleMessagesPane={toggleMessagesPane}
-      handleCloseMessages={handleCloseMessages}
-      onOpenInfo={onOpenInfo}
-      isPartnerSheetOpen={isPartnerSheetOpen}
-      sheetHeight={sheetHeight}
-      sheetOffsetAnim={sheetOffsetAnim}
-      overlayOpacity={overlayOpacity}
-      sheetPanHandlers={sheetPanHandlers}
-      communitiesCount={communitiesForPartner.length}
-      groupsCount={groupsForPartner.length}
-      channelsCount={rootChannels.length}
-      partnerRole={settingsRole}
-      settingsSections={settingsSections}
-      openSection={openSection}
-      onOpenCreate={onOpenCreate}
+        partners={partners}
+        selectedPartnerId={selectedPartnerId}
+        setSelectedPartnerId={setSelectedPartnerId}
+        onAddPartnerPress={onAddPartnerPress}
+        onLogout={onLogout}
+        selectedPartner={selectedPartner}
+        selectedGroupId={selectedGroupId}
+        selectedChannelId={selectedChannelId}
+        selectedFeed={selectedFeed}
+        selectedCommunityFeedId={selectedCommunityFeedId}
+        rootGroups={rootGroups}
+        rootChannels={rootChannels}
+        groupsForPartner={groupsForPartner}
+        channelsForPartner={channelsForPartner}
+        communitiesForPartner={communitiesForPartner}
+        expandedCommunities={expandedCommunities}
+        toggleCommunity={toggleCommunity}
+        onGroupPress={onGroupPress}
+        onChannelPress={onChannelPress}
+        onFeedPress={onFeedPress}
+        onCommunityFeedPress={onCommunityFeedPress}
+        onPartnerHeaderPress={onPartnerHeaderPress}
+        width={width}
+        messagesOffsetAnim={messagesOffsetAnim}
+        isMessagesExpanded={isMessagesExpanded}
+        toggleMessagesPane={toggleMessagesPane}
+        handleCloseMessages={handleCloseMessages}
+        onOpenInfo={onOpenInfo}
+        isPartnerSheetOpen={isPartnerSheetOpen}
+        sheetHeight={sheetHeight}
+        sheetOffsetAnim={sheetOffsetAnim}
+        overlayOpacity={overlayOpacity}
+        sheetPanHandlers={sheetPanHandlers}
+        communitiesCount={communitiesForPartner.length}
+        groupsCount={groupsForPartner.length}
+        channelsCount={rootChannels.length}
+        partnerRole={settingsRole}
+        settingsSections={settingsSections}
+        openSection={openSection}
+        onOpenCreate={onOpenCreate}
         onOpenLinks={openLinksPanel}
         animatePartnerSheet={animatePartnerSheet}
         onOpenInsights={openInsights}
+        onLaunchOrganizationApp={handleLaunchOrganizationApp}
+        onOpenOrganizationApps={handleOpenOrganizationApps}
         panels={{
-        settingsPanel: {
-          isOpen: isSettingsPanelOpen,
-          panelWidth,
-          panelTranslateX,
-          activeSection,
-          role: settingsRole,
-          onClose: closePanel,
-          onOpenRecruitment: handleOpenRecruitment,
-          onOpenAudit: handleOpenAudit,
-          onOpenPolicy: handleOpenPolicy,
-          onOpenIntegrations: handleOpenIntegrations,
-          onOpenAutomation: handleOpenAutomation,
-          onOpenReports: handleOpenReports,
-          onOpenGovernance: handleOpenGovernance,
-          onOpenFeature: handleOpenFeature,
-          onOpenOrgProfile: handleOpenOrgProfile,
-        },
-        createPanel: {
+          settingsPanel: {
+            isOpen: isSettingsPanelOpen,
+            panelWidth,
+            panelTranslateX,
+            activeSection,
+            role: settingsRole,
+            onClose: closePanel,
+            onOpenRecruitment: handleOpenRecruitment,
+            onOpenAudit: handleOpenAudit,
+            onOpenPolicy: handleOpenPolicy,
+            onOpenIntegrations: handleOpenIntegrations,
+            onOpenAutomation: handleOpenAutomation,
+            onOpenReports: handleOpenReports,
+            onOpenGovernance: handleOpenGovernance,
+            onOpenFeature: handleOpenFeature,
+            onOpenOrgProfile: handleOpenOrgProfile,
+          },
+          createPanel: {
           isOpen: isCreatePanelOpen,
           panelWidth: createPanelWidth,
           panelTranslateX: createPanelTranslateX,
@@ -443,6 +475,14 @@ export default function PartnersScreen({ setHidNav, onOpenInfo }: any) {
           panelTranslateX: orgProfilePanelTranslateX,
           onClose: closeOrgProfilePanel,
         },
+        appsPanel: {
+          isOpen: isOrgAppsPanelOpen,
+          panelWidth: orgAppsPanelWidth,
+          panelTranslateX: orgAppsPanelTranslateX,
+          onClose: closeOrgAppsPanel,
+          canManageApps: canManageOrganizationApps,
+          onLaunchApp: handleLaunchOrganizationApp,
+        },
         coursesPanel: {
           isOpen: isCoursesPanelOpen,
           panelWidth: coursesPanelWidth,
@@ -463,6 +503,7 @@ export default function PartnersScreen({ setHidNav, onOpenInfo }: any) {
           onRefresh: refreshLinks,
         },
       }}
-    />
+      />
+    </PartnerOrganizationAppsProvider>
   );
 }

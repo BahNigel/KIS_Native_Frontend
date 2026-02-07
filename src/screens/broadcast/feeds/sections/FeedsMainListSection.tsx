@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { RefreshControl, Text, View } from 'react-native';
 import { useKISTheme } from '@/theme/useTheme';
 
@@ -62,6 +62,7 @@ export default function FeedsMainListSection({
     return 'Tech innovators';
   }, []);
 
+
   const list = items ?? [];
 
   return (
@@ -109,10 +110,11 @@ export default function FeedsMainListSection({
             const subscribed = Boolean(item.source?.is_subscribed);
             const enrichedSource: BroadcastSourceMeta = {
               ...(item.source ?? {}),
+              type: item.source?.type ?? 'unknown',
               allow_subscribe: canSubscribe,
               is_subscribed: subscribed,
             };
-
+console.log('Rendering BroadcastFeedCard for item:', item);
             return (
               <BroadcastFeedCard
                 key={item.id}
@@ -120,6 +122,7 @@ export default function FeedsMainListSection({
                   ...item,
                   source: {
                     ...(item.source ?? {}),
+                    type: item.source?.type ?? 'unknown',
                     allow_subscribe: canSubscribe,
                     is_subscribed: subscribed,
                   },

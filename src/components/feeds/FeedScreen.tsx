@@ -7,14 +7,13 @@ import {
   StyleSheet,
   FlatList,
   Pressable,
-  Image,
   Share,
   Alert,
   Modal,
   TextInput,
   ScrollView,
-  ImageBackground,
   Platform,
+  Image,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -39,10 +38,23 @@ import { uploadFileToBackend } from '@/Module/ChatRoom/uploadFileToBackend';
 import { useSocket } from '../../../SocketProvider';
 import CommentThreadPanel from './CommentThreadPanel';
 import { formatCompactCount } from './feedUtils';
-import RichTextRenderer from './RichTextRenderer';
 import { KISIcon } from '@/constants/kisIcons';
 import { FeedComposerPayload } from './composer/types';
+import RichTextRenderer from './RichTextRenderer';
 import FeedComposerSheet from './composer/FeedComposerSheet';
+import { logFeedEvent, type FeedType } from '@/network/personalization';
+
+const PERSONALIZATION_HISTORY_KEY = '@kis:personalization-history';
+
+const shuffleItems = <T,>(items: T[]): T[] => {
+  if (items.length <= 1) return items;
+  const next = [...items];
+  for (let i = next.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [next[i], next[j]] = [next[j], next[i]];
+  }
+  return next;
+};
 
 const FILTER_OPTIONS = [
   { key: 'all', label: 'All posts' },
@@ -91,6 +103,7 @@ type FeedScreenProps<T extends FeedPost> = {
   commentChatContext: (post: T) => Record<string, any>;
   chatHeaderLabel: (post: T) => string;
   emptyStateText?: string;
+  feedType?: FeedType;
 };
 
 type FeedItem<T extends FeedPost> = { type: 'post'; data: T } | { type: 'ad'; id: string };
@@ -239,6 +252,7 @@ export default function FeedScreen<T extends FeedPost>({
   commentChatContext,
   chatHeaderLabel,
   emptyStateText,
+  feedType = 'broadcast',
 }: FeedScreenProps<T>) {
   const { palette } = useKISTheme();
   const insets = useSafeAreaInsets();
@@ -249,6 +263,7 @@ export default function FeedScreen<T extends FeedPost>({
   const [loading, setLoading] = useState(true);
   const [posts, setPosts] = useState<T[]>([]);
   const [composerVisible, setComposerVisible] = useState(false);
+  const [userHasPersonalizedHistory, setUserHasPersonalizedHistory] = useState(false);
 
   const [actionsVisible, setActionsVisible] = useState(false);
   const [activePost, setActivePost] = useState<T | null>(null);
@@ -280,17 +295,50 @@ export default function FeedScreen<T extends FeedPost>({
     { streamUrl?: string; directUrl?: string; attachment?: any; post: T } | null
   >(null);
 
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        const stored = await AsyncStorage.getItem(PERSONALIZATION_HISTORY_KEY);
+        if (!active) return;
+        setUserHasPersonalizedHistory(stored === 'true');
+      } catch (error) {
+        console.warn('[FeedScreen] failed to load personalization history', error);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, []);
+
   const videoPlayerRef = useRef<Video>(null);
+
+  const normalizedFeedType = feedType;
+  const logImpression = useCallback(
+    (count: number) => {
+      if (!normalizedFeedType) return;
+      void logFeedEvent({
+        feedType: normalizedFeedType,
+        event: 'impression',
+        metadata: { count },
+      });
+    },
+    [normalizedFeedType],
+  );
 
   const loadFeed = useCallback(async () => {
     setLoading(true);
     try {
       const list = await loadPosts();
-      setPosts(Array.isArray(list) ? list : []);
+      const normalized = Array.isArray(list) ? list : [];
+      const shouldShuffle = !userHasPersonalizedHistory && normalized.length > 1;
+      const finalList = shouldShuffle ? shuffleItems(normalized) : normalized;
+      setPosts(finalList);
+      logImpression(finalList.length);
     } finally {
       setLoading(false);
     }
-  }, [loadPosts]);
+  }, [loadPosts, logImpression, userHasPersonalizedHistory]);
 
   useEffect(() => {
     loadFeed();
@@ -319,9 +367,12 @@ export default function FeedScreen<T extends FeedPost>({
   }, [posts]);
 
   const toggleCommentThread = useCallback((postId: string) => {
-    setActiveCommentPostId((prev) => (prev === postId ? null : postId));
+    if (normalizedFeedType) {
+      void logFeedEvent({ feedType: normalizedFeedType, event: 'comments_toggle', targetId: postId });
+    }
+        setActiveCommentPostId((prev) => (prev === postId ? null : postId));
     setFeedScrollEnabled(true);
-  }, []);
+  }, [feedType]);
 
   const handleCommentScrollStart = useCallback(() => {
     setFeedScrollEnabled(false);
@@ -483,6 +534,10 @@ export default function FeedScreen<T extends FeedPost>({
         );
       }
 
+      if (normalizedFeedType) {
+        void logFeedEvent({ feedType: normalizedFeedType, event: 'video_open', targetId: opts.post.id });
+      }
+
       setModalPost(opts.post);
       setModalVideoAttachment(opts.attachment ?? null);
       setModalVideoCandidates(candidates);
@@ -492,7 +547,7 @@ export default function FeedScreen<T extends FeedPost>({
 
       requestAnimationFrame(() => setIsModalVideoPlaying(true));
     },
-    [mediaHeaders],
+    [mediaHeaders, feedType],
   );
 
   const openVideoModal = useCallback(
@@ -538,6 +593,16 @@ export default function FeedScreen<T extends FeedPost>({
     setIsModalVideoPlaying(true);
   }, [modalVideoCandidates]);
 
+  const markPersonalizationHistory = useCallback(async () => {
+    if (userHasPersonalizedHistory) return;
+    try {
+      await AsyncStorage.setItem(PERSONALIZATION_HISTORY_KEY, 'true');
+    } catch (error) {
+      console.warn('[FeedScreen] failed to persist personalization history', error);
+    }
+    setUserHasPersonalizedHistory(true);
+  }, [userHasPersonalizedHistory]);
+
   const handleReact = useCallback(
     async (postId: string) => {
       const alreadyLiked = likedPostIdsRef.current[postId];
@@ -558,8 +623,9 @@ export default function FeedScreen<T extends FeedPost>({
       if (res?.data?.has_reacted !== undefined) {
         setLikedPostIds((prev) => ({ ...prev, [postId]: Boolean(res.data.has_reacted) }));
       }
+      void markPersonalizationHistory();
     },
-    [reactEndpoint],
+    [markPersonalizationHistory, reactEndpoint],
   );
 
   const captureShareImage = useCallback(async (payload: SharePayload) => {
