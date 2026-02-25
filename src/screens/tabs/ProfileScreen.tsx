@@ -19,7 +19,6 @@ import KISButton from '@/constants/KISButton';
 import KISTextInput from '@/constants/KISTextInput';
 import Skeleton from '@/components/common/Skeleton';
 import PartnerCreateSlide from '@/components/partners/CreatePartnerScreen';
-import PartnerProfilesList from './profile/components/PartnerProfilesList';
 import { KISIcon } from '@/constants/kisIcons';
 import { useAuth } from '../../../App';
 import { launchImageLibrary, Asset } from 'react-native-image-picker';
@@ -27,197 +26,60 @@ import { profileLayout, styles } from './profile/profile.styles';
 import { useProfileController } from './profile/useProfileController';
 import { formatMoney } from './profile/profile.utils';
 import UpgradeSheet from './profile/profile/sheets/UpgradeSheet';
-import { fieldLabels, visibilityOptions, walletModes, paymentProviders } from './profile/profile.constants';
 import { getAttachmentPreviewInfo } from '@/components/broadcast/attachmentPreview';
 import { getRequest } from '@/network/get';
 import ROUTES from '@/network';
+import {
+  deleteInAppNotification,
+  fetchInAppNotifications,
+  IN_APP_NOTIFICATIONS_UPDATED_EVENT,
+  markInAppNotificationAsRead,
+  type InAppNotification,
+} from '@/services/inAppNotificationService';
+import { filterInstitutionsForVisibleRoles } from '@/screens/health/accessControl';
 
 import HeroHeader from './profile/components/HeroHeader';
 import AccountCreditsCard from './profile/components/AccountCreditsCard';
-import SectionCard from './profile/components/SectionCard';
-import EducationCreatorConsole from './profile/components/EducationCreatorConsole';
 import { isPartnerTier } from '@/services/tierAccess';
 
 import BottomSheet from './profile/sheets/BottomSheet';
 import SheetHeader from './profile/sheets/SheetHeader';
+import {
+  BroadcastProfilesSection,
+  ImpactSnapshotSection,
+  PartnerProfilesSection,
+  SectionCardsList,
+  LogoutSection,
+} from '@/screens/tabs/profile-screen-sections';
 import type {
-  BroadcastTabId,
-  BroadcastCreationType,
   BroadcastProfileKey,
   MainTabsParamList,
   RootStackParamList,
 } from '@/navigation/types';
-
-type HealthInstitutionType =
-  | 'clinic'
-  | 'hospital'
-  | 'lab'
-  | 'wellness_center'
-  | 'pharmacy'
-  | 'diagnostics';
-
-const HEALTH_INSTITUTION_TYPES: HealthInstitutionType[] = [
-  'clinic',
-  'hospital',
-  'lab',
-  'wellness_center',
-  'pharmacy',
-  'diagnostics',
-];
-
-type HealthFormState = {
-  id?: string;
-  name: string;
-  type: HealthInstitutionType;
-  employees: string;
-};
-
-type MarketFormState = {
-  id?: string;
-  name: string;
-  products: string;
-};
-
-type EducationFormState = {
-  id?: string;
-  title: string;
-  summary: string;
-};
-
-const FEED_MEDIA_TYPES = ['video', 'audio', 'image', 'file', 'text'] as const;
-type FeedMediaType = (typeof FEED_MEDIA_TYPES)[number];
-
-const PROFILE_MANAGEMENT_TYPE: Record<
-  Exclude<BroadcastProfileKey, 'broadcast_feed'>,
-  'health_profile' | 'market_profile' | 'education_profile'
-> = {
-  health: 'health_profile',
-  market: 'market_profile',
-  education: 'education_profile',
-};
-
-const HEALTH_MANAGEMENT_FEATURES = [
-  'Telemedicine scheduling + reminders',
-  'Clinical task assignments + accountability',
-  'Patient intake automation',
-  'Care team command center',
-  'Inventory + diagnostics tracker',
-  'Clinical analytics + population insights',
-  'Compliance audit log',
-  'Emergency escalation workflows',
-  'Telehealth triage automation + decision support',
-  'Medication adherence + refill reminders',
-  'Credential verification + licensing dashboards',
-  'Billing & insurance reconciliation workflows',
-  'Clinical event reporting + logging',
-  'Patient satisfaction scoring & outreach campaigns',
-  'Wellness challenge + habit tracking programs',
-  'Secure e-signature & document exchange',
-  'Referral network heatmaps & routing',
-  'Regulatory reporting & compliance dashboards',
-];
-
-const MARKET_MANAGEMENT_FEATURES = [
-  'Inventory health dashboard',
-  'Shop performance heatmaps',
-  'Credit usage & renewal warnings',
-  'Drops/community announcements',
-  'Order routing preferences',
-  'Dynamic pricing alerts',
-  'Fulfillment & logistics tracking',
-  'Merchant compliance & document vault',
-  'Promotions + coupon campaigns',
-  'Customer support queue & dispute handling',
-];
-
-const EDUCATION_MANAGEMENT_FEATURES = [
-  'Course lifecycle tracker',
-  'Module progress analytics',
-  'Learner engagement insights',
-  'Assignments & resources vault',
-  'Scheduling + reminders',
-  'Cohort segmentation dashboards',
-  'Certification & badge automation',
-  'Discussion moderation queue',
-  'Assessment builder + rubrics',
-  'Live session capture & recording',
-  'Learner support ticketing',
-];
-
-const countProducts = (shops: any[] | undefined) =>
-  (shops ?? []).reduce((sum, shop) => {
-    const products = Array.isArray(shop?.products) ? shop.products.length : 0;
-    return sum + products;
-  }, 0);
-
-const BROADCAST_PROFILE_DEFINITIONS: {
-  profileKey: BroadcastProfileKey;
-  label: string;
-  helper: string;
-  icon: string;
-  tab: BroadcastTabId;
-  creationType: BroadcastCreationType;
-  summary: (data: Record<string, any>) => string;
-  emptySummary: string;
-}[] = [
-  {
-    profileKey: 'broadcast_feed',
-    label: 'Broadcast feed',
-    helper: '10-day ephemeral queue for drops or events',
-    icon: 'sparkles',
-    tab: 'feeds',
-    creationType: 'broadcast_feed',
-    summary: (data) => {
-      const feeds = Array.isArray(data?.feeds) ? data.feeds.length : 0;
-      const expires = data?.expires_at
-        ? new Date(data.expires_at).toLocaleDateString()
-        : '10 days';
-      return `${feeds} feeds · expires ${expires}`;
-    },
-    emptySummary: 'Create a 10-day broadcast feed to queue your posts.',
-  },
-  {
-    profileKey: 'health',
-    label: 'Health profile',
-    helper: 'Clinics, hospitals & labs with care teams',
-    icon: 'hospital',
-    tab: 'health',
-    creationType: 'health_profile',
-    summary: (data) => {
-      const institutions = Array.isArray(data?.institutions) ? data.institutions.length : 0;
-      const employees = Number(data?.employees_total ?? 0);
-      return `${institutions} institutions · ${employees} staff`;
-    },
-    emptySummary: 'Launch two institutions (max 5 free employees) before credits.',
-  },
-  {
-    profileKey: 'market',
-    label: 'Market profile',
-    helper: 'Shops & product drops for your brand',
-    icon: 'cart',
-    tab: 'market',
-    creationType: 'market_profile',
-    summary: (data) => {
-      const shops = Array.isArray(data?.shops) ? data.shops.length : 0;
-      const products = countProducts(data?.shops);
-      return `${shops} shops · ${products} products`;
-    },
-    emptySummary: 'Publish up to 5 shops (20 products each) before credits.',
-  },
-  {
-    profileKey: 'education',
-    label: 'Education profile',
-    helper: 'Courses, trainings & learning broadcasts',
-    icon: 'school',
-    tab: 'education',
-    creationType: 'education_profile',
-    summary: (data) => {
-      const courses = Array.isArray(data?.courses) ? data.courses.length : 0;
-      return `${courses} courses`;
-    },
-    emptySummary: 'Create up to 10 courses before extra credits are needed.',
-  },
-];
+import {
+  BROADCAST_PROFILE_DEFINITIONS,
+  EditItemModal,
+  EditProfileModal,
+  FeedManagementModal,
+  MarketManagementModal,
+  EducationManagementModal,
+  PrivacyModal,
+  UpgradeModal,
+  WalletModal,
+  buildDefaultFeedMediaOptions,
+  getPartnerLimitText,
+  getSheetTitle,
+  HEALTH_INSTITUTION_TYPES,
+  PROFILE_MANAGEMENT_TYPE,
+} from './profile-screen';
+import type {
+  EducationFormState,
+  FeedMediaType,
+  FeedMediaOptions,
+  MarketFormState,
+  HealthInstitutionType,
+} from './profile-screen';
+import { HealthManagementModal } from './profile-screen/HealthManagementModal';
 
 export default function ProfileScreen() {
   const { palette } = useKISTheme();
@@ -231,20 +93,17 @@ export default function ProfileScreen() {
   const [panelFeedItemTitle, setPanelFeedItemTitle] = useState('');
   const [panelFeedItemSummary, setPanelFeedItemSummary] = useState('');
   const [panelFeedMediaType, setPanelFeedMediaType] = useState<FeedMediaType>('video');
+  const [panelFeedMediaOptions, setPanelFeedMediaOptions] = useState<FeedMediaOptions>(
+    () => buildDefaultFeedMediaOptions(),
+  );
   const [panelFeedAssets, setPanelFeedAssets] = useState<Asset[]>([]);
   const [panelFeedExistingAttachments, setPanelFeedExistingAttachments] = useState<any[]>([]);
   const [panelFeedAdding, setPanelFeedAdding] = useState(false);
   const [panelAttachmentUploading, setPanelAttachmentUploading] = useState(false);
   const [editingFeedItemId, setEditingFeedItemId] = useState<string | null>(null);
   const [panelFeedDeletingId, setPanelFeedDeletingId] = useState<string | null>(null);
+  const [panelFeedBroadcastingId, setPanelFeedBroadcastingId] = useState<string | null>(null);
   const managementPanelOffset = useRef(new Animated.Value(profileLayout.SCREEN_WIDTH)).current;
-  const [healthForm, setHealthForm] = useState<HealthFormState>({
-    name: '',
-    type: 'clinic',
-    employees: '3',
-  });
-  const [healthFormMode, setHealthFormMode] = useState<'add' | 'edit'>('add');
-  const [healthFormLoading, setHealthFormLoading] = useState(false);
   const [marketForm, setMarketForm] = useState<MarketFormState>({
     name: '',
     products: '3',
@@ -266,6 +125,19 @@ export default function ProfileScreen() {
   const [educationLessonsData, setEducationLessonsData] = useState<any[]>([]);
   const [educationAnalyticsLoading, setEducationAnalyticsLoading] = useState(false);
   const [educationAnalyticsError, setEducationAnalyticsError] = useState<string | null>(null);
+  const [inAppNotifications, setInAppNotifications] = useState<InAppNotification[]>([]);
+  const [loadingNotifications, setLoadingNotifications] = useState(false);
+  const [deletingNotificationId, setDeletingNotificationId] = useState<string | null>(null);
+
+  const loadInAppNotifications = useCallback(async () => {
+    setLoadingNotifications(true);
+    try {
+      const list = await fetchInAppNotifications();
+      setInAppNotifications(list);
+    } finally {
+      setLoadingNotifications(false);
+    }
+  }, []);
 
   const detectMediaTypeFromAsset = useCallback((asset?: Asset | null): FeedMediaType => {
     if (!asset?.type) return 'file';
@@ -300,7 +172,7 @@ export default function ProfileScreen() {
       const result = await launchImageLibrary({
         mediaType: 'mixed',
         selectionLimit: 1,
-        quality: 0.85,
+        quality: 1,
       });
       if (result.didCancel || !result.assets?.length) return;
       const asset = result.assets[0];
@@ -309,6 +181,7 @@ export default function ProfileScreen() {
       if (!attachment) {
         throw new Error('Unable to upload attachment.');
       }
+      if (managementPanelKey === 'broadcast_feed') return;
       const profileType = PROFILE_MANAGEMENT_TYPE[managementPanelKey];
       await c.manageProfileSection(profileType, { attachments: [attachment] });
       Alert.alert('Attachment uploaded', 'It has been added to the profile.');
@@ -319,18 +192,12 @@ export default function ProfileScreen() {
     }
   }, [managementPanelKey, c]);
 
+  console.log("Kis wallet check from c: ", c)
+
   const parseFormCount = useCallback((value: string, fallback: number) => {
     const parsed = Number(value);
     if (!Number.isFinite(parsed)) return fallback;
     return Math.max(fallback, Math.floor(parsed));
-  }, []);
-
-  const buildHealthEmployees = useCallback((name: string, count: number) => {
-    const safeCount = Math.max(1, count);
-    return Array.from({ length: safeCount }).map((_, idx) => ({
-      name: `${name} Worker ${idx + 1}`,
-      role: idx === 0 ? 'Lead care worker' : 'Care worker',
-    }));
   }, []);
 
   const buildShopProducts = useCallback((name: string, count: number) => {
@@ -343,10 +210,10 @@ export default function ProfileScreen() {
   }, []);
 
   const accountTier = c.profile?.account?.tier;
-  const walletBalance = c.profile?.account?.wallet_balance_cents ?? 0;
-  const credits = c.profile?.account?.credits ?? 0;
-  const creditsValue = c.profile?.account?.credits_value_cents ?? 0;
   const points = c.profile?.account?.points ?? 0;
+  const kisWalletMicro = Number(c.kisWallet?.balance_micro ?? 0);
+  const kisWalletKisc = String(c.kisWallet?.balance_kisc ?? '0.000');
+  const kisWalletUsd = String(c.kisWallet?.balance_usd ?? '0.00');
   const currentTier = accountTier || c.profile?.tier || c.profile?.subscription?.tier;
   const tierLabel =
     currentTier?.name ??
@@ -360,35 +227,67 @@ export default function ProfileScreen() {
   const partnerProfilesLimitValue = c.profile?.partner_profiles_limit_value ?? 0;
   const partnerProfilesIsUnlimited = !!c.profile?.partner_profiles_is_unlimited;
   const canCreatePartner = !!c.profile?.partner_profiles_can_create;
-  const partnerLimitText = partnerProfilesIsUnlimited
-    ? 'Unlimited'
-    : partnerProfilesLimitLabel || String(partnerProfilesLimitValue);
+  const partnerLimitText = getPartnerLimitText(
+    partnerProfilesIsUnlimited,
+    partnerProfilesLimitLabel ?? undefined,
+    partnerProfilesLimitValue,
+  );
   const showCreatePartnerButton = canCreatePartner;
 
-  const sheetTitle = useMemo(() => {
-    if (c.activeSheet === 'editProfile') return 'Edit Profile';
-    if (c.activeSheet === 'privacy') return 'Privacy & Visibility';
-    if (c.activeSheet === 'editItem') return 'Edit Item';
-    if (c.activeSheet === 'upgrade') return 'Upgrade Account';
-    return 'Wallet & Credits';
-  }, [c.activeSheet]);
+  const sheetTitle = useMemo(() => getSheetTitle(c.activeSheet), [c.activeSheet]);
 
   const openWalletSheet = c.openSheet;
   const setWalletForm = c.setWalletForm;
 
   useEffect(() => {
     const sub = DeviceEventEmitter.addListener('wallet.open', (payload: any) => {
+      const rawMode = String(payload?.mode || '').trim().toLowerCase();
+      const mappedMode =
+        rawMode === 'deposit' || rawMode === 'cash_to_credits' ? 'add_kisc'
+        : rawMode === 'credits_to_cash' || rawMode === 'points_to_credits' ? 'spend_kisc'
+        : rawMode === 'transfer' ? 'transfer'
+        : 'add_kisc';
       openWalletSheet('wallet');
       setWalletForm((prev: any) => ({
         ...prev,
-        mode: payload?.mode ?? prev.mode,
+        mode: mappedMode,
         amount: payload?.amount ? String(payload.amount) : prev.amount,
-        credits: payload?.credits ? String(payload.credits) : prev.credits,
-        points: payload?.points ? String(payload.points) : prev.points,
+        reference: payload?.reference ? String(payload.reference) : prev.reference,
       }));
     });
     return () => sub.remove();
   }, [openWalletSheet, setWalletForm]);
+
+  useEffect(() => {
+    loadInAppNotifications().catch(() => undefined);
+    const sub = DeviceEventEmitter.addListener(IN_APP_NOTIFICATIONS_UPDATED_EVENT, () => {
+      loadInAppNotifications().catch(() => undefined);
+    });
+    return () => sub.remove();
+  }, [loadInAppNotifications]);
+
+  const handleDeleteNotification = useCallback((item: InAppNotification) => {
+    Alert.alert(
+      'Delete notification',
+      'This will remove the notification.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => {
+            setDeletingNotificationId(item.id);
+            deleteInAppNotification(item.id)
+              .then(() => loadInAppNotifications())
+              .catch((error: any) => {
+                Alert.alert('Notifications', error?.message || 'Unable to delete notification.');
+              })
+              .finally(() => setDeletingNotificationId(null));
+          },
+        },
+      ],
+    );
+  }, [loadInAppNotifications]);
 
   const openManagementPanel = useCallback((key: BroadcastProfileKey) => {
     setManagementPanelKey(key);
@@ -409,6 +308,8 @@ export default function ProfileScreen() {
     });
   }, [managementPanelOffset]);
 
+  const [selectedHealthInstitution, setSelectedHealthInstitution] = useState<any | null>(null);
+
   const resetFeedForm = useCallback(() => {
     setPanelFeedItemTitle('');
     setPanelFeedItemSummary('');
@@ -416,7 +317,21 @@ export default function ProfileScreen() {
     setEditingFeedItemId(null);
     setPanelFeedAssets([]);
     setPanelFeedExistingAttachments([]);
-  }, []);
+    setPanelFeedMediaOptions(buildDefaultFeedMediaOptions());
+  }, [buildDefaultFeedMediaOptions]);
+
+  const updatePanelFeedMediaOptions = useCallback(
+    (type: FeedMediaType, updates: Partial<FeedMediaOptions[FeedMediaType]>) => {
+      setPanelFeedMediaOptions((prev) => ({
+        ...prev,
+        [type]: {
+          ...prev[type],
+          ...updates,
+        },
+      }));
+    },
+    [],
+  );
 
   const handleSubmitFeedItem = useCallback(async () => {
     if (!managementPanelKey) return;
@@ -434,6 +349,7 @@ export default function ProfileScreen() {
         name: asset.fileName || `feed-${Date.now()}`,
         type: asset.type || 'application/octet-stream',
       }));
+    const mediaOptionsPayload = panelFeedMediaOptions[panelFeedMediaType];
 
     try {
       if (editingFeedItemId) {
@@ -444,6 +360,7 @@ export default function ProfileScreen() {
           panelFeedMediaType,
           attachmentsPayload,
           panelFeedExistingAttachments,
+          mediaOptionsPayload,
         );
       } else {
         await c.addBroadcastFeedEntry(
@@ -451,6 +368,7 @@ export default function ProfileScreen() {
           panelFeedItemSummary.trim(),
           panelFeedMediaType,
           attachmentsPayload,
+          mediaOptionsPayload,
         );
       }
       resetFeedForm();
@@ -467,28 +385,40 @@ export default function ProfileScreen() {
     panelFeedExistingAttachments,
     panelFeedItemSummary,
     panelFeedItemTitle,
+    panelFeedMediaOptions,
     panelFeedMediaType,
     resetFeedForm,
   ]);
 
-  const handleEditFeedItem = useCallback((item: any) => {
-    setEditingFeedItemId(item.id);
-    setPanelFeedItemTitle(item.title || '');
-    setPanelFeedItemSummary(item.summary || '');
-    if (item.media_type) {
-      setPanelFeedMediaType(item.media_type as FeedMediaType);
-    }
-    const attachments =
-      (Array.isArray(item.attachments) ? item.attachments : []).filter(Boolean);
-    const baseAttachments =
-      attachments.length > 0
-        ? attachments
-        : item.attachment
-        ? [item.attachment]
-        : [];
-    setPanelFeedExistingAttachments(baseAttachments);
-    setPanelFeedAssets([]);
-  }, []);
+  const handleEditFeedItem = useCallback(
+    (item: any) => {
+      setEditingFeedItemId(item.id);
+      setPanelFeedItemTitle(item.title || '');
+      setPanelFeedItemSummary(item.summary || '');
+      const entryType = (item.media_type as FeedMediaType) || 'text';
+      setPanelFeedMediaType(entryType);
+      const attachments =
+        (Array.isArray(item.attachments) ? item.attachments : []).filter(Boolean);
+      const baseAttachments =
+        attachments.length > 0
+          ? attachments
+          : item.attachment
+          ? [item.attachment]
+          : [];
+      setPanelFeedExistingAttachments(baseAttachments);
+      setPanelFeedAssets([]);
+      const nextOptions = buildDefaultFeedMediaOptions();
+      const existingOptions = item.media_options;
+      if (existingOptions && typeof existingOptions === 'object') {
+        nextOptions[entryType] = {
+          ...nextOptions[entryType],
+          ...existingOptions,
+        };
+      }
+      setPanelFeedMediaOptions(nextOptions);
+    },
+    [buildDefaultFeedMediaOptions],
+  );
 
   const handleCancelFeedEdit = useCallback(() => {
     resetFeedForm();
@@ -509,6 +439,21 @@ export default function ProfileScreen() {
       }
     },
     [c, editingFeedItemId, resetFeedForm],
+  );
+
+  const handleBroadcastFeedItem = useCallback(
+    async (feed: any) => {
+      setPanelFeedBroadcastingId(feed?.id ?? null);
+      try {
+        await c.broadcastFeedEntry(feed.id);
+        Alert.alert('Broadcast', 'This item was broadcasted to your feed.');
+      } catch (error: any) {
+        Alert.alert('Broadcast', error?.message || 'Unable to broadcast the item.');
+      } finally {
+        setPanelFeedBroadcastingId((prev) => (prev === feed.id ? null : prev));
+      }
+    },
+    [c],
   );
 
   const handleBroadcastCTA = (def: (typeof BROADCAST_PROFILE_DEFINITIONS)[number]) => {
@@ -535,27 +480,67 @@ export default function ProfileScreen() {
     rootNavigation?.navigate('AdminTools');
   }, [rootNavigation]);
 
+  const openMarketLandingBuilder = useCallback(() => {
+    rootNavigation?.navigate('ProfileLandingEditor', {
+      kind: 'market',
+      profileLabel: 'Market Profile',
+    });
+  }, [rootNavigation]);
+
+  const openEducationLandingBuilder = useCallback(() => {
+    rootNavigation?.navigate('ProfileLandingEditor', {
+      kind: 'education',
+      profileLabel: 'Education Profile',
+    });
+  }, [rootNavigation]);
+
+  const openPartnerLandingBuilder = useCallback((partnerId: string, partnerName?: string | null) => {
+    if (!partnerId) return;
+    rootNavigation?.navigate('ProfileLandingEditor', {
+      kind: 'partner',
+      partnerId,
+      profileLabel: partnerName || 'Partner Profile',
+    });
+  }, [rootNavigation]);
+
+  const handleViewInstitution = useCallback(
+    (inst: any) => {
+      if (!inst?.id || !inst?.type) return;
+      rootNavigation?.navigate('HealthInstitutionDetail', {
+        institutionId: inst.id,
+        institutionType: inst.type,
+        institutionName: inst.name,
+      });
+    },
+    [rootNavigation],
+  );
+
+  const handleEditInstitution = useCallback(
+    (inst: any) => {
+      if (!inst?.id) return;
+      rootNavigation?.navigate('HealthInstitutionManagement', {
+        institutionId: inst.id,
+        institutionName: inst.name,
+        institutionType: (inst.type as HealthInstitutionType) ?? 'clinic',
+        employees: Math.max(
+          1,
+          Array.isArray(inst.employees) ? inst.employees.length : 1,
+        ),
+      });
+    },
+    [rootNavigation],
+  );
+
+  const handleAddInstitution = useCallback(() => {
+    rootNavigation?.navigate('HealthInstitutionManagement', {
+      institutionType: 'clinic',
+    });
+  }, [rootNavigation]);
+
   const managementPanelData = managementPanelKey ? broadcastProfiles?.[managementPanelKey] : null;
   const managementPanelDefinition =
     managementPanelKey &&
     BROADCAST_PROFILE_DEFINITIONS.find((def) => def.profileKey === managementPanelKey);
-
-  const cycleHealthFormType = useCallback(() => {
-    setHealthForm((prev) => {
-      const index = HEALTH_INSTITUTION_TYPES.findIndex((type) => type === prev.type);
-      const nextType = HEALTH_INSTITUTION_TYPES[(index + 1) % HEALTH_INSTITUTION_TYPES.length];
-      return { ...prev, type: nextType };
-    });
-  }, []);
-
-  const resetHealthForm = useCallback(() => {
-    setHealthForm({
-      name: '',
-      type: 'clinic',
-      employees: '3',
-    });
-    setHealthFormMode('add');
-  }, []);
 
   const resetMarketForm = useCallback(() => {
     setMarketForm({
@@ -581,6 +566,101 @@ export default function ProfileScreen() {
     });
   }, []);
 
+  const handleMarketFormNameChange = useCallback((value: string) => {
+    setMarketForm((prev) => ({ ...prev, name: value }));
+  }, []);
+
+  const handleMarketFormProductsChange = useCallback((value: string) => {
+    setMarketForm((prev) => ({ ...prev, products: value }));
+  }, []);
+
+  const handleEducationFormTitleChange = useCallback((value: string) => {
+    setEducationForm((prev) => ({ ...prev, title: value }));
+  }, []);
+
+  const handleEducationFormSummaryChange = useCallback((value: string) => {
+    setEducationForm((prev) => ({ ...prev, summary: value }));
+  }, []);
+
+  const handleEducationModuleTitleChange = useCallback((value: string) => {
+    setEducationModuleForm((prev) => ({ ...prev, title: value }));
+  }, []);
+
+  const handleEducationModuleSummaryChange = useCallback((value: string) => {
+    setEducationModuleForm((prev) => ({ ...prev, summary: value }));
+  }, []);
+
+  const handleEducationModuleResourceChange = useCallback((value: string) => {
+    setEducationModuleForm((prev) => ({ ...prev, resource_url: value }));
+  }, []);
+
+  const resolveAttachmentUrl = useCallback((attachment: any) => {
+    return (
+      attachment?.url ??
+      attachment?.link ??
+      attachment?.resource_url ??
+      attachment?.source_url ??
+      attachment?.uri ??
+      null
+    );
+  }, []);
+
+  const attachmentKey = useCallback((attachment: any) => {
+    return (
+      attachment?.key ??
+      attachment?.file_key ??
+      attachment?.id ??
+      attachment?.name ??
+      resolveAttachmentUrl(attachment) ??
+      null
+    );
+  }, [resolveAttachmentUrl]);
+
+  const handleRemoveFeedAttachment = useCallback(
+    async (feed: any, attachment: any) => {
+      const attachments: any[] = [
+        feed.attachment,
+        ...(Array.isArray(feed.attachments) ? feed.attachments : []),
+      ].filter(Boolean);
+      const targetKey = attachmentKey(attachment);
+      if (!targetKey) {
+        Alert.alert('Attachment', 'Unable to identify this attachment.');
+        return;
+      }
+
+      try {
+        await c.removeBroadcastFeedAttachment(feed.id, targetKey);
+        Alert.alert('Attachment', 'Attachment removed.');
+      } catch (error: any) {
+        const message = error?.message ?? 'Unable to remove attachment.';
+        if (message.toLowerCase().includes('not found')) {
+          const retainAttachments = attachments.filter((att) => attachmentKey(att) !== targetKey);
+            try {
+              await c.updateBroadcastFeedEntry(
+                feed.id,
+                feed.title ?? '',
+                feed.summary ?? '',
+                (feed.media_type as FeedMediaType) ?? 'text',
+                [],
+                retainAttachments,
+                feed.media_options ?? {},
+              );
+            Alert.alert('Attachment', 'Attachment removed.');
+          } catch (innerError: any) {
+            Alert.alert('Attachment', innerError?.message || 'Unable to remove attachment.');
+          }
+        } else {
+          Alert.alert('Attachment', message);
+        }
+      } finally {
+        if (editingFeedItemId === feed.id) {
+          setPanelFeedExistingAttachments((prev) => prev.filter((att) => attachmentKey(att) !== targetKey));
+        }
+      }
+    },
+    [attachmentKey, c, editingFeedItemId, setPanelFeedExistingAttachments],
+  );
+
   const openModuleResource = useCallback(async (url?: string | null) => {
     if (!url) {
       Alert.alert('Module', 'No resource link provided.');
@@ -592,16 +672,6 @@ export default function ProfileScreen() {
       return;
     }
     Linking.openURL(url);
-  }, []);
-
-  const beginHealthEdit = useCallback((inst: any) => {
-    setHealthForm({
-      id: inst.id,
-      name: inst.name,
-      type: (inst.type as HealthInstitutionType) ?? 'clinic',
-      employees: String(Math.max(1, inst.employees?.length ?? 1)),
-    });
-    setHealthFormMode('edit');
   }, []);
 
   const beginMarketEdit = useCallback((shop: any) => {
@@ -647,7 +717,7 @@ export default function ProfileScreen() {
         setEducationLessonsData(lessons);
         setEducationAnalyticsError(null);
       } else {
-        setEducationAnalyticsError(lessonRes.message);
+        setEducationAnalyticsError(lessonRes.message ?? null);
       }
     } catch (error: any) {
       setEducationAnalyticsError(error?.message || 'Unable to load lesson insights.');
@@ -718,55 +788,6 @@ export default function ProfileScreen() {
     }
   }, [educationModuleForm, c, resetEducationModuleForm]);
 
-  const handleHealthFormSave = useCallback(async () => {
-    const name = healthForm.name.trim();
-    if (!name) {
-      Alert.alert('Health profile', 'Provide a name for the institution.');
-      return;
-    }
-    const count = parseFormCount(healthForm.employees, 1);
-    const employees = buildHealthEmployees(name, count);
-    const institutions = managementPanelData?.institutions ?? [];
-    const nextInstitutions =
-      healthFormMode === 'edit' && healthForm.id
-        ? institutions.map((inst) =>
-            inst.id === healthForm.id ? { ...inst, name, type: healthForm.type, employees } : inst,
-          )
-        : [...institutions, { name, type: healthForm.type, employees }];
-
-    setHealthFormLoading(true);
-    try {
-      await c.manageProfileSection('health_profile', { institutions: nextInstitutions });
-      resetHealthForm();
-    } catch (error: any) {
-      Alert.alert('Health profile', error?.message || 'Unable to update institutions.');
-    } finally {
-      setHealthFormLoading(false);
-    }
-  }, [
-    buildHealthEmployees,
-    c,
-    healthForm,
-    healthFormMode,
-    managementPanelData,
-    parseFormCount,
-    resetHealthForm,
-  ]);
-
-  const handleHealthFormDelete = useCallback(async () => {
-    if (!healthForm.id) return;
-    const institutions = managementPanelData?.institutions ?? [];
-    const nextInstitutions = institutions.filter((inst) => inst.id !== healthForm.id);
-    setHealthFormLoading(true);
-    try {
-      await c.manageProfileSection('health_profile', { institutions: nextInstitutions });
-      resetHealthForm();
-    } catch (error: any) {
-      Alert.alert('Health profile', error?.message || 'Unable to delete institution.');
-    } finally {
-      setHealthFormLoading(false);
-    }
-  }, [c, healthForm.id, managementPanelData, resetHealthForm]);
 
   const handleMarketFormSave = useCallback(async () => {
     const name = marketForm.name.trim();
@@ -779,7 +800,7 @@ export default function ProfileScreen() {
     const shops = managementPanelData?.shops ?? [];
     const nextShops =
       marketFormMode === 'edit' && marketForm.id
-        ? shops.map((shop) => (shop.id === marketForm.id ? { ...shop, name, products } : shop))
+        ? shops.map((shop: any) => (shop.id === marketForm.id ? { ...shop, name, products } : shop))
         : [...shops, { name, products }];
 
     setMarketFormLoading(true);
@@ -804,7 +825,7 @@ export default function ProfileScreen() {
   const handleMarketFormDelete = useCallback(async () => {
     if (!marketForm.id) return;
     const shops = managementPanelData?.shops ?? [];
-    const nextShops = shops.filter((shop) => shop.id !== marketForm.id);
+    const nextShops = shops.filter((shop: any) => shop.id !== marketForm.id);
     setMarketFormLoading(true);
     try {
       await c.manageProfileSection('market_profile', { shops: nextShops });
@@ -825,7 +846,7 @@ export default function ProfileScreen() {
     const courses = managementPanelData?.courses ?? [];
     const nextCourses =
       educationFormMode === 'edit' && educationForm.id
-        ? courses.map((course) =>
+        ? courses.map((course: any) =>
             course.id === educationForm.id ? { ...course, title, summary: educationForm.summary.trim() } : course,
           )
         : [...courses, { title, summary: educationForm.summary.trim() }];
@@ -850,7 +871,7 @@ export default function ProfileScreen() {
   const handleEducationFormDelete = useCallback(async () => {
     if (!educationForm.id) return;
     const courses = managementPanelData?.courses ?? [];
-    const nextCourses = courses.filter((course) => course.id !== educationForm.id);
+    const nextCourses = courses.filter((course: any) => course.id !== educationForm.id);
     setEducationFormLoading(true);
     try {
       await c.manageProfileSection('education_profile', { courses: nextCourses });
@@ -871,813 +892,152 @@ export default function ProfileScreen() {
       ? 'Use the create modal to start this profile, then return here to manage it.'
       : managementPanelDefinition?.helper;
 
-    const baseHeader = (
-      <View>
-        <Text style={[styles.managementPanelTitle, { color: palette.text }]}>{panelTitle}</Text>
-        <Text style={[styles.managementPanelSubtitle, { color: palette.subtext }]}>
-          {panelHint}
-        </Text>
-      </View>
-    );
-
     const attachments = Array.isArray(managementPanelData?.attachments)
       ? managementPanelData.attachments
       : [];
-    const renderAttachmentsSection = () => (
-      <View
-        style={[
-          styles.managementAttachments,
-          { borderColor: palette.divider, backgroundColor: palette.card },
-        ]}
-      >
-        <View style={styles.managementAssetRow}>
-          <Text style={{ color: palette.text, fontWeight: '900' }}>Attachments</Text>
-          <KISButton
-            title={panelAttachmentUploading ? 'Uploading…' : 'Add attachment'}
-            size="sm"
-            variant="secondary"
-            onPress={handleAttachProfileFile}
-            disabled={panelAttachmentUploading}
-          />
-        </View>
-        {attachments.length === 0 ? (
-          <Text style={{ color: palette.subtext }}>No attachments yet.</Text>
-        ) : (
-          attachments.map((att, index) => {
-            const preview = getAttachmentPreviewInfo(att);
-            const key = `${preview.label}-${index}`;
-            return (
-              <View
-                key={key}
-                style={[
-                  styles.managementAssetItem,
-                  { borderColor: palette.divider, backgroundColor: palette.surface },
-                ]}
-              >
-                {preview.previewUri ? (
-                  <Image
-                    source={{ uri: preview.previewUri }}
-                    style={styles.managementAssetImage}
-                  />
-                ) : (
-                  <View
-                    style={[
-                      styles.managementAssetPlaceholder,
-                      { borderColor: palette.divider, backgroundColor: palette.surface },
-                    ]}
-                  >
-                    <Text style={{ color: palette.subtext, fontSize: 12 }}>{preview.typeLabel}</Text>
-                  </View>
-                )}
-                <Text style={{ color: palette.text, fontWeight: '700' }}>{preview.label}</Text>
-                <Text style={{ color: palette.subtext, fontSize: 12 }}>{preview.typeLabel}</Text>
-              </View>
-            );
-          })
-        )}
-      </View>
-    );
 
     if (managementPanelKey === 'broadcast_feed') {
       const feeds: any[] = Array.isArray(managementPanelData?.feeds) ? managementPanelData.feeds : [];
       const expiresAt = managementPanelData?.expires_at
-        ? new Date(managementPanelData.expires_at).toLocaleString()
+        ? new Date(managementPanelData.expires_at).toString()
         : 'N/A';
       return (
-        <ScrollView contentContainerStyle={styles.managementPanelBody}>
-          {baseHeader}
-          <View style={styles.managementStatsRow}>
-            <View style={styles.managementStat}>
-              <Text style={[styles.managementStatValue, { color: palette.text }]}>{feeds.length}</Text>
-              <Text style={[styles.managementStatLabel, { color: palette.subtext }]}>Queued items</Text>
-            </View>
-            <View style={styles.managementStat}>
-              <Text style={[styles.managementStatValue, { color: palette.text }]}>{expiresAt}</Text>
-              <Text style={[styles.managementStatLabel, { color: palette.subtext }]}>Expires</Text>
-            </View>
-          </View>
-          <View style={{ gap: 8 }}>
-            {feeds.length === 0 ? (
-              <Text style={{ color: palette.subtext }}>No items yet. Add one below.</Text>
-            ) : (
-              feeds.map((feed) => (
-                <View
-                  key={feed.id}
-                  style={[styles.managementItemCard, { borderColor: palette.divider, backgroundColor: palette.surface }]}
-                >
-                  <Text style={[styles.managementItemTitle, { color: palette.text }]}>{feed.title}</Text>
-                  <Text style={[styles.managementItemMeta, { color: palette.subtext }]}>
-                    {(feed.summary && feed.summary.length > 80 ? `${feed.summary.slice(0, 80)}…` : feed.summary) ||
-                      'No summary'}
-                  </Text>
-                  {(() => {
-                    const attachments = [
-                      feed.attachment,
-                      ...(Array.isArray(feed.attachments) ? feed.attachments : []),
-                    ].filter(Boolean);
-                    if (attachments.length === 0) return null;
-                    const labels = attachments
-                      .slice(0, 3)
-                      .map((att: any) => att?.name ?? att?.url ?? 'Attachment');
-                    return (
-                      <Text style={[styles.managementItemMeta, { color: palette.subtext }]}>
-                        Attachments: {labels.join(', ')}
-                        {attachments.length > 3 ? ` +${attachments.length - 3} more` : ''}
-                      </Text>
-                    );
-                  })()}
-                  <Text style={[styles.managementItemMeta, { color: palette.subtext }]}>
-                    {feed.media_type ? feed.media_type.toUpperCase() : 'Text'} · {feed.created_at
-                      ? new Date(feed.created_at).toLocaleDateString()
-                      : 'Just now'}
-                  </Text>
-                  <View style={{ flexDirection: 'row', gap: 10 }}>
-                    <KISButton
-                      title="Edit"
-                      size="xs"
-                      variant="outline"
-                      onPress={() => handleEditFeedItem(feed)}
-                    />
-                    <KISButton
-                      title={panelFeedDeletingId === feed.id ? 'Deleting…' : 'Delete'}
-                      size="xs"
-                      variant="secondary"
-                      onPress={() => handleDeleteFeedItem(feed.id)}
-                      disabled={panelFeedDeletingId === feed.id}
-                    />
-                  </View>
-                </View>
-              ))
-            )}
-          </View>
-          <View
-            style={[
-              styles.managementForm,
-              { borderColor: palette.divider, backgroundColor: palette.card },
-            ]}
-          >
-            <Text style={[styles.managementFormLabel, { color: palette.text }]}>New broadcast item</Text>
-            <View style={styles.managementAssetRow}>
-              <Text style={{ color: palette.text, fontWeight: '900' }}>Attachments</Text>
-              <KISButton
-                title={`Attach media${panelFeedAssets.length ? ` (${panelFeedAssets.length})` : ''}`}
-                variant="outline"
-                onPress={handlePickFeedMedia}
-                size="sm"
-              />
-            </View>
-            {panelFeedExistingAttachments.length > 0 && (
-              <View style={{ gap: 6 }}>
-                <Text style={{ color: palette.subtext, fontSize: 12 }}>Existing attachments</Text>
-                {panelFeedExistingAttachments.map((att, index) => (
-                  <View
-                    key={`${att?.url ?? att?.name ?? 'attachment'}-${index}`}
-                    style={[
-                      styles.managementAssetItem,
-                      { borderColor: palette.divider, backgroundColor: palette.surface },
-                    ]}
-                  >
-                    <Text style={{ color: palette.text, fontWeight: '700' }}>
-                      {att?.name ?? att?.url ?? `Attachment ${index + 1}`}
-                    </Text>
-                    <Text style={{ color: palette.subtext, fontSize: 12 }}>
-                      {(att?.media_type ?? att?.mime_type ?? 'file').toUpperCase()}
-                    </Text>
-                    <Pressable onPress={() => setPanelFeedExistingAttachments((prev) => prev.filter((_, idx) => idx !== index))}>
-                      <Text style={{ color: palette.danger, fontSize: 12 }}>Remove</Text>
-                    </Pressable>
-                  </View>
-                ))}
-              </View>
-            )}
-            {panelFeedAssets.length > 0 && (
-              <View style={{ gap: 6 }}>
-                <Text style={{ color: palette.subtext, fontSize: 12 }}>New attachments</Text>
-                {panelFeedAssets.map((asset, index) => (
-                  <View
-                    key={`${asset.uri}-${index}`}
-                    style={[
-                      styles.managementAssetItem,
-                      { borderColor: palette.divider, backgroundColor: palette.surface, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-                    ]}
-                  >
-                    <View>
-                      <Text style={{ color: palette.text, fontWeight: '700' }}>
-                        {asset.fileName || `Attachment ${index + 1}`}
-                      </Text>
-                      <Text style={{ color: palette.subtext, fontSize: 12 }}>{asset.type ?? 'file'}</Text>
-                    </View>
-                    <Pressable onPress={() => removeTemporaryFeedAsset(index)}>
-                      <Text style={{ color: palette.danger, fontSize: 12 }}>Remove</Text>
-                    </Pressable>
-                  </View>
-                ))}
-              </View>
-            )}
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ gap: 8 }}>
-              {FEED_MEDIA_TYPES.map((type) => {
-                const selected = panelFeedMediaType === type;
-                return (
-                  <Pressable
-                    key={type}
-                    onPress={() => setPanelFeedMediaType(type)}
-                    style={[
-                      styles.managementTypePill,
-                      {
-                        backgroundColor: selected ? palette.primarySoft : palette.surface,
-                        borderColor: selected ? palette.primary : palette.divider,
-                      },
-                    ]}
-                  >
-                    <Text
-                      style={{
-                        color: selected ? palette.primaryStrong : palette.subtext,
-                        fontWeight: '900',
-                      }}
-                    >
-                      {type}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </ScrollView>
-            <KISTextInput
-              label="Title"
-              value={panelFeedItemTitle}
-              onChangeText={setPanelFeedItemTitle}
-            />
-            <KISTextInput
-              label="Summary / notes"
-              value={panelFeedItemSummary}
-              onChangeText={setPanelFeedItemSummary}
-              multiline
-              style={{ minHeight: 80 }}
-            />
-            <KISButton
-              title={
-                panelFeedAdding
-                  ? 'Saving…'
-                  : editingFeedItemId
-                  ? 'Update broadcast item'
-                  : 'Add broadcast item'
-              }
-              onPress={handleSubmitFeedItem}
-              disabled={panelFeedAdding}
-            />
-            {editingFeedItemId && (
-              <KISButton
-                title="Cancel edit"
-                variant="secondary"
-                onPress={handleCancelFeedEdit}
-                disabled={panelFeedAdding}
-              />
-            )}
-            {editingFeedItemId ? (
-              <Text style={[styles.managementFormHint, { color: palette.primaryStrong }]}>
-                Editing an existing broadcast item.
-              </Text>
-            ) : null}
-            <Text style={[styles.managementFormHint, { color: palette.subtext }]}>
-              Items can be videos, audio, images, files, or text and will appear under the Broadcasts tab.
-            </Text>
-          </View>
-        </ScrollView>
+        <FeedManagementModal
+          palette={palette}
+          title={panelTitle}
+          subtitle={panelHint ?? ''}
+          feeds={feeds}
+          expiresAt={expiresAt}
+          panelFeedItemTitle={panelFeedItemTitle}
+          panelFeedItemSummary={panelFeedItemSummary}
+          panelFeedMediaType={panelFeedMediaType}
+          panelFeedAssets={panelFeedAssets}
+          panelFeedExistingAttachments={panelFeedExistingAttachments}
+          panelFeedAdding={panelFeedAdding}
+          editingFeedItemId={editingFeedItemId}
+          panelFeedDeletingId={panelFeedDeletingId}
+          handlePickFeedMedia={handlePickFeedMedia}
+          removeTemporaryFeedAsset={removeTemporaryFeedAsset}
+          handleSubmitFeedItem={handleSubmitFeedItem}
+          handleCancelFeedEdit={handleCancelFeedEdit}
+          handleEditFeedItem={handleEditFeedItem}
+          handleDeleteFeedItem={handleDeleteFeedItem}
+          handleBroadcastFeedItem={handleBroadcastFeedItem}
+          panelFeedBroadcastingId={panelFeedBroadcastingId}
+          setPanelFeedExistingAttachments={setPanelFeedExistingAttachments}
+          setPanelFeedMediaType={setPanelFeedMediaType}
+          setPanelFeedItemTitle={setPanelFeedItemTitle}
+          setPanelFeedItemSummary={setPanelFeedItemSummary}
+          panelFeedMediaOptions={panelFeedMediaOptions}
+          onUpdateMediaOptions={updatePanelFeedMediaOptions}
+          onRemoveAttachment={handleRemoveFeedAttachment}
+        />
       );
     }
 
     if (managementPanelKey === 'health') {
-      const institutions: any[] = Array.isArray(managementPanelData?.institutions)
+      const institutionsRaw: any[] = Array.isArray(managementPanelData?.institutions)
         ? managementPanelData.institutions
         : [];
-      const employees = managementPanelData?.employees_total ?? 0;
+      const institutions = filterInstitutionsForVisibleRoles(institutionsRaw, {
+        id: c.profile?.user?.id ? String(c.profile.user.id) : undefined,
+        phone: String(c.profile?.user?.phone || '').trim() || undefined,
+        email: String(c.profile?.user?.email || '').trim() || undefined,
+      });
       return (
-        <ScrollView contentContainerStyle={styles.managementPanelBody}>
-          {baseHeader}
-          <View style={styles.managementStatsRow}>
-            <View style={styles.managementStat}>
-              <Text style={[styles.managementStatValue, { color: palette.text }]}>{institutions.length}</Text>
-              <Text style={[styles.managementStatLabel, { color: palette.subtext }]}>Institutions</Text>
-            </View>
-            <View style={styles.managementStat}>
-              <Text style={[styles.managementStatValue, { color: palette.text }]}>{employees}</Text>
-              <Text style={[styles.managementStatLabel, { color: palette.subtext }]}>Active staff</Text>
-            </View>
-          </View>
-          <View
-            style={{
-              borderWidth: 2,
-              borderColor: palette.divider,
-              backgroundColor: palette.surface,
-              borderRadius: 22,
-              padding: 12,
-              gap: 10,
-            }}
-          >
-            <View
-              style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}
-            >
-              <Text style={[styles.managementFormLabel, { color: palette.text }]}>Learner insights</Text>
-              <KISButton
-                title="Refresh"
-                size="xs"
-                variant="outline"
-                onPress={() => void loadEducationAnalytics()}
-                disabled={educationAnalyticsLoading}
-              />
-            </View>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-              <View>
-                <Text style={{ color: palette.text, fontWeight: '900' }}>{upcomingLessons.length}</Text>
-                <Text style={{ color: palette.subtext, fontSize: 12 }}>upcoming lessons</Text>
-              </View>
-              <View>
-                <Text style={{ color: palette.text, fontWeight: '900' }}>{totalEnrollments}</Text>
-                <Text style={{ color: palette.subtext, fontSize: 12 }}>total enrollments</Text>
-              </View>
-            </View>
-            {educationAnalyticsLoading ? (
-              <Text style={{ color: palette.subtext }}>Loading lesson data…</Text>
-            ) : educationAnalyticsError ? (
-              <Text style={{ color: dangerColor }}>{educationAnalyticsError}</Text>
-            ) : nextLesson ? (
-              <View>
-                <Text style={{ color: palette.primaryStrong, fontWeight: '900' }}>
-                  Next lesson: {nextLesson.title}
-                </Text>
-                <Text style={{ color: palette.subtext, fontSize: 12 }}>
-                  {formatLessonTime(nextLesson.starts_at)} · {nextLesson.enrollment_count ?? 0} enrollments
-                </Text>
-              </View>
-            ) : (
-              <Text style={{ color: palette.subtext }}>No upcoming lessons yet.</Text>
-            )}
-            {upcomingLessons.slice(0, 2).map((lesson: any, idx: number) => (
-              <View
-                key={`overview-lesson-${lesson.id ?? idx}`}
-                style={{
-                  borderWidth: 1,
-                  borderColor: palette.divider,
-                  borderRadius: 16,
-                  padding: 10,
-                  backgroundColor: palette.card,
-                }}
-              >
-                <Text style={{ color: palette.text, fontWeight: '700' }}>{lesson.title ?? 'Lesson'}</Text>
-                <Text style={{ color: palette.subtext, fontSize: 12 }}>
-                  Starts {formatLessonTime(lesson.starts_at)} · {lesson.enrollment_count ?? 0} enrolled
-                </Text>
-              </View>
-            ))}
-            <View style={{ flexDirection: 'row', gap: 10 }}>
-              <KISButton title="Plan lesson" onPress={handlePlanLesson} size="xs" />
-              <KISButton
-                title="Log recording"
-                variant="outline"
-                size="xs"
-                onPress={handleRecordSession}
-              />
-            </View>
-          </View>
-          <View style={{ gap: 10 }}>
-            {institutions.map((inst, index) => (
-              <View
-                key={`${inst.name}-${index}`}
-                style={[styles.managementItemCard, { borderColor: palette.divider, backgroundColor: palette.surface }]}
-              >
-                <Text style={[styles.managementItemTitle, { color: palette.text }]}>
-                  {inst.name} · {inst.type.replace('_', ' ')}
-                </Text>
-                <Text style={[styles.managementItemMeta, { color: palette.subtext }]}>
-                  {inst.employees?.length ? `${inst.employees.length} members` : 'Staff not configured'}
-                </Text>
-                <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
-                  <Pressable onPress={() => Alert.alert('Care workflow', 'Opening care workflow editor…')}>
-                    <Text style={{ color: palette.primaryStrong }}>Open workflow</Text>
-                  </Pressable>
-                  <Pressable onPress={() => Alert.alert('Appointment scheduling', 'Automated scheduling is ready.')}>
-                    <Text style={{ color: palette.primaryStrong }}>Launch scheduler</Text>
-                  </Pressable>
-                </View>
-                <View style={{ flexDirection: 'row', gap: 6, marginTop: 6 }}>
-                  <KISButton
-                    size="xs"
-                    variant="outline"
-                    title="Edit"
-                    onPress={() => beginHealthEdit(inst)}
-                  />
-                </View>
-              </View>
-            ))}
-          <View style={[styles.managementFeatureList, { borderColor: palette.divider }]}>
-            {HEALTH_MANAGEMENT_FEATURES.map((feature) => (
-              <Text key={feature} style={[styles.managementFeatureItem, { color: palette.text }]}>
-                • {feature}
-              </Text>
-            ))}
-          </View>
-        </View>
-          <View
-            style={[
-              styles.managementForm,
-              { borderColor: palette.divider, backgroundColor: palette.card },
-            ]}
-          >
-            <Text style={[styles.managementFormLabel, { color: palette.text }]}>
-              {healthFormMode === 'edit' ? 'Update institution' : 'Add institution'}
-            </Text>
-            <KISTextInput
-              label="Name"
-              value={healthForm.name}
-              onChangeText={(value) => setHealthForm((prev) => ({ ...prev, name: value }))}
-            />
-            <Pressable
-              onPress={cycleHealthFormType}
-              style={{
-                borderWidth: 2,
-                borderRadius: 12,
-                paddingHorizontal: 12,
-                paddingVertical: 8,
-                borderColor: palette.divider,
-                marginVertical: 6,
-              }}
-            >
-              <Text style={{ color: palette.primaryStrong, fontWeight: '900' }}>
-                Type: {healthForm.type.replace('_', ' ')}
-              </Text>
-            </Pressable>
-            <KISTextInput
-              label="Employees"
-              value={healthForm.employees}
-              onChangeText={(value) => setHealthForm((prev) => ({ ...prev, employees: value }))}
-              keyboardType="numeric"
-            />
-            <View style={{ flexDirection: 'row', gap: 10 }}>
-              <KISButton
-                title={healthFormMode === 'edit' ? 'Update institution' : 'Add institution'}
-                onPress={handleHealthFormSave}
-                disabled={healthFormLoading}
-              />
-              {healthFormMode === 'edit' && (
-                <KISButton
-                  title="Delete institution"
-                  variant="outline"
-                  onPress={handleHealthFormDelete}
-                  disabled={healthFormLoading}
-                />
-              )}
-            </View>
-            <KISButton
-              title="Reset form"
-              variant="secondary"
-              onPress={resetHealthForm}
-              disabled={healthFormLoading}
-            />
-          </View>
-        {renderAttachmentsSection()}
-        <View style={styles.managementActionRow}>
-          <KISButton
-            title="Notify care team"
-            variant="secondary"
-              onPress={() => Alert.alert('Health', 'Care team notified.')}
-            />
-            <KISButton
-              title="Run compliance review"
-              variant="outline"
-              onPress={() => Alert.alert('Compliance', 'Audit complete.')}
-            />
-          </View>
-        </ScrollView>
+      <HealthManagementModal
+        palette={palette}
+        title={panelTitle}
+        subtitle={panelHint ?? ''}
+        institutions={institutions}
+        currentUser={{
+          id: c.profile?.user?.id ? String(c.profile.user.id) : undefined,
+          phone: String(c.profile?.user?.phone || '').trim() || undefined,
+          email: String(c.profile?.user?.email || '').trim() || undefined,
+        }}
+        onManageInstitution={handleEditInstitution}
+        onViewInstitution={handleViewInstitution}
+        onAddInstitution={handleAddInstitution}
+      />
       );
     }
 
     if (managementPanelKey === 'market') {
       const shops: any[] = Array.isArray(managementPanelData?.shops) ? managementPanelData.shops : [];
-      const shopCount = shops.length;
-      const productCount = countProducts(shops);
-      const extraShops = Math.max(0, shopCount - 5);
-      const extraProducts = shops.reduce((sum, shop) => {
-        const qty = Array.isArray(shop?.products) ? shop.products.length : 0;
-        return sum + Math.max(0, qty - 20);
-      }, 0);
-      const creditUsage = extraShops * 5 + extraProducts * 2;
       return (
-        <ScrollView contentContainerStyle={styles.managementPanelBody}>
-          {baseHeader}
-          <View style={styles.managementStatsRow}>
-            <View style={styles.managementStat}>
-              <Text style={[styles.managementStatValue, { color: palette.text }]}>{shopCount}</Text>
-              <Text style={[styles.managementStatLabel, { color: palette.subtext }]}>Shops</Text>
-            </View>
-            <View style={styles.managementStat}>
-              <Text style={[styles.managementStatValue, { color: palette.text }]}>{productCount}</Text>
-              <Text style={[styles.managementStatLabel, { color: palette.subtext }]}>Products</Text>
-            </View>
-            <View style={styles.managementStat}>
-              <Text style={[styles.managementStatValue, { color: palette.text }]}>{creditUsage} credits</Text>
-              <Text style={[styles.managementStatLabel, { color: palette.subtext }]}>Extra capacity</Text>
-            </View>
-          </View>
-          <View style={{ gap: 10 }}>
-            {shops.map((shop, index) => (
-              <View
-                key={`${shop.name}-${index}`}
-                style={[styles.managementItemCard, { borderColor: palette.divider, backgroundColor: palette.surface }]}
-              >
-                <Text style={[styles.managementItemTitle, { color: palette.text }]}>{shop.name}</Text>
-                <Text style={[styles.managementItemMeta, { color: palette.subtext }]}>
-                  {Array.isArray(shop?.products)
-                    ? `${shop.products.length} products`
-                    : 'Product slots not defined'}
-                </Text>
-                <Text style={[styles.managementItemMeta, { color: palette.subtext }]}>
-                  {`${extraProducts} extras used`}
-                </Text>
-                <View style={{ flexDirection: 'row', gap: 6, marginTop: 6 }}>
-                  <KISButton
-                    size="xs"
-                    variant="outline"
-                    title="Edit"
-                    onPress={() => beginMarketEdit(shop)}
-                  />
-                </View>
-              </View>
-            ))}
-            <View style={[styles.managementFeatureList, { borderColor: palette.divider }]}>
-              {MARKET_MANAGEMENT_FEATURES.map((feature) => (
-                <Text key={feature} style={[styles.managementFeatureItem, { color: palette.text }]}>
-                  • {feature}
-                </Text>
-              ))}
-            </View>
-          </View>
-          <View
-            style={[
-              styles.managementForm,
-              { borderColor: palette.divider, backgroundColor: palette.card },
-            ]}
-          >
-            <Text style={[styles.managementFormLabel, { color: palette.text }]}>
-              {marketFormMode === 'edit' ? 'Update shop' : 'Add shop'}
-            </Text>
-            <KISTextInput
-              label="Shop name"
-              value={marketForm.name}
-              onChangeText={(value) => setMarketForm((prev) => ({ ...prev, name: value }))}
-            />
-            <KISTextInput
-              label="Product slots"
-              value={marketForm.products}
-              onChangeText={(value) => setMarketForm((prev) => ({ ...prev, products: value }))}
-              keyboardType="numeric"
-            />
-            <View style={{ flexDirection: 'row', gap: 10 }}>
-              <KISButton
-                title={marketFormMode === 'edit' ? 'Update shop' : 'Add shop'}
-                onPress={handleMarketFormSave}
-                disabled={marketFormLoading}
-              />
-              {marketFormMode === 'edit' && (
-                <KISButton
-                  title="Delete shop"
-                  variant="outline"
-                  onPress={handleMarketFormDelete}
-                  disabled={marketFormLoading}
-                />
-              )}
-            </View>
-            <KISButton
-              title="Reset form"
-              variant="secondary"
-              onPress={resetMarketForm}
-              disabled={marketFormLoading}
-            />
-          </View>
-          {renderAttachmentsSection()}
-          <View style={styles.managementActionRow}>
-            <KISButton title="Publish drop" onPress={() => Alert.alert('Market', 'Drop scheduled.')} />
-            <KISButton
-              title="Review credits"
-              variant="outline"
-              onPress={() => Alert.alert('Credits', 'Credit dashboard updated.')}
-            />
-          </View>
-        </ScrollView>
+        <MarketManagementModal
+          palette={palette}
+          title={panelTitle}
+          subtitle={panelHint ?? ''}
+          shops={shops}
+          marketForm={marketForm}
+          marketFormMode={marketFormMode}
+          marketFormLoading={marketFormLoading}
+          beginMarketEdit={beginMarketEdit}
+          handleMarketFormSave={handleMarketFormSave}
+          handleMarketFormDelete={handleMarketFormDelete}
+          resetMarketForm={resetMarketForm}
+          onMarketFormNameChange={handleMarketFormNameChange}
+          onMarketFormProductsChange={handleMarketFormProductsChange}
+          attachments={attachments}
+          panelAttachmentUploading={panelAttachmentUploading}
+          handleAttachProfileFile={handleAttachProfileFile}
+          onOpenLandingBuilder={openMarketLandingBuilder}
+        />
       );
     }
 
     if (managementPanelKey === 'education') {
       const courses: any[] = Array.isArray(managementPanelData?.courses) ? managementPanelData.courses : [];
       const modules: any[] = Array.isArray(managementPanelData?.modules) ? managementPanelData.modules : [];
-      const extraCourses = Math.max(0, courses.length - 10);
-      const creditUsage = extraCourses * 2;
       return (
-        <ScrollView contentContainerStyle={styles.managementPanelBody}>
-          {baseHeader}
-          <EducationCreatorConsole managementData={managementPanelData} tierLabel={tierLabel} />
-          <View style={styles.managementStatsRow}>
-            <View style={styles.managementStat}>
-              <Text style={[styles.managementStatValue, { color: palette.text }]}>{courses.length}</Text>
-              <Text style={[styles.managementStatLabel, { color: palette.subtext }]}>Courses</Text>
-            </View>
-            <View style={styles.managementStat}>
-              <Text style={[styles.managementStatValue, { color: palette.text }]}>{creditUsage} credits</Text>
-              <Text style={[styles.managementStatLabel, { color: palette.subtext }]}>Extra slots</Text>
-            </View>
-          </View>
-          <View style={{ gap: 10 }}>
-            {courses.map((course, index) => (
-              <View
-                key={`${course.title}-${index}`}
-                style={[styles.managementItemCard, { borderColor: palette.divider, backgroundColor: palette.surface }]}
-              >
-                <Text style={[styles.managementItemTitle, { color: palette.text }]}>{course.title}</Text>
-                <Text style={[styles.managementItemMeta, { color: palette.subtext }]}>
-                  {course.summary || 'No summary provided'}
-                </Text>
-                <View style={{ flexDirection: 'row', gap: 8 }}>
-                  <Pressable onPress={() => Alert.alert('Course', 'Course analytics opening…')}>
-                    <Text style={{ color: palette.primaryStrong }}>View analytics</Text>
-                  </Pressable>
-                  <Pressable onPress={() => Alert.alert('Learning', 'Learner roster updated.')}>
-                    <Text style={{ color: palette.primaryStrong }}>Manage learners</Text>
-                  </Pressable>
-                </View>
-                <View style={{ flexDirection: 'row', gap: 6, marginTop: 6 }}>
-                  <KISButton
-                    size="xs"
-                    variant="outline"
-                    title="Edit"
-                    onPress={() => beginEducationEdit(course)}
-                  />
-                </View>
-              </View>
-            ))}
-            <View style={[styles.managementFeatureList, { borderColor: palette.divider }]}>
-              {EDUCATION_MANAGEMENT_FEATURES.map((feature) => (
-                <Text key={feature} style={[styles.managementFeatureItem, { color: palette.text }]}>
-                  • {feature}
-                </Text>
-              ))}
-            </View>
-            <View
-              style={{
-                borderWidth: 2,
-                borderColor: palette.divider,
-                borderRadius: 22,
-                padding: 12,
-                backgroundColor: palette.surface,
-                gap: 10,
-              }}
-            >
-              <Text style={{ color: palette.text, fontWeight: '900', fontSize: 16 }}>Modules & workshops</Text>
-              {modules.length === 0 ? (
-                <Text style={{ color: palette.subtext }}>
-                  Add modules to keep learners on track and share resources with your broadcast.
-                </Text>
-              ) : (
-                modules.map((module, index) => (
-                  <View
-                    key={`module-${module.id ?? index}`}
-                    style={{
-                      borderWidth: 2,
-                      borderColor: palette.divider,
-                      borderRadius: 16,
-                      padding: 10,
-                      backgroundColor: palette.card,
-                      gap: 6,
-                    }}
-                  >
-                    <Text style={{ color: palette.text, fontWeight: '900' }}>{module.title || 'Module'}</Text>
-                    {module.summary ? (
-                      <Text style={{ color: palette.subtext, fontSize: 12 }} numberOfLines={2}>
-                        {module.summary}
-                      </Text>
-                    ) : null}
-                    {module.resource_url ? (
-                      <View style={{ flexDirection: 'row', gap: 8 }}>
-                        <KISButton
-                          title="Open resource"
-                          variant="outline"
-                          size="xs"
-                          onPress={() => openModuleResource(module.resource_url)}
-                        />
-                        <Text style={{ color: palette.subtext, fontSize: 12 }}>
-                          {module.resource_url}
-                        </Text>
-                      </View>
-                    ) : (
-                      <Text style={{ color: palette.subtext, fontSize: 12 }}>Resource link pending.</Text>
-                    )}
-                  </View>
-                ))
-              )}
-            </View>
-          </View>
-          <View
-            style={[
-              styles.managementForm,
-              { borderColor: palette.divider, backgroundColor: palette.card },
-            ]}
-          >
-            <Text style={[styles.managementFormLabel, { color: palette.text }]}>
-              {educationFormMode === 'edit' ? 'Update course' : 'Add course'}
-            </Text>
-            <KISTextInput
-              label="Course title"
-              value={educationForm.title}
-              onChangeText={(value) => setEducationForm((prev) => ({ ...prev, title: value }))}
-            />
-            <KISTextInput
-              label="Summary"
-              value={educationForm.summary}
-              onChangeText={(value) => setEducationForm((prev) => ({ ...prev, summary: value }))}
-              multiline
-              style={{ minHeight: 80 }}
-            />
-            <View style={{ flexDirection: 'row', gap: 10 }}>
-              <KISButton
-                title={educationFormMode === 'edit' ? 'Update course' : 'Add course'}
-                onPress={handleEducationFormSave}
-                disabled={educationFormLoading}
-              />
-              {educationFormMode === 'edit' && (
-                <KISButton
-                  title="Delete course"
-                  variant="outline"
-                  onPress={handleEducationFormDelete}
-                  disabled={educationFormLoading}
-                />
-              )}
-            </View>
-            <KISButton
-              title="Reset form"
-              variant="secondary"
-              onPress={resetEducationForm}
-              disabled={educationFormLoading}
-            />
-          </View>
-        {renderAttachmentsSection()}
-          <View
-            style={[
-              styles.managementForm,
-              { borderColor: palette.divider, backgroundColor: palette.surface },
-            ]}
-          >
-            <Text style={[styles.managementFormLabel, { color: palette.text }]}>Add module</Text>
-            <KISTextInput
-              label="Module title"
-              value={educationModuleForm.title}
-              onChangeText={(value) => setEducationModuleForm((prev) => ({ ...prev, title: value }))}
-            />
-            <KISTextInput
-              label="Summary"
-              value={educationModuleForm.summary}
-              onChangeText={(value) => setEducationModuleForm((prev) => ({ ...prev, summary: value }))}
-              multiline
-              style={{ minHeight: 70 }}
-            />
-            <KISTextInput
-              label="Resource URL"
-              value={educationModuleForm.resource_url}
-              onChangeText={(value) => setEducationModuleForm((prev) => ({ ...prev, resource_url: value }))}
-              autoCapitalize="none"
-              keyboardType="url"
-            />
-            <View style={{ flexDirection: 'row', gap: 10 }}>
-              <KISButton
-                title="Add module"
-                onPress={handleEducationModuleSave}
-                disabled={educationModuleSubmitting}
-              />
-              <KISButton
-                title="Reset form"
-                variant="secondary"
-                onPress={resetEducationModuleForm}
-                disabled={educationModuleSubmitting}
-              />
-            </View>
-          </View>
-          <View style={styles.managementActionRow}>
-            <KISButton title="Send learning reminder" onPress={() => Alert.alert('Education', 'Reminder sent.')} />
-            <KISButton
-              title="Plan live session"
-              variant="outline"
-              onPress={() => Alert.alert('Education', 'Live session planning coming soon.')}
-            />
-          </View>
-        </ScrollView>
+        <EducationManagementModal
+          palette={palette}
+          title={panelTitle}
+          subtitle={panelHint ?? ''}
+          managementData={managementPanelData}
+          tierLabel={tierLabel}
+          courses={courses}
+          modules={modules}
+          educationForm={educationForm}
+          educationFormMode={educationFormMode}
+          educationFormLoading={educationFormLoading}
+          educationModuleForm={educationModuleForm}
+          educationModuleSubmitting={educationModuleSubmitting}
+          handleEducationFormSave={handleEducationFormSave}
+          handleEducationFormDelete={handleEducationFormDelete}
+          resetEducationForm={resetEducationForm}
+          handleEducationModuleSave={handleEducationModuleSave}
+          resetEducationModuleForm={resetEducationModuleForm}
+          openModuleResource={openModuleResource}
+          onEducationFormTitleChange={handleEducationFormTitleChange}
+          onEducationFormSummaryChange={handleEducationFormSummaryChange}
+          onEducationModuleTitleChange={handleEducationModuleTitleChange}
+          onEducationModuleSummaryChange={handleEducationModuleSummaryChange}
+          onEducationModuleResourceChange={handleEducationModuleResourceChange}
+          loadEducationAnalytics={loadEducationAnalytics}
+          educationAnalyticsLoading={educationAnalyticsLoading}
+          educationAnalyticsError={educationAnalyticsError}
+          upcomingLessons={upcomingLessons}
+          totalEnrollments={totalEnrollments}
+          nextLesson={nextLesson}
+          formatLessonTime={formatLessonTime}
+          attachments={attachments}
+          panelAttachmentUploading={panelAttachmentUploading}
+          handleAttachProfileFile={handleAttachProfileFile}
+          onOpenLandingBuilder={openEducationLandingBuilder}
+        />
       );
     }
 
     return (
       <View style={styles.managementPanelBody}>
-        {baseHeader}
-        <Text style={{ color: palette.subtext }}>Profile not created yet.</Text>
+        <Text style={[styles.managementPanelTitle, { color: palette.text }]}>{panelTitle}</Text>
+        <Text style={[styles.managementPanelSubtitle, { color: palette.subtext }]}>{panelHint}</Text>
+        <Text style={{ color: palette.subtext, marginTop: 8 }}>Profile not created yet.</Text>
       </View>
     );
   };
-
-  const dangerColor = palette.danger ?? palette.primaryStrong;
 
   return (
     <View style={[styles.wrap, { backgroundColor: palette.bg }]}>
@@ -1754,9 +1114,9 @@ export default function ProfileScreen() {
             <AccountCreditsCard
               tierName={accountTier?.name || 'Free'}
               tierPriceCents={accountTier?.price_cents || 0}
-              walletBalanceCents={walletBalance}
-              credits={credits}
-              creditsValueCents={creditsValue}
+              kisBalanceMicro={kisWalletMicro}
+              kisBalanceKisc={kisWalletKisc}
+              kisBalanceUsd={kisWalletUsd}
               points={points}
               onWallet={() => c.openSheet('wallet')}
               onUpgrade={() => c.openSheet('upgrade')}
@@ -1797,137 +1157,114 @@ export default function ProfileScreen() {
 
             <View
               style={[
-                styles.sectionCard,
-                { backgroundColor: palette.card, borderColor: palette.divider, borderWidth: 1 },
+                styles.card,
+                {
+                  borderColor: palette.divider,
+                  backgroundColor: palette.surface,
+                  borderWidth: 1,
+                  marginTop: 12,
+                },
               ]}
             >
-              <View style={styles.headerRow}>
-                <Text style={[styles.title, { color: palette.text }]}>Broadcast profiles</Text>
-                <Text style={[styles.subtext, { color: palette.subtext }]}>
-                  Tap any profile type to open its broadcast workspace.
-                </Text>
-              </View>
-              <View style={{ gap: 10 }}>
-                {BROADCAST_PROFILE_DEFINITIONS.map((def) => {
-                  const profileData = broadcastProfiles?.[def.profileKey];
-                  const isLoading = broadcastProfiles === null;
-                  const nameLabel = isLoading
-                    ? 'Loading…'
-                    : profileData?.profile_name || 'Not created yet';
-                  const summaryText = isLoading
-                    ? 'Refreshing your broadcast profiles…'
-                    : profileData
-                    ? def.summary(profileData)
-                    : def.emptySummary;
-
-                  return (
-                    <View
-                      key={def.profileKey}
-                      style={[
-                        styles.broadcastProfileCard,
-                        { borderColor: palette.divider, backgroundColor: palette.surface },
-                      ]}
-                    >
-                      <View style={styles.broadcastProfileRow}>
-                        <View style={[styles.broadcastProfileIcon, { backgroundColor: palette.primarySoft }]}>
-                          <KISIcon name={def.icon as any} size={20} color={palette.primaryStrong} />
+              <Text style={[styles.title, { color: palette.text }]}>In-app notifications</Text>
+              <Text style={[styles.subtext, { color: palette.subtext, marginTop: 4 }]}>
+                Appointment and schedule reminders appear here.
+              </Text>
+              <View style={{ marginTop: 10, gap: 8 }}>
+                {loadingNotifications ? (
+                  <Text style={{ color: palette.subtext }}>Loading notifications...</Text>
+                ) : inAppNotifications.length ? (
+                  inAppNotifications.slice(0, 10).map((item) => {
+                    const isRead = !!item.readAt;
+                    return (
+                      <View
+                        key={item.id}
+                        style={{
+                          borderWidth: 1,
+                          borderColor: isRead ? palette.divider : palette.primary,
+                          borderRadius: 12,
+                          padding: 10,
+                          backgroundColor: isRead ? palette.card : `${palette.primary}14`,
+                        }}
+                      >
+                        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+                          <Pressable
+                            style={{ flex: 1 }}
+                            onPress={() => {
+                              markInAppNotificationAsRead(item.id).catch(() => undefined);
+                            }}
+                          >
+                            <Text style={{ color: palette.text, fontWeight: isRead ? '600' : '800' }}>
+                              {item.title}
+                            </Text>
+                          </Pressable>
+                          <Pressable
+                            onPress={() => handleDeleteNotification(item)}
+                            disabled={deletingNotificationId === item.id}
+                            hitSlop={8}
+                          >
+                            <KISIcon
+                              name="trash"
+                              size={16}
+                              color={deletingNotificationId === item.id ? palette.subtext : palette.text}
+                            />
+                          </Pressable>
                         </View>
-                        <View style={styles.broadcastProfileInfo}>
-                          <Text style={[styles.broadcastProfileTitle, { color: palette.text }]}>
-                            {def.label}
-                          </Text>
-                          <Text style={[styles.broadcastProfileSubtitle, { color: palette.subtext }]}>
-                            {def.helper}
-                          </Text>
-                          <Text style={[styles.broadcastProfileSubtitle, { color: palette.subtext }]}>
-                            {nameLabel}
-                          </Text>
-                          <Text style={[styles.broadcastProfileMeta, { color: palette.subtext }]}>
-                            {summaryText}
-                          </Text>
-                        </View>
-                        <KISButton
-                          title={profileData ? 'Manage' : 'Create'}
-                          size="xs"
-                          variant={profileData ? 'primary' : 'secondary'}
-                          onPress={() => handleBroadcastCTA(def)}
-                        />
+                        <Text style={{ color: palette.subtext, marginTop: 2 }}>{item.body}</Text>
+                        <Text style={{ color: palette.subtext, marginTop: 4, fontSize: 11 }}>
+                          {new Date(item.createdAt).toLocaleString()}
+                        </Text>
                       </View>
-                    </View>
-                  );
-                })}
+                    );
+                  })
+                ) : (
+                  <Text style={{ color: palette.subtext }}>No in-app notifications yet.</Text>
+                )}
               </View>
             </View>
 
-            <View
-              style={[
-                styles.sectionCard,
-                { backgroundColor: palette.card, borderColor: palette.divider, borderWidth: 1 },
+            <BroadcastProfilesSection
+              palette={palette}
+              broadcastProfiles={broadcastProfiles}
+              definitions={BROADCAST_PROFILE_DEFINITIONS}
+              onProfileAction={handleBroadcastCTA}
+            />
+
+            <PartnerProfilesSection
+              palette={palette}
+              partners={partnerProfiles}
+              limitLabel={partnerProfilesLimitLabel}
+              limitValue={partnerProfilesLimitValue}
+              isUnlimited={partnerProfilesIsUnlimited}
+              canCreate={canCreatePartner}
+              actionLoadingId={c.partnerActionId}
+              onDeactivate={c.deactivatePartnerProfile}
+              onReactivate={c.reactivatePartnerProfile}
+              onDelete={c.deletePartnerProfile}
+              onOpenLandingBuilder={openPartnerLandingBuilder}
+            />
+
+            <ImpactSnapshotSection
+              palette={palette}
+              stats={[
+                { label: 'Articles', value: c.profile.sections?.articles?.length || 0 },
+                { label: 'Projects', value: c.profile.sections?.projects?.length || 0 },
+                {
+                  label: 'Testimonials',
+                  value: c.profile.sections?.showcases?.testimonial?.length || 0,
+                },
+                { label: 'Activity', value: c.profile.sections?.activity?.length || 0 },
               ]}
-            >
-              <PartnerProfilesList
-                partners={partnerProfiles}
-                limitLabel={partnerProfilesLimitLabel}
-                limitValue={partnerProfilesLimitValue}
-                isUnlimited={partnerProfilesIsUnlimited}
-                canCreate={canCreatePartner}
-                actionLoadingId={c.partnerActionId}
-                onDeactivate={c.deactivatePartnerProfile}
-                onReactivate={c.reactivatePartnerProfile}
-                onDelete={c.deletePartnerProfile}
-              />
-            </View>
+            />
 
-            {/* IMPACT */}
-            <View
-              style={[
-                styles.sectionCard,
-                { backgroundColor: palette.card, borderColor: palette.divider },
-              ]}
-            >
-              <View style={styles.headerRow}>
-                <Text style={[styles.title, { color: palette.text }]}>Impact Snapshot</Text>
-                <Text style={[styles.subtext, { color: palette.subtext }]}>Quick analytics</Text>
-              </View>
+            <SectionCardsList
+              sections={c.sectionList}
+              onAdd={(type) => c.openItemEditor(type)}
+              onEdit={(type, item) => c.openItemEditor(type, item)}
+              onDelete={(type, id) => c.deleteItem(type, id)}
+            />
 
-              <View style={styles.statRow}>
-                {[
-                  { label: 'Articles', value: c.profile.sections?.articles?.length || 0 },
-                  { label: 'Projects', value: c.profile.sections?.projects?.length || 0 },
-                  {
-                    label: 'Testimonials',
-                    value: c.profile.sections?.showcases?.testimonial?.length || 0,
-                  },
-                  { label: 'Activity', value: c.profile.sections?.activity?.length || 0 },
-                ].map((it) => (
-                  <View
-                    key={it.label}
-                    style={[styles.statChip, { backgroundColor: palette.surfaceElevated }]}
-                  >
-                    <Text style={[styles.statValue, { color: palette.text }]}>{it.value}</Text>
-                    <Text style={[styles.statLabel, { color: palette.subtext }]}>{it.label}</Text>
-                  </View>
-                ))}
-              </View>
-            </View>
-
-            {/* ALL SECTIONS */}
-            {c.sectionList.map((section) => (
-              <SectionCard
-                key={section.key}
-                title={section.title}
-                type={section.key as any}
-                items={section.items}
-                onAdd={() => c.openItemEditor(section.key as any)}
-                onEdit={(item) => c.openItemEditor(section.key as any, item)}
-                onDelete={(id) => c.deleteItem(section.key as any, id)}
-              />
-            ))}
-
-            {/* LOGOUT */}
-            <View style={{ gap: 12 }}>
-              <KISButton title="Log Out" onPress={c.logout} variant="outline" />
-            </View>
+            <LogoutSection palette={palette} onLogout={c.logout} />
           </>
         )}
       </ScrollView>
@@ -1964,8 +1301,7 @@ export default function ProfileScreen() {
             </Text>
           </View>
           <Pressable onPress={closeManagementPanel} style={styles.managementClose}>
-            <KISIcon name="x" size={18} color={palette.subtext} />
-            <Text style={[styles.managementCloseText, { color: palette.subtext }]}>Close</Text>
+            <KISIcon name="close" size={28} color={palette.subtext} />
           </Pressable>
         </View>
           {renderManagementPanelContent()}
@@ -1978,350 +1314,51 @@ export default function ProfileScreen() {
           <SheetHeader title={sheetTitle} onClose={c.closeSheet} />
 
           <ScrollView contentContainerStyle={{ paddingBottom: 40 }}>
-            {/* =========================
-                EDIT PROFILE
-               ========================= */}
             {c.activeSheet === 'editProfile' && (
-              <View style={{ gap: 12 }}>
-                <View style={styles.editMediaRow}>
-                  <Pressable
-                    onPress={() => c.pickImage('avatar')}
-                    style={[styles.mediaPickCard, { backgroundColor: palette.surface }]}
-                  >
-                    {c.draftProfile?.avatar_preview ? (
-                      <Image
-                        source={{ uri: c.draftProfile.avatar_preview }}
-                        style={styles.mediaPickImage}
-                      />
-                    ) : (
-                      <View
-                        style={[
-                          styles.mediaPickImage,
-                          {
-                            backgroundColor: palette.card,
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                          },
-                        ]}
-                      >
-                        <KISIcon name="user" size={18} color={palette.subtext} />
-                      </View>
-                    )}
-                    <Text style={[styles.mediaPickLabel, { color: palette.text }]}>
-                      Change avatar
-                    </Text>
-                  </Pressable>
-
-                  <Pressable
-                    onPress={() => c.pickImage('cover')}
-                    style={[styles.mediaPickCard, { backgroundColor: palette.surface, flex: 1 }]}
-                  >
-                    {c.draftProfile?.cover_preview ? (
-                      <Image
-                        source={{ uri: c.draftProfile.cover_preview }}
-                        style={styles.mediaPickImageWide}
-                      />
-                    ) : (
-                      <View
-                        style={[
-                          styles.mediaPickImageWide,
-                          {
-                            backgroundColor: palette.card,
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                          },
-                        ]}
-                      >
-                        <KISIcon name="image" size={18} color={palette.subtext} />
-                      </View>
-                    )}
-                    <Text style={[styles.mediaPickLabel, { color: palette.text }]}>
-                      Change cover
-                    </Text>
-                  </Pressable>
-                </View>
-
-                <KISTextInput
-                  label="Display name"
-                  value={c.draftProfile.display_name}
-                  onChangeText={(t) => c.setDraftProfile((s: any) => ({ ...s, display_name: t }))}
-                />
-                <KISTextInput
-                  label="Headline"
-                  value={c.draftProfile.headline}
-                  onChangeText={(t) => c.setDraftProfile((s: any) => ({ ...s, headline: t }))}
-                />
-                <KISTextInput
-                  label="Industry"
-                  value={c.draftProfile.industry}
-                  onChangeText={(t) => c.setDraftProfile((s: any) => ({ ...s, industry: t }))}
-                />
-                <KISTextInput
-                  label="Bio"
-                  value={c.draftProfile.bio}
-                  onChangeText={(t) => c.setDraftProfile((s: any) => ({ ...s, bio: t }))}
-                  multiline
-                  style={{ minHeight: 110 }}
-                />
-
-                <KISButton
-                  title={c.saving ? 'Saving...' : 'Save'}
-                  onPress={c.saveProfile}
-                  disabled={c.saving}
-                />
-              </View>
+              <EditProfileModal
+                palette={palette}
+                draftProfile={c.draftProfile}
+                setDraftProfile={c.setDraftProfile}
+                pickImage={c.pickImage}
+                saving={c.saving}
+                saveProfile={c.saveProfile}
+              />
             )}
 
-            {/* =========================
-                PRIVACY
-               ========================= */}
             {c.activeSheet === 'privacy' && (
-              <View style={{ gap: 16 }}>
-                {Object.keys(fieldLabels).map((key) => {
-                  const rule = c.draftPrivacy?.[key] || { visibility: 'public', allow_user_ids: [] };
-                  const allowValue = Array.isArray(rule.allow_user_ids) ? rule.allow_user_ids.join(',') : '';
-                  return (
-                    <View key={key} style={[styles.privacyRow, { borderColor: palette.divider }]}>
-                      <Text style={[styles.privacyLabel, { color: palette.text }]}>{fieldLabels[key]}</Text>
-
-                      <View style={styles.privacyOptions}>
-                        {visibilityOptions.map((opt) => (
-                          <Pressable
-                            key={opt.value}
-                            onPress={() =>
-                              c.setDraftPrivacy((s: any) => ({
-                                ...s,
-                                [key]: { ...rule, field_key: key, visibility: opt.value },
-                              }))
-                            }
-                            style={[
-                              styles.privacyChip,
-                              {
-                                backgroundColor:
-                                  rule.visibility === opt.value ? palette.primarySoft : palette.surface,
-                                borderColor: palette.divider,
-                              },
-                            ]}
-                          >
-                            <Text style={{ color: palette.text, fontSize: 12 }}>{opt.label}</Text>
-                          </Pressable>
-                        ))}
-                      </View>
-
-                      {(rule.visibility === 'custom' || rule.visibility === 'contacts') && (
-                        <KISTextInput
-                          label="Allowed user IDs (comma separated)"
-                          value={allowValue}
-                          onChangeText={(text) =>
-                            c.setDraftPrivacy((s: any) => ({
-                              ...s,
-                              [key]: {
-                                ...rule,
-                                field_key: key,
-                                allow_user_ids: text
-                                  .split(',')
-                                  .map((t) => t.trim())
-                                  .filter(Boolean),
-                              },
-                            }))
-                          }
-                        />
-                      )}
-                    </View>
-                  );
-                })}
-
-                <KISButton title={c.saving ? 'Saving...' : 'Save'} onPress={c.savePrivacy} disabled={c.saving} />
-              </View>
+              <PrivacyModal
+                palette={palette}
+                draftPrivacy={c.draftPrivacy}
+                setDraftPrivacy={c.setDraftPrivacy}
+                saving={c.saving}
+                savePrivacy={c.savePrivacy}
+              />
             )}
 
-            {/* =========================
-                EDIT ITEM
-               ========================= */}
             {c.activeSheet === 'editItem' && c.draftItem && (
-              <View style={{ gap: 12 }}>
-                <KISTextInput
-                  label="Title / Name"
-                  value={c.draftItem.data.title || c.draftItem.data.name || ''}
-                  onChangeText={(t) =>
-                    c.setDraftItem((s: any) => ({
-                      ...s,
-                      data: {
-                        ...s.data,
-                        title: s.data.title != null ? t : s.data.title,
-                        name: s.data.name != null ? t : s.data.name,
-                      },
-                    }))
-                  }
-                />
-
-                <KISTextInput
-                  label="Description / Summary"
-                  value={c.draftItem.data.description || c.draftItem.data.summary || ''}
-                  onChangeText={(t) =>
-                    c.setDraftItem((s: any) => ({
-                      ...s,
-                      data: { ...s.data, description: t, summary: t },
-                    }))
-                  }
-                  multiline
-                  style={{ minHeight: 100 }}
-                />
-
-                {typeof c.pickShowcaseFile === 'function' && (
-                  <Pressable
-                    onPress={async () => {
-                      const file = await c.pickShowcaseFile(c.draftItem.type);
-                      if (file) c.setDraftItem((s: any) => ({ ...s, data: { ...s.data, file } }));
-                    }}
-                    style={[styles.mediaPickCard, { backgroundColor: palette.surface }]}
-                  >
-                    <Text style={[styles.mediaPickLabel, { color: palette.text }]}>
-                      Attach media (optional)
-                    </Text>
-                    {c.draftItem.data.file?.name ? (
-                      <Text style={[styles.subtext, { color: palette.subtext }]} numberOfLines={1}>
-                        {c.draftItem.data.file.name}
-                      </Text>
-                    ) : null}
-                  </Pressable>
-                )}
-
-                <KISButton title={c.saving ? 'Saving...' : 'Save'} onPress={c.saveItem} disabled={c.saving} />
-              </View>
+              <EditItemModal
+                palette={palette}
+                draftItem={c.draftItem}
+                setDraftItem={c.setDraftItem}
+                pickShowcaseFile={c.pickShowcaseFile}
+                saving={c.saving}
+                saveItem={c.saveItem}
+              />
             )}
 
-            {/* =========================
-                WALLET
-               ========================= */}
             {c.activeSheet === 'wallet' && (
-              <View style={{ gap: 12 }}>
-                <Text style={[styles.subtext, { color: palette.subtext }]}>
-                  Add money, convert to credits, or send gifts. $1 = 20 credits (USD only).
-                </Text>
-
-                <View style={styles.walletModeRow}>
-                  {walletModes.map((mode) => (
-                    <Pressable
-                      key={mode.value}
-                      onPress={() => c.setWalletForm((s: any) => ({ ...s, mode: mode.value }))}
-                      style={[
-                        styles.walletModeChip,
-                        {
-                          backgroundColor: c.walletForm.mode === mode.value ? palette.primarySoft : palette.surface,
-                          borderColor: palette.divider,
-                        },
-                      ]}
-                    >
-                      <Text style={{ color: palette.text, fontSize: 12 }}>{mode.label}</Text>
-                    </Pressable>
-                  ))}
-                </View>
-
-                {c.walletForm.mode === 'deposit' && (
-                  <>
-                    <View style={styles.walletModeRow}>
-                      {paymentProviders.map((provider) => (
-                        <Pressable
-                          key={provider.value}
-                          onPress={() => c.setWalletForm((s: any) => ({ ...s, provider: provider.value }))}
-                          style={[
-                            styles.walletModeChip,
-                            {
-                              backgroundColor: c.walletForm.provider === provider.value ? palette.primarySoft : palette.surface,
-                              borderColor: palette.divider,
-                            },
-                          ]}
-                        >
-                          <Text style={{ color: palette.text, fontSize: 12 }}>{provider.label}</Text>
-                        </Pressable>
-                      ))}
-                    </View>
-
-                    <KISTextInput
-                      label="Amount (USD)"
-                      value={c.walletForm.amount}
-                      onChangeText={(t) => c.setWalletForm((s: any) => ({ ...s, amount: t }))}
-                      keyboardType="decimal-pad"
-                    />
-                  </>
-                )}
-
-                {c.walletForm.mode === 'cash_to_credits' && (
-                  <KISTextInput
-                    label="Amount to convert (USD)"
-                    value={c.walletForm.amount}
-                    onChangeText={(t) => c.setWalletForm((s: any) => ({ ...s, amount: t }))}
-                    keyboardType="decimal-pad"
-                  />
-                )}
-
-                {c.walletForm.mode === 'credits_to_cash' && (
-                  <KISTextInput
-                    label="Credits to convert"
-                    value={c.walletForm.credits}
-                    onChangeText={(t) => c.setWalletForm((s: any) => ({ ...s, credits: t }))}
-                    keyboardType="number-pad"
-                  />
-                )}
-
-                {c.walletForm.mode === 'points_to_credits' && (
-                  <KISTextInput
-                    label="Points to convert"
-                    value={c.walletForm.points}
-                    onChangeText={(t) => c.setWalletForm((s: any) => ({ ...s, points: t }))}
-                    keyboardType="number-pad"
-                  />
-                )}
-
-                {c.walletForm.mode === 'transfer' && (
-                  <>
-                    <KISTextInput
-                      label="Recipient phone number with country code"
-                      value={c.walletForm.recipient}
-                      onChangeText={(t) => c.setWalletForm((s: any) => ({ ...s, recipient: t }))}
-                    />
-                    <KISTextInput
-                      label="Amount (USD)"
-                      value={c.walletForm.amount}
-                      onChangeText={(t) => c.setWalletForm((s: any) => ({ ...s, amount: t }))}
-                      keyboardType="decimal-pad"
-                    />
-                    <KISTextInput
-                      label="Or credits (optional)"
-                      value={c.walletForm.credits}
-                      onChangeText={(t) => c.setWalletForm((s: any) => ({ ...s, credits: t }))}
-                      keyboardType="number-pad"
-                    />
-                  </>
-                )}
-
-                {c.walletForm.mode === 'promo' && (
-                  <KISTextInput
-                    label="Promo code"
-                    value={c.walletForm.promo}
-                    onChangeText={(t) => c.setWalletForm((s: any) => ({ ...s, promo: t.toUpperCase() }))}
-                    autoCapitalize="characters"
-                  />
-                )}
-
-                <KISButton
-                  title={c.saving ? 'Working...' : 'Submit'}
-                  onPress={async () => {
-                    await c.submitWalletAction?.();
-                    const paymentUrl = c.lastWalletPaymentUrl;
-                    if (paymentUrl) Linking.openURL(paymentUrl);
-                  }}
-                  disabled={c.saving}
-                />
-              </View>
+              <WalletModal
+                palette={palette}
+                walletForm={c.walletForm}
+                setWalletForm={c.setWalletForm}
+                saving={c.saving}
+                submitWalletAction={c.submitWalletAction}
+                lastWalletPaymentUrl={c.lastWalletPaymentUrl}
+              />
             )}
 
-            {/* =========================
-                UPGRADE (UPDATED)
-               ========================= */}
             {c.activeSheet === 'upgrade' && (
-              <UpgradeSheet
+              <UpgradeModal
                 tiers={c.profile?.tiers || []}
                 accountTier={accountTier}
                 saving={c.saving}

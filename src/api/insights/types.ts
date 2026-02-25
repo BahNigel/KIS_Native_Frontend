@@ -52,6 +52,20 @@ export type ProductInsightItem = {
   revenue?: number;
 };
 
+export type NotificationSummaryItem = {
+  id: string;
+  title: string;
+  status: string;
+  deliveredAt?: string;
+};
+
+export type TiersSummary = {
+  planCount: number;
+  campaignCount: number;
+  upcomingPlans: string[];
+  featuredCampaigns: string[];
+};
+
 export type InsightPayload = {
   kpis: InsightKpi[];
   series: InsightSeries[];

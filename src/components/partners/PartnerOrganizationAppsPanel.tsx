@@ -91,7 +91,6 @@ export default function PartnerOrganizationAppsPanel({
             try {
               await deleteRequest(
                 ROUTES.partners.organizationApp(partnerId, app.id),
-                {},
                 { errorMessage: 'Unable to delete app.' },
               );
               Alert.alert('Removed', `${app.name} was removed.`);
@@ -196,7 +195,7 @@ export default function PartnerOrganizationAppsPanel({
               <KISButton
                 title="Delete"
                 size="xs"
-                variant="danger"
+                variant="outline"
                 onPress={() => handleDelete(app)}
               />
             </View>

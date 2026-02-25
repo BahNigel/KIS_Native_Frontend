@@ -41,7 +41,7 @@ const parseTierLimit = (value: unknown) => {
 
 const MARKET_DIFFERENTIATORS = [
   'Verified shop badges with analytics',
-  'AI product descriptions & tag suggestions',
+  'Smart product descriptions & tag suggestions',
   'Global discovery feed with search, filters, and trending badges',
   'Auto-pricing alerts when competitors discount similar goods',
   'Custom storefront theming per shop',
@@ -62,7 +62,7 @@ const MARKET_ANALYTICS_FEATURES = [
   'Credit flow snapshots (earned vs spent) updated every minute',
   'Geo + timezone heatmaps showing engagement spikes across regions',
   'Inventory velocity forecasting with auto-restock triggers',
-  'AI-suggested pricing elasticity curves for premium drops',
+  'Data-driven pricing elasticity curves for premium drops',
   'Live conversion rates and attendee retention per broadcast',
   'Segmented subscription churn risk scoring by shop',
   'Automated compliance flags with VIP contact tracing',
@@ -87,7 +87,7 @@ const MARKET_POWER_FEATURES = [
   'Broadcast-integrated carts let you buy while watching a drop',
   'Portfolio-based shop layouts with curated kit showcases',
   'Automated bundling suggestions for cross-shop exposure',
-  'AI-backed authenticity badges with real-time verification',
+  'Authenticity badges with real-time verification',
   'Live fraud scoring plus moderation cues on every checkout',
   'Dynamic promo codes tied to loyalty tiers and analytics',
   'Community highlights for trending products and testimonials',
@@ -276,7 +276,7 @@ export default function MarketStudioSection({
   };
 
   const pickShopImage = useCallback(async () => {
-    const result = await launchImageLibrary({ mediaType: 'photo', quality: 0.85, selectionLimit: 1 });
+    const result = await launchImageLibrary({ mediaType: 'photo', quality: 1, selectionLimit: 1 });
     if (result.didCancel) return;
     const asset = result.assets?.[0];
     const picked = buildPickedImage(asset, 'shop');
@@ -286,7 +286,7 @@ export default function MarketStudioSection({
   }, []);
 
   const pickProductImage = useCallback(async () => {
-    const result = await launchImageLibrary({ mediaType: 'photo', quality: 0.85, selectionLimit: 1 });
+    const result = await launchImageLibrary({ mediaType: 'photo', quality: 1, selectionLimit: 1 });
     if (result.didCancel) return;
     const asset = result.assets?.[0];
     const picked = buildPickedImage(asset, 'product');

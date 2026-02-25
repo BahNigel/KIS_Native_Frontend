@@ -3,6 +3,7 @@ import {
   Alert,
   Animated,
   Image,
+  Linking,
   Modal,
   Pressable,
   ScrollView,
@@ -71,7 +72,7 @@ export const ChatInfoPage: React.FC<ChatInfoPageProps> = ({
 
   const [avatarUrl, setAvatarUrl] = useState<string | undefined>(
     chat.avatarUrl ||
-      directConversationAvatar(chat.participants ?? [], currentUserId) ||
+      directConversationAvatar(chat.participants ?? [], currentUserId ?? undefined) ||
       undefined,
   );
   const [saving, setSaving] = useState(false);
@@ -96,6 +97,20 @@ export const ChatInfoPage: React.FC<ChatInfoPageProps> = ({
   }, [chat.participants]);
 
   const groupId = chat.groupId ? String(chat.groupId) : null;
+  const directContact = useMemo(() => {
+    if (isGroup) return null;
+    const meId = currentUserId ? String(currentUserId) : null;
+    const other = participants.find((p) => {
+      const userId = resolveUserId(p.user);
+      return !meId || (userId && userId !== meId);
+    });
+    return other ?? null;
+  }, [participants, isGroup, currentUserId]);
+
+  const contactUserId = useMemo(() => {
+    if (!directContact?.user) return null;
+    return resolveUserId(directContact.user);
+  }, [directContact]);
 
   useEffect(() => {
     const nextAvatar = chat.avatarUrl ? String(chat.avatarUrl) : '';
@@ -151,7 +166,7 @@ export const ChatInfoPage: React.FC<ChatInfoPageProps> = ({
       (directContact?.user as any)?.profile?.avatarUrl ??
       (directContact?.user as any)?.avatar_url ??
       (directContact?.user as any)?.avatarUrl ??
-      directConversationAvatar(chat.participants ?? [], currentUserId);
+      directConversationAvatar(chat.participants ?? [], currentUserId ?? undefined);
     if (nextAvatar) {
       setAvatarUrl(String(nextAvatar));
     }
@@ -197,21 +212,6 @@ export const ChatInfoPage: React.FC<ChatInfoPageProps> = ({
   const role = String(me?.base_role ?? '').toLowerCase();
   const isAdmin =
     role === 'owner' || role === 'admin' || role === 'moderator';
-
-  const directContact = useMemo(() => {
-    if (isGroup) return null;
-    const meId = currentUserId ? String(currentUserId) : null;
-    const other = participants.find((p) => {
-      const userId = resolveUserId(p.user);
-      return !meId || (userId && userId !== meId);
-    });
-    return other ?? null;
-  }, [participants, isGroup, currentUserId]);
-
-  const contactUserId = useMemo(() => {
-    if (!directContact?.user) return null;
-    return resolveUserId(directContact.user);
-  }, [directContact]);
 
   const initials = useMemo(() => {
     const title = chat.name || 'Chat';

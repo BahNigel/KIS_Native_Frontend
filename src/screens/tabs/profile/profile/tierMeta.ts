@@ -115,7 +115,6 @@ export const tierMetaFor = (tier: any) => {
   // Optional: append numeric feature caps if available
   addFeature(`Communities: ${features.communities ?? 'Included'}`, list);
   addFeature(`Groups per community: ${features.groups_per_community ?? 'Included'}`, list);
-  addFeature(`AI queries/day: ${features.ai_queries_per_day ?? 'Included'}`, list);
   addFeature(`Storage: ${features.storage_gb ?? 'Included'} GB`, list);
   if (features.partner_accounts !== undefined && features.partner_accounts !== null) {
     const raw = features.partner_accounts;

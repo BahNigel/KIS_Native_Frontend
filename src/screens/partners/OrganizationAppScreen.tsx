@@ -27,7 +27,7 @@ const TYPE_LABELS: Record<string, string> = {
   kis: 'KIS App',
   bible: 'Bible App',
   external: 'Embedded App',
-  ai: 'AI App',
+  ai: 'Assistant App',
 };
 
 type NavigationProps = NativeStackNavigationProp<RootStackParamList, 'OrganizationApp'>;
@@ -50,12 +50,15 @@ export default function OrganizationAppScreen() {
 
   const resolvedLink = useMemo(() => resolveBackendAssetUrl(app.link ?? ''), [app.link]);
   const partnerId = params.partnerId ?? app.partner_id;
-  const dataScope =
-    Array.isArray(app.metadata?.dataAccess) && app.metadata.dataAccess.length
-      ? app.metadata.dataAccess
-      : app.metadata?.dataAccess
-      ? [app.metadata.dataAccess]
-      : [];
+  const dataScope = useMemo(
+    () =>
+      Array.isArray(app.metadata?.dataAccess) && app.metadata.dataAccess.length
+        ? app.metadata.dataAccess
+        : app.metadata?.dataAccess
+        ? [app.metadata.dataAccess]
+        : [],
+    [app.metadata?.dataAccess],
+  );
   const [logs, setLogs] = useState<AccessLog[]>([]);
   const [logsLoading, setLogsLoading] = useState(false);
   const [sharing, setSharing] = useState(false);
@@ -122,15 +125,15 @@ export default function OrganizationAppScreen() {
       return (
         <View style={styles.embedPreview}>
           <Text style={[styles.subtext, { color: palette.subtext }]}>
-            AI chat experiences are rendered securely through our in-app SDK. Here you can review the data scope
-            and model metadata before launching.
+            Assistant experiences are rendered securely through our in-app SDK. Review the data scope
+            and app metadata before launching.
           </Text>
           {app.metadata?.dataAccess ? (
             <Text style={[styles.bodyText, { color: palette.text, marginTop: 10 }]}>
               Data access: {String(app.metadata.dataAccess)}
             </Text>
           ) : null}
-          <KISButton title="Open chat" onPress={handleOpenExternal} size="sm" disabled={!resolvedLink} />
+          <KISButton title="Open app" onPress={handleOpenExternal} size="sm" disabled={!resolvedLink} />
         </View>
       );
     }
@@ -209,7 +212,7 @@ export default function OrganizationAppScreen() {
           <Text style={[styles.bodyText, { color: palette.subtext }]}>{app.description || 'No description yet.'}</Text>
         </View>
         <View style={styles.section}>
-          <Text style={[styles.bodyTitle, { color: palette.text }]}>AI / Data access</Text>
+          <Text style={[styles.bodyTitle, { color: palette.text }]}>Data access</Text>
           <Text style={[styles.bodyText, { color: palette.subtext }]}>
             {dataScope.length ? dataScope.join(', ') : 'No data scope recorded.'}
           </Text>

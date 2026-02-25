@@ -7,7 +7,13 @@ type Props = {
   target: PartnerDiscover;
   message: string;
   role: string;
-  jobPosts: Array<{ id: string | number; title: string }>;
+  jobPosts: Array<{
+    id: string | number;
+    title: string;
+    description?: string | null;
+    requirements?: string | null;
+    steps?: string[] | null;
+  }>;
   selectedJobId: string | null;
   onChangeJobId: (value: string | null) => void;
   onChangeMessage: (value: string) => void;

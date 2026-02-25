@@ -47,6 +47,13 @@ const getTopTrendingFeeds = (items: BroadcastFeedItem[], limit = 20) => {
     .slice(0, limit);
 };
 
+const isHealthcareFeedItem = (item: BroadcastFeedItem | null | undefined) => {
+  if (!item) return false;
+  const sourceType = String(item.source_type ?? '').toLowerCase();
+  const sourceMetaType = String(item.source?.type ?? '').toLowerCase();
+  return sourceType === 'healthcare' || sourceMetaType === 'healthcare';
+};
+
 const mapProfileFeedToBroadcastItem = (entry: any): BroadcastFeedItem => {
   const attachments = ([] as any[])
     .concat(entry.attachment ? [entry.attachment] : [])
@@ -117,7 +124,8 @@ export default function useFeedsData({ q = '', code = null }: Params) {
       if (!mountedRef.current) return;
       const payload = res?.data ?? res;
       const page = normalizePaginated<BroadcastFeedItem>(payload);
-      const nextItems = [...profileFeeds, ...(page.results ?? [])];
+      const nonHealthcareResults = (page.results ?? []).filter((item) => !isHealthcareFeedItem(item));
+      const nextItems = [...profileFeeds, ...nonHealthcareResults];
       setItems(nextItems);
       const topTrending = getTopTrendingFeeds(nextItems);
       setTrendingFeeds(topTrending);
@@ -153,7 +161,8 @@ export default function useFeedsData({ q = '', code = null }: Params) {
     setItems((prev) => {
       const have = new Set(prev.map((x) => x.id));
       const merged = [...prev];
-      for (const it of page.results ?? []) {
+      const nonHealthcareResults = (page.results ?? []).filter((item) => !isHealthcareFeedItem(item));
+      for (const it of nonHealthcareResults) {
         if (!have.has(it.id)) merged.push(it);
       }
       if (!mountedRef.current) return prev;

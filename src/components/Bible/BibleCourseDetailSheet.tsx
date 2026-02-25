@@ -35,6 +35,7 @@ type Course = {
   viewer_reaction?: string | null;
   is_enrolled?: boolean;
   enrollment_id?: string | null;
+  enrollment_status?: string | null;
   enrollment_progress?: number | null;
   enrollment_paid?: boolean;
 };
@@ -89,7 +90,7 @@ export default function BibleCourseDetailSheet({
   const [assignmentText, setAssignmentText] = useState('');
   const [playbackRate, setPlaybackRate] = useState(1.0);
   const lastProgressRef = useRef<Record<string, number>>({});
-  const mediaRef = useRef<Video | null>(null);
+  const mediaRef = useRef<any>(null);
   const [backgroundPlayback, setBackgroundPlayback] = useState(false);
   const [offlineAssets, setOfflineAssets] = useState<Record<string, string>>({});
   const [forums, setForums] = useState<any | null>(null);
@@ -154,6 +155,12 @@ export default function BibleCourseDetailSheet({
     });
   }, [certificateVisible]);
 
+  const courseId = courseState?.id;
+  const certificateUrl = courseId ? ROUTES.bible.courseCertificate(courseId) : null;
+  const certificateFetchUrl =
+    certificateUrl && certificateToken ? `${certificateUrl}?token=${encodeURIComponent(certificateToken)}` : certificateUrl;
+  const certificateHeaders = certificateAuth ? { Authorization: certificateAuth } : undefined;
+
   useEffect(() => {
     const fetchCertificate = async () => {
       if (!certificateVisible || !certificateFetchUrl) return;
@@ -175,8 +182,6 @@ export default function BibleCourseDetailSheet({
     };
     fetchCertificate();
   }, [certificateVisible, certificateFetchUrl, certificateAuth]);
-
-  const courseId = courseState?.id;
 
   const loadLessons = async () => {
     if (!courseId) return;
@@ -692,10 +697,6 @@ export default function BibleCourseDetailSheet({
   const isCourseCompleted =
     courseState.enrollment_status === 'completed' ||
     Number(courseState.enrollment_progress || 0) >= 100;
-  const certificateUrl = courseState?.id ? ROUTES.bible.courseCertificate(courseState.id) : null;
-  const certificateFetchUrl =
-    certificateUrl && certificateToken ? `${certificateUrl}?token=${encodeURIComponent(certificateToken)}` : certificateUrl;
-  const certificateHeaders = certificateAuth ? { Authorization: certificateAuth } : undefined;
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose} transparent>

@@ -71,6 +71,7 @@ import type {
   ChatRoomPageProps,
   SubRoom,
 } from './chatTypes';
+export type { ChatMessage } from './chatTypes';
 import { participantsToIds } from './messagesUtils';
 
 /* -------------------------------------------------------------------------- */
@@ -417,11 +418,12 @@ export const ChatRoomPage: React.FC<ExtendedChatRoomPageProps> = ({
         message.serverId ??
         (message.id && message.id.startsWith('client_') ? null : message.id);
       if (!convId || !messageId) return false;
-      return Handlers.handleReportMessage({
+      const reported = await Handlers.handleReportMessage({
         conversationId: String(convId),
         messageId: String(messageId),
         reason: 'user_reported',
       });
+      return Boolean(reported);
     },
     onEditMessage: (message) => {
       setEditing(message);
@@ -913,6 +915,14 @@ export const ChatRoomPage: React.FC<ExtendedChatRoomPageProps> = ({
   /* ======================================================================== */
 
   const bg = palette.chatBg ?? palette.bg;
+  const handleRetryMessage = useCallback(
+    (message: ChatMessage) => {
+      const messageId = message.serverId ?? message.id;
+      if (!messageId) return;
+      void retryMessage(String(messageId));
+    },
+    [retryMessage],
+  );
   const handleOpenInfo = useCallback(() => {
     if (!chat) return;
     onOpenInfo?.({ chat, currentUserId });
@@ -1040,7 +1050,7 @@ export const ChatRoomPage: React.FC<ExtendedChatRoomPageProps> = ({
         onPressMessage={toggleSelectMessage}
         onLongPressMessage={enterSelectionMode}
         onReactMessage={handleReactMessage}
-        onRetryMessage={retryMessage}
+        onRetryMessage={handleRetryMessage}
         onMessageLocatorReady={setMessageLocator}
         onVisibleMessageIds={handleVisibleMessageIds}
         onChangeDraft={handleChangeDraft}

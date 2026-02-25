@@ -16,11 +16,11 @@ type SignalStoreCache = Record<string, any>;
 
 let storeCache: SignalStoreCache | null = null;
 
-const loadStore = async () => {
+const loadStore = async (): Promise<SignalStoreCache> => {
   if (storeCache) return storeCache;
   const raw = await EncryptedStorage.getItem(STORE_KEY);
   storeCache = raw ? JSON.parse(raw) : {};
-  return storeCache;
+  return storeCache ?? {};
 };
 
 const saveStore = async () => {
@@ -30,6 +30,15 @@ const saveStore = async () => {
 
 const toB64 = (buf: ArrayBuffer | Uint8Array) =>
   fromByteArray(buf instanceof Uint8Array ? buf : new Uint8Array(buf));
+
+const toBinaryInput = (
+  value: ArrayBuffer | ArrayBufferLike | Uint8Array | null | undefined,
+): ArrayBuffer | Uint8Array => {
+  if (!value) return new Uint8Array(0);
+  if (value instanceof Uint8Array) return value;
+  if (value instanceof ArrayBuffer) return value;
+  return new Uint8Array(value);
+};
 
 const fromB64 = (b64: string) => toByteArray(b64).buffer;
 
@@ -215,11 +224,11 @@ export const initE2EE = async (userId?: string | null) => {
   let identityKey = await signalStore.getIdentityKeyPair();
   let registrationId = await signalStore.getLocalRegistrationId();
 
-  if (!identityKey) {
+  if (!identityKey?.pubKey || !identityKey?.privKey) {
     identityKey = await libsignal.KeyHelper.generateIdentityKeyPair();
     await signalStore.put('identityKey', {
-      pubKey: toB64(identityKey.pubKey),
-      privKey: toB64(identityKey.privKey),
+      pubKey: toB64(toBinaryInput(identityKey.pubKey)),
+      privKey: toB64(toBinaryInput(identityKey.privKey)),
     });
   }
 
@@ -252,7 +261,7 @@ export const initE2EE = async (userId?: string | null) => {
 
   const payload = {
     device_id: deviceId,
-    identity_key: toB64(identityKey.pubKey),
+    identity_key: toB64(toBinaryInput(identityKey.pubKey)),
     signed_prekey: {
       id: signedPreKeyId,
       key: toB64(signedPreKey.keyPair.pubKey),

@@ -37,6 +37,11 @@ import { Chat } from '@/Module/ChatRoom/messagesUtils';
 import { useSocket } from '../../SocketProvider';
 import ROUTES from '@/network';
 import { getRequest } from '@/network/get';
+import {
+  fetchUnreadInAppNotificationsCount,
+  IN_APP_NOTIFICATIONS_UPDATED_EVENT,
+  startInAppNotificationRuntime,
+} from '@/services/inAppNotificationService';
 
 type RouteKey = 'Partners' | 'Bible' | 'Messages' | 'Broadcast' | 'Profile';
 
@@ -53,6 +58,7 @@ const routeIconMap: Record<RouteKey, KISIconName> = {
 // 👇 extend props to accept hidNav
 type AnimatedKISTabBarProps = BottomTabBarProps & {
   hidNav: boolean;
+  profileUnreadCount: number;
 };
 
 function AnimatedKISTabBar({
@@ -60,16 +66,11 @@ function AnimatedKISTabBar({
   descriptors,
   navigation,
   hidNav,
+  profileUnreadCount,
 }: AnimatedKISTabBarProps) {
-  // 🔒 If hidNav is true, don’t render the bar at all
-  if (hidNav) {
-    return null;
-  }
-
   // 🌓 Follow device theme
   const systemScheme = useColorScheme(); // 'light' | 'dark' | null
   const theme = useKISTheme();
-  const { palette } = theme;
 
   React.useEffect(() => {
     // @ts-ignore
@@ -91,6 +92,11 @@ function AnimatedKISTabBar({
   const focusedTextColor = p.text;
   const unfocusedTextColor = p.subtext;
   const barBg = p.bar ?? p.surface;
+
+  // 🔒 If hidNav is true, don’t render the bar at all
+  if (hidNav) {
+    return null;
+  }
 
   return (
     <View
@@ -144,6 +150,13 @@ function AnimatedKISTabBar({
                     color={focused ? p.onPrimary : unfocusedTextColor}
                     focused={focused}
                   />
+                  {route.name === 'Profile' && profileUnreadCount > 0 ? (
+                    <View style={styles.badge}>
+                      <Text style={styles.badgeLabel}>
+                        {profileUnreadCount > 99 ? '99+' : String(profileUnreadCount)}
+                      </Text>
+                    </View>
+                  ) : null}
                 </View>
 
                 <Text
@@ -188,6 +201,29 @@ export function MainTabs() {
 
   // 👇 control for hiding the nav bar (managed ONLY here)
   const [hidNav, setHidNav] = useState(false);
+  const [profileUnreadCount, setProfileUnreadCount] = useState(0);
+
+  useEffect(() => {
+    startInAppNotificationRuntime();
+    let alive = true;
+    const refreshUnread = async () => {
+      const unread = await fetchUnreadInAppNotificationsCount();
+      if (alive) setProfileUnreadCount(unread);
+    };
+    refreshUnread().catch(() => undefined);
+    const sub = DeviceEventEmitter.addListener(IN_APP_NOTIFICATIONS_UPDATED_EVENT, (payload: any) => {
+      const next = Number(payload?.unreadCount);
+      if (Number.isFinite(next)) {
+        setProfileUnreadCount(Math.max(0, next));
+      } else {
+        refreshUnread().catch(() => undefined);
+      }
+    });
+    return () => {
+      alive = false;
+      sub.remove();
+    };
+  }, []);
 
   useEffect(() => {
     if (!currentUserId) {
@@ -341,8 +377,9 @@ export function MainTabs() {
     });
   };
 
-  const openInfo = (payload: { chat: Chat; currentUserId: string | null }) => {
-    setActiveInfo(payload);
+  const openInfo = (payload: { chat: Chat | null; currentUserId: string | null }) => {
+    if (!payload.chat) return;
+    setActiveInfo({ chat: payload.chat, currentUserId: payload.currentUserId });
     setInfoVisible(true);
     RNAnimated.timing(infoSlide, {
       toValue: 1,
@@ -422,7 +459,7 @@ export function MainTabs() {
           headerShown: false,
           tabBarShowLabel: false,
         }}
-        tabBar={(p) => <AnimatedKISTabBar {...p} hidNav={hidNav} />}
+        tabBar={(p) => <AnimatedKISTabBar {...p} hidNav={hidNav} profileUnreadCount={profileUnreadCount} />}
       >
         <Tabs.Screen name="Messages" options={{ title: 'Messages' }}>
           {() => <MessagesScreen onOpenChat={openChat} onOpenInfo={openInfo} />}
@@ -580,6 +617,24 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
+    position: 'relative',
+  },
+  badge: {
+    position: 'absolute',
+    right: -8,
+    top: -6,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 999,
+    paddingHorizontal: 4,
+    backgroundColor: '#EF4444',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  badgeLabel: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    fontWeight: '800',
   },
   label: {
     fontSize: 11,

@@ -1,9 +1,10 @@
 import { TEXT_PRESETS, TypographyPreset } from './fonts';
+import type { TextStyle } from 'react-native';
 
 export type TypographyStyle = {
   fontFamily: string;
   fontSize: number;
-  fontWeight: string;
+  fontWeight: TextStyle['fontWeight'];
   lineHeight: number;
 };
 
@@ -14,7 +15,13 @@ export const TYPOGRAPHY_PRESETS = TEXT_PRESETS;
 export const getTypographyStyle = (
   preset: TypographyPreset,
   color?: string,
-): TypographyStyle & { color?: string } => {
+): TextStyle => {
   const base = TYPOGRAPHY_PRESETS[preset];
-  return color ? { ...base, color } : base;
+  const style: TextStyle = {
+    fontFamily: base.fontFamily,
+    fontSize: base.fontSize,
+    fontWeight: base.fontWeight as TextStyle['fontWeight'],
+    lineHeight: base.lineHeight,
+  };
+  return color ? { ...style, color } : style;
 };

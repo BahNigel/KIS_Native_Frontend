@@ -3,21 +3,17 @@ import React from 'react';
 import { Image, Pressable, Text, View } from 'react-native';
 import { useKISTheme } from '@/theme/useTheme';
 import KISButton from '@/constants/KISButton';
-import { EducationContentType, EducationCourse, EducationCredential, EducationLesson, EducationMentorship, EducationProgram, EducationProgress, EducationWorkshop } from '@/screens/broadcast/education/api/education.models';
-
-type ContentItem =
-  | EducationCourse
-  | EducationLesson
-  | EducationWorkshop
-  | EducationProgram
-  | EducationCredential
-  | EducationMentorship;
+import {
+  EducationContentType,
+  EducationContentItem,
+  EducationProgress,
+} from '@/screens/broadcast/education/api/education.models';
 
 type Props = {
-  item: ContentItem;
-  onSelect?: (item: ContentItem) => void;
-  onPrimaryAction?: (item: ContentItem) => void;
-  onDownload?: (item: ContentItem) => void;
+  item: EducationContentItem;
+  onSelect?: (item: EducationContentItem) => void;
+  onPrimaryAction?: (item: EducationContentItem) => void;
+  onDownload?: (item: EducationContentItem) => void;
   downloaded?: boolean;
   progress?: EducationProgress | null;
 };
@@ -41,7 +37,7 @@ const getTypeLabel = (type: EducationContentType) => {
   }
 };
 
-const getSubtitle = (item: ContentItem) => {
+const getSubtitle = (item: EducationContentItem) => {
   if ('partnerName' in item && item.partnerName) return item.partnerName;
   if ('instructor' in item && item.instructor) return item.instructor;
   return item.summary ?? item.title;
@@ -116,10 +112,7 @@ export default function EducationContentCard({
               size="xs"
               variant={downloaded ? 'secondary' : 'outline'}
               disabled={downloaded}
-              onPress={(event) => {
-                event.stopPropagation();
-                onDownload(item);
-              }}
+              onPress={() => onDownload(item)}
             />
           ) : null}
         </View>

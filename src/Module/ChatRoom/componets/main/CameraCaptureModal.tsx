@@ -28,14 +28,14 @@ import {
   kisRadius,
 } from '@/theme/constants';
 
-import { AttachmentFilePayload } from './AttachmentSheet';
+import type { FilesType } from './AttachmentSheet';
 import { MediaEditModal } from './FroCamer/MediaEditModal';
 
 type CameraCaptureModalProps = {
   visible: boolean;
   palette: KISPalette;
   onClose: () => void;
-  onCapture?: (payload: { caption: string; files: AttachmentFilePayload[] }) => void;
+  onCapture?: (payload: { caption: string; files: FilesType[] }) => void;
 };
 
 export const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
@@ -152,7 +152,7 @@ export const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
       return;
     }
 
-    const files: AttachmentFilePayload[] = base.map(a => ({
+    const files: FilesType[] = base.map(a => ({
       uri: a.uri || '',
       name: a.fileName ?? (a.type?.startsWith("video") ? "video.mp4" : "image.jpg"),
       type: a.type ?? 'image/jpeg',

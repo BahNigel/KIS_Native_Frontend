@@ -14,7 +14,7 @@ import type {
 
 type ApiResponse = Record<string, any>;
 
-const arrayize = <T>(value: unknown): T[] => {
+const arrayize = <T = any>(value: unknown): T[] => {
   if (Array.isArray(value)) return value as T[];
   if (value === undefined || value === null) return [];
   if (typeof value === 'object') {

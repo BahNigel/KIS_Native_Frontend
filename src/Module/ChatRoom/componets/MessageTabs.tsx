@@ -125,7 +125,6 @@ export function ChatsTab({
     if (chipsForApply.has('Community')) chipsForApply.delete('Community');
 
     const filtered = normalizedChats.filter((c: Chat) => {
-      if (c.kind === 'post') return false;
       if (c.kind === 'channel') return false;
       const convId = String((c as any).conversationId ?? c.id);
       if (c.isGroup && c.communityId) return false;
@@ -133,7 +132,6 @@ export function ChatsTab({
       const isCommunityConv =
         c.isCommunityChat ||
         c.kind === 'community' ||
-        c.kind === 'post' ||
         Boolean(c.communityId) ||
         Boolean(communityByConversationId?.[convId]);
       if (activeQuick.has('Community') && !isCommunityConv) return false;
@@ -244,7 +242,6 @@ export function ChatsTab({
             const isCommunity =
               item.isCommunityChat ||
               item.kind === 'community' ||
-              item.kind === 'post' ||
               Boolean(communityId);
             if (community) {
               onOpenChat?.({
@@ -258,7 +255,7 @@ export function ChatsTab({
             if (isCommunity && communityId) {
               onOpenChat?.({
                 ...item,
-                name: (community?.name || item.name || displayName) as string,
+                name: (item.name || displayName) as string,
                 isCommunityChat: true,
                 communityId,
               });

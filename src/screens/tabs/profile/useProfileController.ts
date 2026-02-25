@@ -1,5 +1,5 @@
 // src/screens/tabs/profile/useProfileController.ts
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { Alert, Animated, Linking } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect } from '@react-navigation/native';
@@ -16,8 +16,9 @@ import { DraftProfile, ItemType, PickedImage, PrefsDraft, ProfilePayload, SheetT
 import { makeUUID, parseCsv } from './profile.utils';
 import { profileLayout } from './profile.styles';
 import { tierMetaFor } from './profile/tierMeta';
+import type { FeedMediaType, FeedMediaOptions } from '../profile-screen/types';
 
-type FeedMediaType = 'video' | 'audio' | 'image' | 'file' | 'text';
+const MICROS_PER_KISC = 100000;
 
 export const useProfileController = (opts: { setAuth: (v: boolean) => void; setPhone?: (v: any) => void }) => {
   const { setAuth, setPhone } = opts;
@@ -35,6 +36,16 @@ export const useProfileController = (opts: { setAuth: (v: boolean) => void; setP
   const [activeSheet, setActiveSheet] = useState<SheetType | null>(null);
   const [showCreatePartner, setShowCreatePartner] = useState(false);
   const [partnerActionId, setPartnerActionId] = useState<string | null>(null);
+  const [kisWallet, setKisWallet] = useState<{
+    balance_micro: number;
+    balance_kisc: string;
+    balance_usd: string;
+  }>({
+    balance_micro: 0,
+    balance_kisc: '0.000',
+    balance_usd: '0.00',
+  });
+  const [lastWalletPaymentUrl, setLastWalletPaymentUrl] = useState('');
 
   const [draftProfile, setDraftProfile] = useState<DraftProfile>({
     display_name: '',
@@ -62,19 +73,19 @@ export const useProfileController = (opts: { setAuth: (v: boolean) => void; setP
   });
 
   const [walletForm, setWalletForm] = useState({
-    mode: 'deposit',
+    mode: 'add_kisc',
     provider: 'flutterwave',
     amount: '',
-    credits: '',
-    points: '',
     recipient: '',
-    promo: '',
+    reference: '',
   });
 
   const slideX = useRef(new Animated.Value(profileLayout.SCREEN_WIDTH)).current;
   const sheetY = useRef(new Animated.Value(profileLayout.SCREEN_HEIGHT)).current;
   const loadingRef = useRef(false);
   const lastFetchRef = useRef(0);
+  const profileRateLimitedUntilRef = useRef(0);
+  const profileNetworkFreshUntilRef = useRef(0);
 
   const applyProfilePayload = useCallback((payload: ProfilePayload) => {
     setProfile(payload);
@@ -135,9 +146,56 @@ export const useProfileController = (opts: { setAuth: (v: boolean) => void; setP
     });
   };
 
+  const loadKisWallet = useCallback(async (fallbackWalletBalanceCents?: number) => {
+    const res = await getRequest(ROUTES.healthOps.walletMe, {
+      errorMessage: 'Unable to load KIS wallet.',
+    });
+    if (res?.success) {
+      const wallet = res?.data?.wallet || {};
+      const micro = Number(wallet?.balance_micro ?? 0);
+      const safeMicro = Number.isFinite(micro) ? Math.max(0, Math.floor(micro)) : 0;
+      const kisc = Number(wallet?.balance_kisc);
+      const usd = Number(wallet?.balance_usd);
+      setKisWallet({
+        balance_micro: safeMicro,
+        balance_kisc: Number.isFinite(kisc) ? kisc.toFixed(3) : (safeMicro / MICROS_PER_KISC).toFixed(3),
+        balance_usd: Number.isFinite(usd) ? usd.toFixed(2) : ((safeMicro / MICROS_PER_KISC) * 100).toFixed(2),
+      });
+      return;
+    }
+
+    const cents = Number(fallbackWalletBalanceCents ?? profile?.account?.wallet_balance_cents ?? 0);
+    const safeCents = Number.isFinite(cents) ? Math.max(0, Math.floor(cents)) : 0;
+    const fallbackMicro = safeCents * 1000;
+    setKisWallet({
+      balance_micro: fallbackMicro,
+      balance_kisc: (fallbackMicro / MICROS_PER_KISC).toFixed(3),
+      balance_usd: (safeCents / 100).toFixed(2),
+    });
+  }, [profile?.account?.wallet_balance_cents]);
+
   const loadWalletLedger = useCallback(async () => {
-    const res = await getRequest(ROUTES.wallet.ledger);
-    if (res.success) setWalletLedger(res.data?.results || res.data?.data?.results || []);
+    const res = await getRequest(ROUTES.healthOps.walletTransactions, {
+      errorMessage: 'Unable to load KIS transactions.',
+    });
+    if (res?.success) {
+      const rows = Array.isArray(res?.data?.results) ? res.data.results : [];
+      const mapped = rows.map((row: any) => ({
+        id: String(row?.id || ''),
+        kind: String(row?.transaction_type || 'entry'),
+        amount_micro: Number(row?.amount_micro || 0),
+        reference: String(row?.reference || ''),
+        created_at: String(row?.created_at || new Date().toISOString()),
+        metadata: row?.metadata || {},
+      }));
+      setWalletLedger(mapped);
+      return;
+    }
+
+    const legacy = await getRequest(ROUTES.wallet.ledger);
+    if (legacy?.success) {
+      setWalletLedger(legacy.data?.results || legacy.data?.data?.results || []);
+    }
   }, []);
 
   const loadBillingHistory = useCallback(async () => {
@@ -180,7 +238,7 @@ export const useProfileController = (opts: { setAuth: (v: boolean) => void; setP
 
   type BroadcastAttachmentPayload = { uri: string; name: string; type: string };
 
-  const appendBroadcastAttachments = (form: FormData, files?: BroadcastAttachmentPayload[]) => {
+  const appendBroadcastAttachments = useCallback((form: FormData, files?: BroadcastAttachmentPayload[]) => {
     (files ?? []).forEach((file) => {
       if (file?.uri) {
         form.append('attachments', {
@@ -190,7 +248,7 @@ export const useProfileController = (opts: { setAuth: (v: boolean) => void; setP
         } as any);
       }
     });
-  };
+  }, []);
 
   const manageProfileSection = useCallback(
     async (profileType: 'health_profile' | 'market_profile' | 'education_profile', updates: Record<string, any>) => {
@@ -211,12 +269,14 @@ export const useProfileController = (opts: { setAuth: (v: boolean) => void; setP
       summary: string,
       mediaType: FeedMediaType,
       attachments?: BroadcastAttachmentPayload[],
+      mediaOptions?: FeedMediaOptions[FeedMediaType],
     ) => {
       const form = new FormData();
       form.append('title', title);
       form.append('summary', summary);
       form.append('media_type', mediaType);
       appendBroadcastAttachments(form, attachments);
+      form.append('media_options', JSON.stringify(mediaOptions ?? {}));
       const res = await postRequest(ROUTES.broadcasts.feedProfile, form);
       if (res?.success) {
         await loadBroadcastProfiles();
@@ -224,7 +284,7 @@ export const useProfileController = (opts: { setAuth: (v: boolean) => void; setP
       }
       throw new Error(res?.message || 'Unable to add broadcast item.');
     },
-    [loadBroadcastProfiles],
+    [appendBroadcastAttachments, loadBroadcastProfiles],
   );
 
   const updateBroadcastFeedEntry = useCallback(
@@ -235,6 +295,7 @@ export const useProfileController = (opts: { setAuth: (v: boolean) => void; setP
       mediaType: FeedMediaType,
       attachments?: BroadcastAttachmentPayload[],
       retainAttachments?: any[],
+      mediaOptions?: FeedMediaOptions[FeedMediaType],
     ) => {
       const form = new FormData();
       form.append('title', title);
@@ -244,6 +305,7 @@ export const useProfileController = (opts: { setAuth: (v: boolean) => void; setP
       if (retainAttachments?.length) {
         form.append('retain_attachments', JSON.stringify(retainAttachments));
       }
+      form.append('media_options', JSON.stringify(mediaOptions ?? {}));
       const res = await patchRequest(ROUTES.broadcasts.feedEntry(id), form);
       if (res?.success) {
         await loadBroadcastProfiles();
@@ -251,7 +313,7 @@ export const useProfileController = (opts: { setAuth: (v: boolean) => void; setP
       }
       throw new Error(res?.message || 'Unable to update broadcast item.');
     },
-    [loadBroadcastProfiles],
+    [appendBroadcastAttachments, loadBroadcastProfiles],
   );
 
   const deleteBroadcastFeedEntry = useCallback(
@@ -281,9 +343,22 @@ export const useProfileController = (opts: { setAuth: (v: boolean) => void; setP
     [loadBroadcastProfiles],
   );
 
+  const broadcastFeedEntry = useCallback(
+    async (id: string) => {
+      const res = await postRequest(ROUTES.broadcasts.feedEntryBroadcast(id), {});
+      if (res?.success) {
+        await loadBroadcastProfiles();
+        return res.data?.feed ?? null;
+      }
+      throw new Error(res?.message || 'Unable to broadcast feed item.');
+    },
+    [loadBroadcastProfiles],
+  );
+
   const loadProfile = useCallback(async () => {
     const now = Date.now();
     if (loadingRef.current) return;
+    if (now < profileRateLimitedUntilRef.current) return;
     if (now - lastFetchRef.current < 1200) return;
 
     loadingRef.current = true;
@@ -295,8 +370,14 @@ export const useProfileController = (opts: { setAuth: (v: boolean) => void; setP
     try {
       const cached = await AsyncStorage.getItem(cacheKey);
       if (cached) {
-        applyProfilePayload(JSON.parse(cached));
+        const cachedPayload = JSON.parse(cached) as ProfilePayload;
+        applyProfilePayload(cachedPayload);
+        loadKisWallet(cachedPayload?.account?.wallet_balance_cents);
+        loadWalletLedger();
+        loadBroadcastProfiles();
         setLoading(false);
+        profileNetworkFreshUntilRef.current = Date.now() + 60 * 1000;
+        return;
       }
 
       const res = await getRequest(ROUTES.profiles.me, {
@@ -307,10 +388,16 @@ export const useProfileController = (opts: { setAuth: (v: boolean) => void; setP
       if (res.success) {
         const payload = res.data as ProfilePayload;
         applyProfilePayload(payload);
+        profileNetworkFreshUntilRef.current = Date.now() + 60 * 1000;
+        loadKisWallet(payload?.account?.wallet_balance_cents);
         loadWalletLedger();
         await loadBroadcastProfiles();
         await AsyncStorage.setItem(cacheKey, JSON.stringify(payload));
       } else {
+        if (Number(res?.status) === 429) {
+          profileRateLimitedUntilRef.current = Date.now() + 15000;
+          return;
+        }
         setProfile(null);
         Alert.alert('Profile', res.message || 'Could not load profile');
       }
@@ -321,7 +408,7 @@ export const useProfileController = (opts: { setAuth: (v: boolean) => void; setP
       setLoading(false);
       loadingRef.current = false;
     }
-  }, [applyProfilePayload, loadWalletLedger, profile, loadBroadcastProfiles]);
+  }, [applyProfilePayload, loadKisWallet, loadWalletLedger, profile, loadBroadcastProfiles]);
 
   useFocusEffect(useCallback(() => { loadProfile(); }, [loadProfile]));
 
@@ -380,7 +467,7 @@ export const useProfileController = (opts: { setAuth: (v: boolean) => void; setP
   };
 
   const pickImage = async (kind: 'avatar' | 'cover') => {
-    const result = await launchImageLibrary({ mediaType: 'photo', quality: 0.85, selectionLimit: 1 });
+    const result = await launchImageLibrary({ mediaType: 'photo', quality: 1, selectionLimit: 1 });
     if (result.didCancel) return;
 
     const asset = result.assets?.[0];
@@ -394,7 +481,7 @@ export const useProfileController = (opts: { setAuth: (v: boolean) => void; setP
 
   const pickShowcaseFile = async (type: ItemType) => {
     const isVideo = type === 'intro_video';
-    const result = await launchImageLibrary({ mediaType: isVideo ? 'video' : 'photo', quality: 0.85, selectionLimit: 1 });
+    const result = await launchImageLibrary({ mediaType: isVideo ? 'video' : 'photo', quality: 1, selectionLimit: 1 });
     if (result.didCancel) return null;
 
     const asset = result.assets?.[0];
@@ -473,7 +560,8 @@ export const useProfileController = (opts: { setAuth: (v: boolean) => void; setP
     setSaving(true);
 
     try {
-      const { type, data } = draftItem;
+      const type = draftItem.type as ItemType;
+      const data = draftItem.data ?? {};
       const baseMap: Record<ItemType, string | null> = {
         experience: ROUTES.profileItems.experiences,
         education: ROUTES.profileItems.educations,
@@ -688,52 +776,63 @@ export const useProfileController = (opts: { setAuth: (v: boolean) => void; setP
   };
 
   const submitWalletAction = async () => {
-    const amount = Number(walletForm.amount || 0);
-    const credits = Number(walletForm.credits || 0);
-    const points = Number(walletForm.points || 0);
+    const amountKisc = Number(walletForm.amount || 0);
+    const amountMicro = Number.isFinite(amountKisc) ? Math.round(amountKisc * MICROS_PER_KISC) : 0;
+    const mode = String(walletForm.mode || '').trim().toLowerCase();
 
     setSaving(true);
+    setLastWalletPaymentUrl('');
     let res: any = null;
 
-    if (walletForm.mode === 'deposit') {
-      const method = walletForm.provider === 'flutterwave' ? 'card' : 'mobilemoney';
-      res = await postRequest(ROUTES.wallet.deposit, { amount_usd: amount, provider: walletForm.provider, method });
-    } else if (walletForm.mode === 'cash_to_credits') {
-      res = await postRequest(ROUTES.wallet.convert, { direction: 'cash_to_credits', amount_usd: amount });
-    } else if (walletForm.mode === 'credits_to_cash') {
-      res = await postRequest(ROUTES.wallet.convert, { direction: 'credits_to_cash', credits });
-    } else if (walletForm.mode === 'points_to_credits') {
-      res = await postRequest(ROUTES.wallet.convert, { direction: 'points_to_credits', points });
-    } else if (walletForm.mode === 'transfer') {
-      res = await postRequest(ROUTES.wallet.transfer, {
-        recipient_id: walletForm.recipient,
-        amount_usd: amount > 0 ? amount : undefined,
-        credits: credits > 0 ? credits : undefined,
-      });
-    } else if (walletForm.mode === 'promo') {
-      res = await postRequest(ROUTES.wallet.redeem, { code: walletForm.promo });
+    if (!amountMicro || amountMicro < 1) {
+      setSaving(false);
+      Alert.alert('Wallet', 'Enter a valid KIS Coin amount.');
+      return;
     }
+
+    const isCredit =
+      mode === 'add_kisc' ||
+      mode === 'deposit' ||
+      mode === 'cash_to_credits' ||
+      mode === 'points_to_credits' ||
+      mode === 'promo';
+    const transactionType = isCredit ? 'credit' : 'debit';
+    const reference = String(walletForm.reference || `${mode || 'wallet'}:${Date.now()}`).trim();
+
+    if (!reference) {
+      setSaving(false);
+      Alert.alert('Wallet', 'Reference is required.');
+      return;
+    }
+
+    res = await postRequest(
+      ROUTES.healthOps.walletTransactions,
+      {
+        transaction_type: transactionType,
+        amount_micro: amountMicro,
+        reference,
+        metadata: {
+          source: 'profile_wallet',
+          mode,
+          recipient_id: mode === 'transfer' ? String(walletForm.recipient || '').trim() : undefined,
+        },
+      },
+      {
+        errorMessage: 'Unable to update KIS wallet.',
+      },
+    );
 
     setSaving(false);
 
     if (!res?.success) {
       const msg = res?.message || 'Action failed';
-      if (msg.includes('FLW_SECRET_KEY')) Alert.alert('Wallet', 'Flutterwave keys are not configured yet.');
-      else Alert.alert('Wallet', msg);
-      return;
-    }
-
-    const paymentUrl = res?.data?.payment_url;
-    if (paymentUrl) {
-      Alert.alert('Complete payment', 'Open the payment page to finish your top-up.', [
-        { text: 'Later', style: 'cancel' },
-        { text: 'Open', onPress: () => Linking.openURL(paymentUrl) },
-      ]);
-      closeSheet();
+      Alert.alert('Wallet', msg);
       return;
     }
 
     closeSheet();
+    loadKisWallet();
+    loadWalletLedger();
     loadProfile();
   };
 
@@ -758,6 +857,7 @@ export const useProfileController = (opts: { setAuth: (v: boolean) => void; setP
     profile,
     loading,
     walletLedger,
+    kisWallet,
     billingHistory,
     activeSheet,
     showCreatePartner,
@@ -767,6 +867,7 @@ export const useProfileController = (opts: { setAuth: (v: boolean) => void; setP
     saving,
     prefsDraft,
     walletForm,
+    lastWalletPaymentUrl,
     partnerActionId,
     broadcastProfiles,
 
@@ -811,6 +912,7 @@ export const useProfileController = (opts: { setAuth: (v: boolean) => void; setP
     updateBroadcastFeedEntry,
     deleteBroadcastFeedEntry,
     removeBroadcastFeedAttachment,
+    broadcastFeedEntry,
 
     // derived
     sectionList,

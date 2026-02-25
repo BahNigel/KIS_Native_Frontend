@@ -20,6 +20,10 @@ type Course = {
   price_amount?: string | null;
   price_currency?: string;
   lessons?: any[];
+  is_enrolled?: boolean;
+  enrollment_id?: string | null;
+  enrollment_status?: string | null;
+  enrollment_progress?: number | null;
 };
 
 export default function BibleLessonsPanel() {

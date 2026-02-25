@@ -22,6 +22,8 @@ export type PartnerOrganizationApp = {
   created_at?: string;
   updated_at?: string;
   visible_to?: string[];
+  badge_label?: string;
+  group?: string;
 };
 
 export default function usePartnerOrganizationApps(partnerId?: string | null) {

@@ -99,7 +99,7 @@ export const EditorCanvas: React.FC<Props> = ({
   filterMode,
 }) => {
   // transforms that apply to the image
-  const transformStyle: ViewStyle = {
+  const transformStyle: ImageStyle = {
     transform: [
       { rotate: `${rotation}deg` },
       { scaleX: flipH ? -scale : scale },

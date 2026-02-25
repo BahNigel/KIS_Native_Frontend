@@ -24,12 +24,54 @@ import {
   createMedicationOrder,
   createVitalSign,
   endTelemedicineSession,
-  runGroqTask,
   startTelemedicineSession,
   createFamilyProfile,
   createConsentRecord,
   createPatientMasterRecord,
+  createAppointment,
+  createTelemedicineSession,
+  fetchClinicalTasks,
+  createClinicalTask,
+  updateClinicalTask,
+  fetchEmergencyEscalations,
+  createEmergencyEscalation,
+  updateEmergencyEscalation,
+  fetchTriageRecords,
+  createTriageRecord,
+  fetchReferralRoutes,
+  createReferralRoute,
+  fetchClinicalEvents,
+  fetchCommandCenterOverview,
+  fetchInventoryItems,
+  createInventoryItem,
+  fetchDiagnosticOrders,
+  createDiagnosticOrder,
+  fetchImagingStudies,
+  createImagingStudy,
+  fetchAdherenceReminders,
+  createAdherenceReminder,
+  markReminderSent,
+  acknowledgeReminder,
+  fetchSupplyForecasts,
+  createSupplyForecast,
 } from '@/services/healthcareService';
+import {
+  fetchClinicalAnalyticsReports,
+  computeClinicalAnalyticsReports,
+  fetchRiskStratifications,
+  computeRiskStratification,
+  fetchOutcomeBenchmarks,
+  createOutcomeBenchmark,
+  fetchPatientSatisfactionScores,
+  createPatientSatisfactionScore,
+  fetchOutreachCampaigns,
+  createOutreachCampaign,
+  setOutreachCampaignStatus,
+  fetchWellnessChallenges,
+  createWellnessChallenge,
+  fetchHabitTrackingEntries,
+  createHabitTrackingEntry,
+} from '@/services/analyticsService';
 import {
   fetchHealthcareContext,
   setActiveMedicalProfile,
@@ -62,6 +104,34 @@ const INITIAL_CONSENT_FORM = {
   expires_at: '',
 };
 
+const INITIAL_SESSION_FORM = {
+  patientId: '',
+  scheduledAt: '',
+  notes: '',
+};
+
+const INITIAL_TASK_FORM = {
+  title: '',
+  description: '',
+  assignedTo: '',
+  dueAt: '',
+  priority: 'medium' as 'low' | 'medium' | 'high',
+};
+
+const INITIAL_ESCALATION_FORM = {
+  severity: 'medium' as 'low' | 'medium' | 'high' | 'critical',
+  summary: '',
+};
+
+const INITIAL_REFERRAL_FORM = {
+  toOrganization: '',
+  reason: '',
+};
+
+const INITIAL_TRIAGE_FORM = {
+  symptoms: '',
+};
+
 export default function HealthcareScreen() {
   const { palette, tokens } = useKISTheme();
   const styles = useMemo(() => makeStyles(tokens), [tokens]);
@@ -90,13 +160,9 @@ export default function HealthcareScreen() {
   const [vitalForm, setVitalForm] = useState({ vital_type: '', value: '', units: '', notes: '' });
   const [medSubmitting, setMedSubmitting] = useState(false);
   const [vitalSubmitting, setVitalSubmitting] = useState(false);
-  const [aiDoctorResult, setAiDoctorResult] = useState<string | null>(null);
-  const [aiDoctorLoading, setAiDoctorLoading] = useState(false);
   const [staffLoading, setStaffLoading] = useState(false);
   const [staffUpdateId, setStaffUpdateId] = useState<string | null>(null);
   const [staffShiftId, setStaffShiftId] = useState<string | null>(null);
-  const [aiStaffId, setAiStaffId] = useState<string | null>(null);
-  const [aiLoading, setAiLoading] = useState(false);
   const [triageResult, setTriageResult] = useState<string | null>(null);
   const [patientForm, setPatientForm] = useState({ ...INITIAL_PATIENT_FORM });
   const [familyForm, setFamilyForm] = useState({ ...INITIAL_FAMILY_FORM });
@@ -104,6 +170,117 @@ export default function HealthcareScreen() {
   const [patientSaving, setPatientSaving] = useState(false);
   const [familySaving, setFamilySaving] = useState(false);
   const [consentSaving, setConsentSaving] = useState(false);
+  const [sessionForm, setSessionForm] = useState({ ...INITIAL_SESSION_FORM });
+  const [sessionSubmitting, setSessionSubmitting] = useState(false);
+  const [sessionMessage, setSessionMessage] = useState<string | null>(null);
+  const selectedSessionPatient = useMemo(
+    () =>
+      sessionForm.patientId
+        ? patients.find((patient) => patient.id === sessionForm.patientId) ?? null
+        : null,
+    [patients, sessionForm.patientId],
+  );
+  const sessionPatientLabel = selectedSessionPatient
+    ? `${selectedSessionPatient.last_name}, ${selectedSessionPatient.first_name}`
+    : sessionForm.patientId && patientDetail?.id !== sessionForm.patientId
+    ? 'Loading patient details...'
+    : 'Not selected yet';
+  const [tasks, setTasks] = useState<any[]>([]);
+  const [taskForm, setTaskForm] = useState({ ...INITIAL_TASK_FORM });
+  const [taskSubmitting, setTaskSubmitting] = useState(false);
+  const [commandCenter, setCommandCenter] = useState<any | null>(null);
+  const [commandLoading, setCommandLoading] = useState(false);
+  const [escalations, setEscalations] = useState<any[]>([]);
+  const [escalationForm, setEscalationForm] = useState({ ...INITIAL_ESCALATION_FORM });
+  const [escalationSubmitting, setEscalationSubmitting] = useState(false);
+  const [referrals, setReferrals] = useState<any[]>([]);
+  const [referralForm, setReferralForm] = useState({ ...INITIAL_REFERRAL_FORM });
+  const [referralSubmitting, setReferralSubmitting] = useState(false);
+  const [events, setEvents] = useState<any[]>([]);
+  const [eventsLoading, setEventsLoading] = useState(false);
+  const [triageRecords, setTriageRecords] = useState<any[]>([]);
+  const [triageForm, setTriageForm] = useState({ ...INITIAL_TRIAGE_FORM });
+  const [triageSubmitting, setTriageSubmitting] = useState(false);
+  const [analyticsReports, setAnalyticsReports] = useState<any[]>([]);
+  const [analyticsLoading, setAnalyticsLoading] = useState(false);
+  const [riskAssessments, setRiskAssessments] = useState<any[]>([]);
+  const [riskLoading, setRiskLoading] = useState(false);
+  const [_outcomeBenchmarks, setOutcomeBenchmarks] = useState<any[]>([]);
+  const [outcomeForm, setOutcomeForm] = useState({
+    metric_name: '',
+    actual_value: '',
+    target_value: '',
+    period_start: '',
+    period_end: '',
+    notes: '',
+  });
+  const [satisfactionScores, setSatisfactionScores] = useState<any[]>([]);
+  const [satisfactionForm, setSatisfactionForm] = useState({
+    score: '',
+    channel: 'app',
+    comments: '',
+  });
+  const [outreachCampaigns, setOutreachCampaigns] = useState<any[]>([]);
+  const [outreachForm, setOutreachForm] = useState({
+    name: '',
+    channel: 'email',
+    target_population: '',
+    status: 'planned',
+  });
+  const [wellnessChallenges, setWellnessChallenges] = useState<any[]>([]);
+  const [challengeForm, setChallengeForm] = useState({
+    title: '',
+    goal: '',
+    start_date: '',
+    end_date: '',
+    participation_target: '',
+    description: '',
+  });
+  const [habitEntries, setHabitEntries] = useState<any[]>([]);
+  const [habitForm, setHabitForm] = useState({
+    challengeId: '',
+    habit_name: '',
+    progress_value: '',
+    notes: '',
+  });
+  const [inventoryItems, setInventoryItems] = useState<any[]>([]);
+  const [inventoryLoading, setInventoryLoading] = useState(false);
+  const [inventoryForm, setInventoryForm] = useState({
+    name: '',
+    category: '',
+    sku: '',
+    unit: '',
+    quantity_on_hand: '',
+    reorder_level: '',
+  });
+  const [diagnosticOrders, setDiagnosticOrders] = useState<any[]>([]);
+  const [diagnosticForm, setDiagnosticForm] = useState({
+    test_name: '',
+    specimen_collected_at: '',
+    status: 'ordered' as 'ordered' | 'processing' | 'completed' | 'cancelled',
+  });
+  const [imagingStudies, setImagingStudies] = useState<any[]>([]);
+  const [imagingForm, setImagingForm] = useState({
+    modality: '',
+    body_region: '',
+    scheduled_at: '',
+    status: 'scheduled' as 'scheduled' | 'in_progress' | 'completed' | 'cancelled',
+  });
+  const [adherenceReminders, setAdherenceReminders] = useState<any[]>([]);
+  const [reminderForm, setReminderForm] = useState({
+    scheduled_at: '',
+    channel: 'sms',
+    notes: '',
+  });
+  const [remindersLoading, setRemindersLoading] = useState(false);
+  const [supplyForecasts, setSupplyForecasts] = useState<any[]>([]);
+  const [forecastForm, setForecastForm] = useState({
+    category: '',
+    period_start: '',
+    period_end: '',
+    predicted_usage: '',
+  });
+  const [forecastLoading, setForecastLoading] = useState(false);
 
   const loadContext = useCallback(async () => {
     setContextLoading(true);
@@ -251,6 +428,314 @@ export default function HealthcareScreen() {
     Alert.alert('Staff', res.message || 'Unable to load staff directory.');
   }, [medicalContext?.active_profile_id]);
 
+  const loadClinicalTasks = useCallback(async () => {
+    const params = patientDetail ? { patient: patientDetail.id } : undefined;
+    const res = await fetchClinicalTasks(params);
+    if (res.success) {
+      const rows = Array.isArray(res.data)
+        ? res.data
+        : Array.isArray(res.data?.results)
+        ? res.data.results
+        : [];
+      setTasks(rows);
+      return;
+    }
+    Alert.alert('Tasks', res.message || 'Unable to load clinical tasks.');
+  }, [patientDetail]);
+
+  const loadEmergencyEscalations = useCallback(async () => {
+    const params = patientDetail ? { patient: patientDetail.id } : undefined;
+    const res = await fetchEmergencyEscalations(params);
+    if (res.success) {
+      const rows = Array.isArray(res.data)
+        ? res.data
+        : Array.isArray(res.data?.results)
+        ? res.data.results
+        : [];
+      setEscalations(rows);
+      return;
+    }
+    Alert.alert('Escalations', res.message || 'Unable to load escalations.');
+  }, [patientDetail]);
+
+  const loadReferrals = useCallback(async () => {
+    const params = patientDetail ? { patient: patientDetail.id } : undefined;
+    const res = await fetchReferralRoutes(params);
+    if (res.success) {
+      const rows = Array.isArray(res.data)
+        ? res.data
+        : Array.isArray(res.data?.results)
+        ? res.data.results
+        : [];
+      setReferrals(rows);
+      return;
+    }
+    Alert.alert('Referrals', res.message || 'Unable to load referrals.');
+  }, [patientDetail]);
+
+  const loadEvents = useCallback(async () => {
+    setEventsLoading(true);
+    const params = patientDetail ? { patient: patientDetail.id } : undefined;
+    const res = await fetchClinicalEvents(params);
+    setEventsLoading(false);
+    if (res.success) {
+      const rows = Array.isArray(res.data)
+        ? res.data
+        : Array.isArray(res.data?.results)
+        ? res.data.results
+        : [];
+      setEvents(rows);
+      return;
+    }
+    Alert.alert('Events', res.message || 'Unable to load clinical events.');
+  }, [patientDetail]);
+
+  const loadCommandCenter = useCallback(async () => {
+    setCommandLoading(true);
+    const res = await fetchCommandCenterOverview();
+    setCommandLoading(false);
+    if (res.success) {
+      setCommandCenter(res.data);
+      return;
+    }
+    Alert.alert('Command center', res.message || 'Unable to load dashboard.');
+  }, []);
+
+  const loadInventoryItems = useCallback(async () => {
+    if (!medicalContext?.active_profile_id) {
+      setInventoryItems([]);
+      return;
+    }
+    setInventoryLoading(true);
+    const res = await fetchInventoryItems({ profile: medicalContext.active_profile_id });
+    setInventoryLoading(false);
+    if (res.success) {
+      const rows = Array.isArray(res.data)
+        ? res.data
+        : Array.isArray(res.data?.results)
+        ? res.data.results
+        : [];
+      setInventoryItems(rows);
+      return;
+    }
+    Alert.alert('Inventory', res.message || 'Unable to load inventory.');
+  }, [medicalContext?.active_profile_id]);
+
+  const loadDiagnosticOrders = useCallback(async () => {
+    const params = patientDetail ? { patient: patientDetail.id } : undefined;
+    const res = await fetchDiagnosticOrders(params);
+    if (res.success) {
+      const rows = Array.isArray(res.data)
+        ? res.data
+        : Array.isArray(res.data?.results)
+        ? res.data.results
+        : [];
+      setDiagnosticOrders(rows);
+      return;
+    }
+    Alert.alert('Diagnostics', res.message || 'Unable to load orders.');
+  }, [patientDetail]);
+
+  const loadImagingStudies = useCallback(async () => {
+    const params = patientDetail ? { patient: patientDetail.id } : undefined;
+    const res = await fetchImagingStudies(params);
+    if (res.success) {
+      const rows = Array.isArray(res.data)
+        ? res.data
+        : Array.isArray(res.data?.results)
+        ? res.data.results
+        : [];
+      setImagingStudies(rows);
+      return;
+    }
+    Alert.alert('Imaging', res.message || 'Unable to load studies.');
+  }, [patientDetail]);
+
+  const loadAdherenceReminders = useCallback(async () => {
+    if (!patientDetail) {
+      setAdherenceReminders([]);
+      return;
+    }
+    setRemindersLoading(true);
+    const res = await fetchAdherenceReminders({ patient: patientDetail.id });
+    setRemindersLoading(false);
+    if (res.success) {
+      const rows = Array.isArray(res.data)
+        ? res.data
+        : Array.isArray(res.data?.results)
+        ? res.data.results
+        : [];
+      setAdherenceReminders(rows);
+      return;
+    }
+    Alert.alert('Adherence', res.message || 'Unable to load reminders.');
+  }, [patientDetail]);
+
+  const loadSupplyForecasts = useCallback(async () => {
+    if (!medicalContext?.active_profile_id) {
+      setSupplyForecasts([]);
+      return;
+    }
+    setForecastLoading(true);
+    const res = await fetchSupplyForecasts({ profile: medicalContext.active_profile_id });
+    setForecastLoading(false);
+    if (res.success) {
+      const rows = Array.isArray(res.data)
+        ? res.data
+        : Array.isArray(res.data?.results)
+        ? res.data.results
+        : [];
+      setSupplyForecasts(rows);
+      return;
+    }
+    Alert.alert('Forecasts', res.message || 'Unable to load supply plans.');
+  }, [medicalContext?.active_profile_id]);
+
+  const loadAnalyticsReports = useCallback(async () => {
+    if (!medicalContext?.active_profile_id) {
+      setAnalyticsReports([]);
+      return;
+    }
+    setAnalyticsLoading(true);
+    const res = await fetchClinicalAnalyticsReports({ profile: medicalContext.active_profile_id });
+    setAnalyticsLoading(false);
+    if (res.success) {
+      const rows = Array.isArray(res.data)
+        ? res.data
+        : Array.isArray(res.data?.results)
+        ? res.data.results
+        : [];
+      setAnalyticsReports(rows);
+      return;
+    }
+    Alert.alert('Analytics', res.message || 'Unable to load analytics reports.');
+  }, [medicalContext?.active_profile_id]);
+
+  const loadRiskAssessments = useCallback(async () => {
+    if (!patientDetail) {
+      setRiskAssessments([]);
+      return;
+    }
+    setRiskLoading(true);
+    const res = await fetchRiskStratifications({ patient: patientDetail.id });
+    setRiskLoading(false);
+    if (res.success) {
+      const rows = Array.isArray(res.data)
+        ? res.data
+        : Array.isArray(res.data?.results)
+        ? res.data.results
+        : [];
+      setRiskAssessments(rows);
+      return;
+    }
+    Alert.alert('Risk', res.message || 'Unable to load risk data.');
+  }, [patientDetail]);
+
+  const loadOutcomeBenchmarks = useCallback(async () => {
+    if (!medicalContext?.active_profile_id) {
+      setOutcomeBenchmarks([]);
+      return;
+    }
+    const res = await fetchOutcomeBenchmarks({ profile: medicalContext.active_profile_id });
+    if (res.success) {
+      const rows = Array.isArray(res.data)
+        ? res.data
+        : Array.isArray(res.data?.results)
+        ? res.data.results
+        : [];
+      setOutcomeBenchmarks(rows);
+      return;
+    }
+    Alert.alert('Outcomes', res.message || 'Unable to load benchmarks.');
+  }, [medicalContext?.active_profile_id]);
+
+  const loadSatisfactionScores = useCallback(async () => {
+    if (!patientDetail) {
+      setSatisfactionScores([]);
+      return;
+    }
+    const res = await fetchPatientSatisfactionScores({ patient: patientDetail.id });
+    if (res.success) {
+      const rows = Array.isArray(res.data)
+        ? res.data
+        : Array.isArray(res.data?.results)
+        ? res.data.results
+        : [];
+      setSatisfactionScores(rows);
+      return;
+    }
+    Alert.alert('Satisfaction', res.message || 'Unable to load satisfaction scores.');
+  }, [patientDetail]);
+
+  const loadOutreachCampaigns = useCallback(async () => {
+    if (!medicalContext?.active_profile_id) {
+      setOutreachCampaigns([]);
+      return;
+    }
+    const res = await fetchOutreachCampaigns({ profile: medicalContext.active_profile_id });
+    if (res.success) {
+      const rows = Array.isArray(res.data)
+        ? res.data
+        : Array.isArray(res.data?.results)
+        ? res.data.results
+        : [];
+      setOutreachCampaigns(rows);
+      return;
+    }
+    Alert.alert('Outreach', res.message || 'Unable to load campaigns.');
+  }, [medicalContext?.active_profile_id]);
+
+  const loadWellnessChallenges = useCallback(async () => {
+    if (!medicalContext?.active_profile_id) {
+      setWellnessChallenges([]);
+      return;
+    }
+    const res = await fetchWellnessChallenges({ profile: medicalContext.active_profile_id });
+    if (res.success) {
+      const rows = Array.isArray(res.data)
+        ? res.data
+        : Array.isArray(res.data?.results)
+        ? res.data.results
+        : [];
+      setWellnessChallenges(rows);
+      return;
+    }
+    Alert.alert('Wellness', res.message || 'Unable to load challenges.');
+  }, [medicalContext?.active_profile_id]);
+
+  const loadHabitEntries = useCallback(async () => {
+    if (!patientDetail) {
+      setHabitEntries([]);
+      return;
+    }
+    const res = await fetchHabitTrackingEntries({ patient: patientDetail.id });
+    if (res.success) {
+      const rows = Array.isArray(res.data)
+        ? res.data
+        : Array.isArray(res.data?.results)
+        ? res.data.results
+        : [];
+      setHabitEntries(rows);
+      return;
+    }
+    Alert.alert('Habits', res.message || 'Unable to load habits.');
+  }, [patientDetail]);
+
+  const loadTriageRecords = useCallback(async () => {
+    const params = patientDetail ? { patient: patientDetail.id } : undefined;
+    const res = await fetchTriageRecords(params);
+    if (res.success) {
+      const rows = Array.isArray(res.data)
+        ? res.data
+        : Array.isArray(res.data?.results)
+        ? res.data.results
+        : [];
+      setTriageRecords(rows);
+      return;
+    }
+    Alert.alert('Triage', res.message || 'Unable to load triage history.');
+  }, [patientDetail]);
+
   const loadPatientDetail = useCallback(
     async (patientId: string) => {
       const res = await fetchPatientSummary(patientId);
@@ -274,6 +759,46 @@ export default function HealthcareScreen() {
     loadPatientRecords();
   }, [loadContext, loadTeleSessions, loadPatientRecords]);
 
+  useEffect(() => {
+    loadClinicalTasks();
+    loadEmergencyEscalations();
+    loadReferrals();
+    loadEvents();
+    loadCommandCenter();
+    loadInventoryItems();
+    loadDiagnosticOrders();
+    loadImagingStudies();
+    loadAdherenceReminders();
+    loadSupplyForecasts();
+    loadAnalyticsReports();
+    loadRiskAssessments();
+    loadOutcomeBenchmarks();
+    loadSatisfactionScores();
+    loadOutreachCampaigns();
+    loadWellnessChallenges();
+    loadHabitEntries();
+    loadTriageRecords();
+  }, [
+    loadClinicalTasks,
+    loadEmergencyEscalations,
+    loadReferrals,
+    loadEvents,
+    loadCommandCenter,
+    loadInventoryItems,
+    loadDiagnosticOrders,
+    loadImagingStudies,
+    loadAdherenceReminders,
+    loadSupplyForecasts,
+    loadAnalyticsReports,
+    loadRiskAssessments,
+    loadOutcomeBenchmarks,
+    loadSatisfactionScores,
+    loadOutreachCampaigns,
+    loadWellnessChallenges,
+    loadHabitEntries,
+    loadTriageRecords,
+  ]);
+
   const handleSearchSubmit = useCallback(() => {
     loadPatientRecords(searchTerm);
   }, [loadPatientRecords, searchTerm]);
@@ -283,6 +808,7 @@ export default function HealthcareScreen() {
       setPatientDetailLoading(true);
       await loadPatientDetail(patientId);
       setPatientDetailLoading(false);
+      setSessionForm((prev) => ({ ...prev, patientId }));
     },
     [loadPatientDetail],
   );
@@ -303,24 +829,241 @@ export default function HealthcareScreen() {
     [loadTeleSessions],
   );
 
-  const handleRunTriage = useCallback(async () => {
-    setAiLoading(true);
-    const payload = {
-      prompt: 'Patient reports cough, fever, and mild shortness of breath.',
-      mode: 'triage',
-      function_call: {
-        name: 'triage_prepare',
-        payload: { symptoms: ['cough', 'fever', 'shortness of breath'] },
-      },
-    };
-    const res = await runGroqTask(payload);
-    setAiLoading(false);
-    if (!res.success) {
-      Alert.alert('AI Triage', res.message || 'Unable to reach Groq.');
+  const handleSessionFormChange = useCallback((field: keyof typeof sessionForm, value: string) => {
+    setSessionForm((prev) => ({ ...prev, [field]: value }));
+  }, []);
+
+  const handleScheduleSession = useCallback(async () => {
+    const patientId = sessionForm.patientId || patientDetail?.id;
+    if (!patientId) {
+      Alert.alert('Telemedicine', 'Select or enter a patient to continue.');
       return;
     }
-    setTriageResult(JSON.stringify(res.data.result ?? res.data, null, 2));
-  }, []);
+    if (!sessionForm.scheduledAt.trim()) {
+      Alert.alert('Telemedicine', 'Provide a date/time for the session (ISO or YYYY-MM-DDTHH:mm).');
+      return;
+    }
+    setSessionSubmitting(true);
+    try {
+      const appointmentPayload = {
+        patient: patientId,
+        profile: medicalContext?.active_profile_id,
+        scheduled_at: sessionForm.scheduledAt,
+        status: 'scheduled',
+      };
+      const appointmentRes = await createAppointment(appointmentPayload);
+      if (!appointmentRes.success) {
+        throw new Error(appointmentRes.message || 'Unable to create appointment.');
+      }
+      const appointment = appointmentRes.data;
+      const sessionPayload = {
+        patient: patientId,
+        profile: medicalContext?.active_profile_id,
+        appointment: appointment.id,
+        notes: sessionForm.notes,
+      };
+      const sessionRes = await createTelemedicineSession(sessionPayload);
+      if (!sessionRes.success) {
+        throw new Error(sessionRes.message || 'Unable to schedule telemedicine session.');
+      }
+      setSessionMessage(
+        `Telemedicine session booked for ${appointment.scheduled_at || sessionForm.scheduledAt}.`,
+      );
+      setSessionForm({ ...INITIAL_SESSION_FORM, patientId });
+      loadTeleSessions();
+    } catch (error: any) {
+      Alert.alert('Telemedicine', error?.message || 'Unable to schedule session.');
+    } finally {
+      setSessionSubmitting(false);
+    }
+  }, [sessionForm, medicalContext?.active_profile_id, patientDetail, loadTeleSessions]);
+
+  const handleTaskFormChange = useCallback(
+    (field: keyof typeof taskForm, value: string) => {
+      setTaskForm((prev) => ({ ...prev, [field]: value }));
+    },
+    [],
+  );
+
+  const handleAssignTaskToStaff = useCallback(
+    (userId: string) => {
+      setTaskForm((prev) => ({ ...prev, assignedTo: userId }));
+    },
+    [],
+  );
+
+  const handleCreateClinicalTask = useCallback(async () => {
+    if (!patientDetail) {
+      Alert.alert('Tasks', 'Select a patient first.');
+      return;
+    }
+    if (!taskForm.title.trim()) {
+      Alert.alert('Tasks', 'Provide a task title.');
+      return;
+    }
+    setTaskSubmitting(true);
+    try {
+      const payload = {
+        patient: patientDetail.id,
+        title: taskForm.title.trim(),
+        description: taskForm.description.trim(),
+        assigned_to: taskForm.assignedTo || null,
+        priority: taskForm.priority,
+        due_at: taskForm.dueAt || undefined,
+      };
+      const res = await createClinicalTask(payload);
+      if (res.success) {
+        setTaskForm({ ...INITIAL_TASK_FORM, assignedTo: taskForm.assignedTo });
+        loadClinicalTasks();
+        loadCommandCenter();
+        Alert.alert('Tasks', 'Task created.');
+        return;
+      }
+      throw new Error(res.message || 'Unable to create task.');
+    } catch (error: any) {
+      Alert.alert('Tasks', error?.message || 'Unable to create task.');
+    } finally {
+      setTaskSubmitting(false);
+    }
+  }, [taskForm, patientDetail, loadClinicalTasks, loadCommandCenter]);
+
+  const handleCompleteTask = useCallback(
+    async (taskId: string) => {
+      const res = await updateClinicalTask(taskId, { status: 'completed' });
+      if (res.success) {
+        loadClinicalTasks();
+        loadCommandCenter();
+        return;
+      }
+      Alert.alert('Tasks', res.message || 'Unable to close task.');
+    },
+    [loadClinicalTasks, loadCommandCenter],
+  );
+
+  const handleEscalationFormChange = useCallback(
+    (field: keyof typeof escalationForm, value: string) => {
+      setEscalationForm((prev) => ({ ...prev, [field]: value }));
+    },
+    [],
+  );
+
+  const handleCreateEscalation = useCallback(async () => {
+    if (!patientDetail) {
+      Alert.alert('Escalation', 'Select a patient first.');
+      return;
+    }
+    if (!escalationForm.summary.trim()) {
+      Alert.alert('Escalation', 'Describe the issue.');
+      return;
+    }
+    setEscalationSubmitting(true);
+    try {
+      const payload = {
+        patient: patientDetail.id,
+        severity: escalationForm.severity,
+        summary: escalationForm.summary.trim(),
+        metadata: { triggered_from: 'command_center' },
+      };
+      const res = await createEmergencyEscalation(payload);
+      if (res.success) {
+        setEscalationForm({ ...INITIAL_ESCALATION_FORM });
+        loadEmergencyEscalations();
+        loadCommandCenter();
+        Alert.alert('Escalation', 'Emergency escalation logged.');
+        return;
+      }
+      throw new Error(res.message || 'Unable to create escalation.');
+    } catch (error: any) {
+      Alert.alert('Escalation', error?.message || 'Unable to create escalation.');
+    } finally {
+      setEscalationSubmitting(false);
+    }
+  }, [escalationForm, patientDetail, loadEmergencyEscalations, loadCommandCenter]);
+
+  const handleResolveEscalation = useCallback(
+    async (escalationId: string) => {
+      const res = await updateEmergencyEscalation(escalationId, { status: 'resolved' });
+      if (res.success) {
+        loadEmergencyEscalations();
+        loadCommandCenter();
+        return;
+      }
+      Alert.alert('Escalation', res.message || 'Unable to resolve escalation.');
+    },
+    [loadEmergencyEscalations, loadCommandCenter],
+  );
+
+  const handleReferralFormChange = useCallback(
+    (field: keyof typeof referralForm, value: string) => {
+      setReferralForm((prev) => ({ ...prev, [field]: value }));
+    },
+    [],
+  );
+
+  const handleCreateReferral = useCallback(async () => {
+    if (!patientDetail) {
+      Alert.alert('Referral', 'Select a patient first.');
+      return;
+    }
+    if (!referralForm.reason.trim()) {
+      Alert.alert('Referral', 'Provide a referral reason.');
+      return;
+    }
+    setReferralSubmitting(true);
+    try {
+      const payload = {
+        patient: patientDetail.id,
+        reason: referralForm.reason.trim(),
+        from_organization: medicalContext?.active_organization_id,
+        metadata: { to_org_name: referralForm.toOrganization.trim() },
+      };
+      const res = await createReferralRoute(payload);
+      if (res.success) {
+        setReferralForm({ ...INITIAL_REFERRAL_FORM });
+        loadReferrals();
+        loadCommandCenter();
+        Alert.alert('Referral', 'Referral created.');
+        return;
+      }
+      throw new Error(res.message || 'Unable to create referral.');
+    } catch (error: any) {
+      Alert.alert('Referral', error?.message || 'Unable to create referral.');
+    } finally {
+      setReferralSubmitting(false);
+    }
+  }, [referralForm, patientDetail, medicalContext?.active_organization_id, loadReferrals, loadCommandCenter]);
+
+  const handleRunTriage = useCallback(async () => {
+    if (!patientDetail) {
+      Alert.alert('Triage', 'Select a patient to run triage.');
+      return;
+    }
+    const symptoms = (triageForm.symptoms || '')
+      .split(',')
+      .map((item) => item.trim())
+      .filter(Boolean);
+    if (!symptoms.length) {
+      Alert.alert('Triage', 'Provide symptom keywords separated by commas.');
+      return;
+    }
+    setTriageSubmitting(true);
+    try {
+      const payload = { patient: patientDetail.id, symptoms };
+      const res = await createTriageRecord(payload);
+      if (res.success) {
+        setTriageResult(JSON.stringify(res.data, null, 2));
+        setTriageForm({ ...INITIAL_TRIAGE_FORM });
+        loadTriageRecords();
+        Alert.alert('Triage', 'Triage record saved.');
+        return;
+      }
+      throw new Error(res.message || 'Unable to run triage.');
+    } catch (error: any) {
+      Alert.alert('Triage', error?.message || 'Unable to run triage.');
+    } finally {
+      setTriageSubmitting(false);
+    }
+  }, [patientDetail, triageForm, loadTriageRecords]);
 
   const handleCreatePatient = useCallback(async () => {
     const { mrn, first_name, last_name } = patientForm;
@@ -480,45 +1223,6 @@ export default function HealthcareScreen() {
     }
   }, [vitalForm, patientDetail, loadPatientTimeline]);
 
-  const handleDoctorAiInsight = useCallback(async () => {
-    if (!patientDetail) {
-      Alert.alert('AI doctor', 'Select a patient to generate recommendations.');
-      return;
-    }
-    setAiDoctorLoading(true);
-    try {
-      const interactions = timelineEntries.slice(0, 6).map((entry) => ({
-        type: entry.type,
-        label: entry.label,
-        summary: entry.summary,
-        timestamp: entry.timestamp,
-      }));
-      const payload = {
-        prompt: `Provide a clinical overview for ${patientDetail.first_name} ${patientDetail.last_name} (${patientDetail.mrn}).`,
-        mode: 'clinical',
-        function_call: {
-          name: 'interact_schema',
-          payload: {
-            patientId: patientDetail.id,
-            interactions,
-          },
-        },
-        tenant_id: patientDetail?.tenant_id ?? undefined,
-      };
-      const res = await runGroqTask(payload);
-      if (res.success) {
-        const content = res.data?.result ?? res.data;
-        setAiDoctorResult(typeof content === 'string' ? content : JSON.stringify(content, null, 2));
-        return;
-      }
-      Alert.alert('AI doctor', res.message || 'Unable to reach Groq.');
-    } catch (error: any) {
-      Alert.alert('AI doctor', error?.message || 'Unable to reach Groq.');
-    } finally {
-      setAiDoctorLoading(false);
-    }
-  }, [patientDetail, timelineEntries]);
-
 
   const handleUpdateStaffRole = useCallback(
     async (staffId: string, payload: { role?: string; scope?: string }) => {
@@ -550,35 +1254,201 @@ export default function HealthcareScreen() {
     [loadStaffProfiles],
   );
 
-  const handleStaffAiReview = useCallback(
-    async (staff: any) => {
-      setAiStaffId(staff.id);
+  const handleRefreshAnalyticsReports = useCallback(async () => {
+    if (!medicalContext?.active_profile_id) {
+      Alert.alert('Analytics', 'Activate a profile to refresh reports.');
+      return;
+    }
+    setAnalyticsLoading(true);
+    const res = await computeClinicalAnalyticsReports(medicalContext.active_profile_id);
+    setAnalyticsLoading(false);
+    if (res.success) {
+      await loadAnalyticsReports();
+      Alert.alert('Analytics', 'Reports refresh queued.');
+      return;
+    }
+    Alert.alert('Analytics', res.message || 'Unable to refresh reports.');
+  }, [medicalContext?.active_profile_id, loadAnalyticsReports]);
+
+  const handleComputeRisk = useCallback(async () => {
+    setRiskLoading(true);
+    const res = await computeRiskStratification();
+    setRiskLoading(false);
+    if (res.success) {
+      await loadRiskAssessments();
+      Alert.alert('Risk', 'Risk stratification queued.');
+      return;
+    }
+    Alert.alert('Risk', res.message || 'Unable to compute risk.');
+  }, [loadRiskAssessments]);
+
+  const handleCreateOutcomeBenchmark = useCallback(async () => {
+    if (!medicalContext?.active_profile_id) {
+      Alert.alert('Outcomes', 'Activate a profile first.');
+      return;
+    }
+    if (!outcomeForm.metric_name.trim() || !outcomeForm.period_start || !outcomeForm.period_end) {
+      Alert.alert('Outcomes', 'Metric name and period are required.');
+      return;
+    }
+    const payload = {
+      profile: medicalContext.active_profile_id,
+      metric_name: outcomeForm.metric_name.trim(),
+      actual_value: parseFloat(outcomeForm.actual_value) || 0,
+      target_value: parseFloat(outcomeForm.target_value) || 0,
+      period_start: outcomeForm.period_start,
+      period_end: outcomeForm.period_end,
+      notes: outcomeForm.notes.trim(),
+    };
+    const res = await createOutcomeBenchmark(payload);
+    if (res.success) {
+      setOutcomeForm({
+        metric_name: '',
+        actual_value: '',
+        target_value: '',
+        period_start: '',
+        period_end: '',
+        notes: '',
+      });
+      await loadOutcomeBenchmarks();
+      Alert.alert('Outcomes', 'Benchmark saved.');
+      return;
+    }
+    Alert.alert('Outcomes', res.message || 'Unable to save benchmark.');
+  }, [medicalContext?.active_profile_id, outcomeForm, loadOutcomeBenchmarks]);
+
+  const handleRecordSatisfactionScore = useCallback(async () => {
+    if (!patientDetail) {
+      Alert.alert('Satisfaction', 'Select a patient first.');
+      return;
+    }
+    if (!satisfactionForm.score) {
+      Alert.alert('Satisfaction', 'Score is required.');
+      return;
+    }
+    const payload = {
+      patient: patientDetail.id,
+      score: Number(satisfactionForm.score),
+      channel: satisfactionForm.channel,
+      comments: satisfactionForm.comments.trim(),
+      profile: medicalContext?.active_profile_id ?? undefined,
+    };
+    const res = await createPatientSatisfactionScore(payload);
+    if (res.success) {
+      setSatisfactionForm((prev) => ({ ...prev, score: '', comments: '' }));
+      await loadSatisfactionScores();
+      Alert.alert('Satisfaction', 'Score recorded.');
+      return;
+    }
+    Alert.alert('Satisfaction', res.message || 'Unable to record score.');
+  }, [patientDetail, satisfactionForm, medicalContext?.active_profile_id, loadSatisfactionScores]);
+
+  const handleCreateOutreachCampaign = useCallback(async () => {
+    if (!medicalContext?.active_profile_id) {
+      Alert.alert('Outreach', 'Activate a profile first.');
+      return;
+    }
+    if (!outreachForm.name.trim()) {
+      Alert.alert('Outreach', 'Name is required.');
+      return;
+    }
+    let targetPopulation = {};
+    if (outreachForm.target_population.trim()) {
       try {
-        const prompt = `Review the credential highlights for ${staff.role || 'staff member'} and note any license counts (${(staff.licenses || []).length}).`;
-        const res = await runGroqTask({
-          prompt,
-          mode: 'clinical',
-          function_call: {
-            name: 'staff_review',
-            payload: {
-              staffId: staff.id,
-              role: staff.role,
-            },
-          },
-        });
-        if (!res.success) {
-          throw new Error(res.message || 'Groq review failed.');
-        }
-        const summary = res.data?.result ?? res.data?.response ?? 'AI review complete.';
-        Alert.alert('AI staff review', typeof summary === 'string' ? summary : JSON.stringify(summary, null, 2));
-      } catch (error: any) {
-        Alert.alert('AI review', error?.message || 'Unable to run AI assistant.');
-      } finally {
-        setAiStaffId(null);
+        targetPopulation = JSON.parse(outreachForm.target_population);
+      } catch {
+        targetPopulation = { raw: outreachForm.target_population.trim() };
       }
+    }
+    const payload = {
+      profile: medicalContext.active_profile_id,
+      name: outreachForm.name.trim(),
+      channel: outreachForm.channel,
+      target_population: targetPopulation,
+      status: outreachForm.status,
+    };
+    const res = await createOutreachCampaign(payload);
+    if (res.success) {
+      setOutreachForm({ name: '', channel: 'email', target_population: '', status: 'planned' });
+      await loadOutreachCampaigns();
+      Alert.alert('Outreach', 'Campaign created.');
+      return;
+    }
+    Alert.alert('Outreach', res.message || 'Unable to create campaign.');
+  }, [medicalContext?.active_profile_id, outreachForm, loadOutreachCampaigns]);
+
+  const handleUpdateCampaignStatus = useCallback(
+    async (campaignId: string, status: string) => {
+      const res = await setOutreachCampaignStatus(campaignId, status);
+      if (res.success) {
+        await loadOutreachCampaigns();
+        return;
+      }
+      Alert.alert('Outreach', res.message || 'Unable to update status.');
     },
-    [],
+    [loadOutreachCampaigns],
   );
+
+  const handleCreateWellnessChallenge = useCallback(async () => {
+    if (!medicalContext?.active_profile_id) {
+      Alert.alert('Wellness', 'Activate a profile first.');
+      return;
+    }
+    if (!challengeForm.title.trim() || !challengeForm.start_date || !challengeForm.end_date) {
+      Alert.alert('Wellness', 'Title and dates are required.');
+      return;
+    }
+    const payload = {
+      profile: medicalContext.active_profile_id,
+      title: challengeForm.title.trim(),
+      description: challengeForm.description.trim(),
+      goal: challengeForm.goal.trim(),
+      start_date: challengeForm.start_date,
+      end_date: challengeForm.end_date,
+      participation_target: parseInt(challengeForm.participation_target, 10) || 0,
+    };
+    const res = await createWellnessChallenge(payload);
+    if (res.success) {
+      setChallengeForm({
+        title: '',
+        goal: '',
+        start_date: '',
+        end_date: '',
+        participation_target: '',
+        description: '',
+      });
+      await loadWellnessChallenges();
+      Alert.alert('Wellness', 'Challenge saved.');
+      return;
+    }
+    Alert.alert('Wellness', res.message || 'Unable to save challenge.');
+  }, [medicalContext?.active_profile_id, challengeForm, loadWellnessChallenges]);
+
+  const handleLogHabitEntry = useCallback(async () => {
+    if (!patientDetail) {
+      Alert.alert('Habits', 'Select a patient first.');
+      return;
+    }
+    if (!habitForm.challengeId || !habitForm.habit_name.trim()) {
+      Alert.alert('Habits', 'Select a challenge and habit.');
+      return;
+    }
+    const payload = {
+      patient: patientDetail.id,
+      challenge: habitForm.challengeId,
+      habit_name: habitForm.habit_name.trim(),
+      progress_value: parseFloat(habitForm.progress_value) || 0,
+      notes: habitForm.notes.trim(),
+    };
+    const res = await createHabitTrackingEntry(payload);
+    if (res.success) {
+      setHabitForm({ challengeId: '', habit_name: '', progress_value: '', notes: '' });
+      await loadHabitEntries();
+      Alert.alert('Habits', 'Entry logged.');
+      return;
+    }
+    Alert.alert('Habits', res.message || 'Unable to log entry.');
+  }, [patientDetail, habitForm, loadHabitEntries]);
 
   const handleProfileSelect = useCallback(
     async (profileId: string) => {
@@ -591,6 +1461,182 @@ export default function HealthcareScreen() {
     },
     [loadContext],
   );
+
+  const handleCreateInventoryItem = useCallback(async () => {
+    if (!medicalContext?.active_profile_id || !medicalContext?.active_organization_id) {
+      Alert.alert('Inventory', 'Activate a profile to track inventory.');
+      return;
+    }
+    if (!inventoryForm.name.trim()) {
+      Alert.alert('Inventory', 'Item name is required.');
+      return;
+    }
+    setInventoryLoading(true);
+    try {
+      const payload = {
+        profile: medicalContext.active_profile_id,
+        organization: medicalContext.active_organization_id,
+        name: inventoryForm.name.trim(),
+        category: inventoryForm.category.trim(),
+        sku: inventoryForm.sku.trim(),
+        unit: inventoryForm.unit.trim() || 'unit',
+        quantity_on_hand: parseFloat(inventoryForm.quantity_on_hand) || 0,
+        reorder_level: parseFloat(inventoryForm.reorder_level) || 0,
+      };
+      const res = await createInventoryItem(payload);
+      if (res.success) {
+        setInventoryForm({
+          name: '',
+          category: '',
+          sku: '',
+          unit: '',
+          quantity_on_hand: '',
+          reorder_level: '',
+        });
+        Alert.alert('Inventory', 'Item added.');
+        loadInventoryItems();
+        return;
+      }
+      Alert.alert('Inventory', res.message || 'Unable to save item.');
+    } catch (error: any) {
+      Alert.alert('Inventory', error?.message || 'Unable to save item.');
+    } finally {
+      setInventoryLoading(false);
+    }
+  }, [inventoryForm, medicalContext, loadInventoryItems]);
+
+  const handleCreateDiagnosticOrder = useCallback(async () => {
+    if (!patientDetail) {
+      Alert.alert('Diagnostics', 'Select a patient first.');
+      return;
+    }
+    if (!diagnosticForm.test_name.trim()) {
+      Alert.alert('Diagnostics', 'Test name is required.');
+      return;
+    }
+    const payload = {
+      patient: patientDetail.id,
+      test_name: diagnosticForm.test_name.trim(),
+      status: diagnosticForm.status,
+      specimen_collected_at: diagnosticForm.specimen_collected_at || undefined,
+    };
+    const res = await createDiagnosticOrder(payload);
+    if (res.success) {
+      setDiagnosticForm({ test_name: '', specimen_collected_at: '', status: 'ordered' });
+      Alert.alert('Diagnostics', 'Order created.');
+      loadDiagnosticOrders();
+      return;
+    }
+    Alert.alert('Diagnostics', res.message || 'Unable to create order.');
+  }, [patientDetail, diagnosticForm, loadDiagnosticOrders]);
+
+  const handleCreateImagingStudy = useCallback(async () => {
+    if (!patientDetail) {
+      Alert.alert('Imaging', 'Select a patient first.');
+      return;
+    }
+    if (!imagingForm.modality.trim()) {
+      Alert.alert('Imaging', 'Modality is required.');
+      return;
+    }
+    const payload = {
+      patient: patientDetail.id,
+      modality: imagingForm.modality.trim(),
+      body_region: imagingForm.body_region.trim(),
+      scheduled_at: imagingForm.scheduled_at || undefined,
+      status: imagingForm.status,
+    };
+    const res = await createImagingStudy(payload);
+    if (res.success) {
+      setImagingForm({ modality: '', body_region: '', scheduled_at: '', status: 'scheduled' });
+      Alert.alert('Imaging', 'Study scheduled.');
+      loadImagingStudies();
+      return;
+    }
+    Alert.alert('Imaging', res.message || 'Unable to schedule.');
+  }, [patientDetail, imagingForm, loadImagingStudies]);
+
+  const handleCreateAdherenceReminder = useCallback(async () => {
+    if (!patientDetail) {
+      Alert.alert('Adherence', 'Select a patient first.');
+      return;
+    }
+    if (!reminderForm.scheduled_at) {
+      Alert.alert('Adherence', 'Scheduled time is required.');
+      return;
+    }
+    const payload = {
+      patient: patientDetail.id,
+      scheduled_at: reminderForm.scheduled_at,
+      channel: reminderForm.channel,
+      notes: reminderForm.notes.trim(),
+    };
+    const res = await createAdherenceReminder(payload);
+    if (res.success) {
+      setReminderForm({ scheduled_at: '', channel: 'sms', notes: '' });
+      Alert.alert('Adherence', 'Reminder created.');
+      loadAdherenceReminders();
+      return;
+    }
+    Alert.alert('Adherence', res.message || 'Unable to create reminder.');
+  }, [patientDetail, reminderForm, loadAdherenceReminders]);
+
+  const handleSendReminderNow = useCallback(
+    async (reminderId: string) => {
+      const res = await markReminderSent(reminderId);
+      if (res.success) {
+        Alert.alert('Adherence', 'Reminder marked as sent.');
+        loadAdherenceReminders();
+        return;
+      }
+      Alert.alert('Adherence', res.message || 'Unable to mark reminder.');
+    },
+    [loadAdherenceReminders],
+  );
+
+  const handleAcknowledgeReminder = useCallback(
+    async (reminderId: string) => {
+      const res = await acknowledgeReminder(reminderId);
+      if (res.success) {
+        Alert.alert('Adherence', 'Reminder acknowledged.');
+        loadAdherenceReminders();
+        return;
+      }
+      Alert.alert('Adherence', res.message || 'Unable to acknowledge reminder.');
+    },
+    [loadAdherenceReminders],
+  );
+
+  const handleCreateSupplyForecast = useCallback(async () => {
+    if (!medicalContext?.active_profile_id) {
+      Alert.alert('Forecast', 'Activate a profile first.');
+      return;
+    }
+    if (!forecastForm.category.trim()) {
+      Alert.alert('Forecast', 'Category is required.');
+      return;
+    }
+    if (!forecastForm.period_start || !forecastForm.period_end) {
+      Alert.alert('Forecast', 'Period start and end are required.');
+      return;
+    }
+    const payload = {
+      profile: medicalContext.active_profile_id,
+      category: forecastForm.category.trim(),
+      period_start: forecastForm.period_start,
+      period_end: forecastForm.period_end,
+      predicted_usage: parseFloat(forecastForm.predicted_usage) || 0,
+      notes: forecastForm.notes?.trim() || '',
+    };
+    const res = await createSupplyForecast(payload);
+    if (res.success) {
+      setForecastForm({ category: '', period_start: '', period_end: '', predicted_usage: '' });
+      Alert.alert('Forecast', 'Forecast saved.');
+      loadSupplyForecasts();
+      return;
+    }
+    Alert.alert('Forecast', res.message || 'Unable to save forecast.');
+  }, [medicalContext?.active_profile_id, forecastForm, loadSupplyForecasts]);
 
   const handleEmergencyToggle = useCallback(() => {
     setEmergencyMode((prev) => !prev);
@@ -650,10 +1696,8 @@ export default function HealthcareScreen() {
         profileId={medicalContext?.active_profile_id ?? null}
         updatingId={staffUpdateId}
         shiftLoadingId={staffShiftId}
-        aiLoadingId={aiStaffId}
         onUpdateRole={handleUpdateStaffRole}
         onAssignShift={handleAssignStaffShift}
-        onRunAi={handleStaffAiReview}
       />
 
       <View style={[styles.section, { backgroundColor: palette.card }]}>
@@ -699,6 +1743,397 @@ export default function HealthcareScreen() {
               </View>
             </View>
           ))
+        )}
+        <View
+          style={[
+            styles.sessionForm,
+            { borderColor: palette.divider, backgroundColor: palette.surface },
+          ]}
+        >
+          <Text style={[styles.sectionTitle, { fontSize: 14, color: palette.text }]}>
+            Schedule telemedicine session
+          </Text>
+          <Text style={{ color: palette.subtext, fontSize: 12 }}>
+            Patient: {sessionPatientLabel}
+          </Text>
+          <TextInput
+            value={sessionForm.scheduledAt}
+            onChangeText={(value) => handleSessionFormChange('scheduledAt', value)}
+            placeholder="Scheduled time (YYYY-MM-DDTHH:mm)"
+            placeholderTextColor={palette.subtext}
+            style={[
+              styles.input,
+              { backgroundColor: palette.card, borderColor: palette.divider },
+            ]}
+          />
+          <TextInput
+            value={sessionForm.notes}
+            onChangeText={(value) => handleSessionFormChange('notes', value)}
+            placeholder="Session notes / agenda"
+            placeholderTextColor={palette.subtext}
+            multiline
+            style={[
+              styles.input,
+              styles.textArea,
+              { backgroundColor: palette.card, borderColor: palette.divider },
+            ]}
+          />
+          <KISButton
+            title={sessionSubmitting ? 'Scheduling…' : 'Schedule session'}
+            onPress={handleScheduleSession}
+            disabled={sessionSubmitting}
+          />
+          {sessionMessage && (
+            <Text style={{ color: palette.primaryStrong, fontSize: 12, marginTop: 6 }}>
+              {sessionMessage}
+            </Text>
+          )}
+        </View>
+      </View>
+
+      <View style={[styles.section, { backgroundColor: palette.card }]}>
+        <View style={styles.sectionHeading}>
+          <Text style={[styles.sectionTitle, { color: palette.text }]}>Care command center</Text>
+          <KISButton
+            title="Refresh overview"
+            variant="outline"
+            size="xs"
+            onPress={loadCommandCenter}
+            disabled={commandLoading}
+          />
+        </View>
+        {commandLoading ? (
+          <ActivityIndicator color={palette.primaryStrong} />
+        ) : (
+          <View style={{ gap: 6 }}>
+            <Text style={{ color: palette.text }}>
+              Pending tasks: {commandCenter?.pending_tasks ?? '—'}
+            </Text>
+            <Text style={{ color: palette.text }}>
+              Active escalations: {commandCenter?.active_escalations ?? '—'}
+            </Text>
+            <Text style={{ color: palette.text }}>
+              Open referrals: {commandCenter?.open_referrals ?? '—'}
+            </Text>
+            {commandCenter?.recent_triage?.length ? (
+              <View
+                style={{
+                  borderWidth: 2,
+                  borderColor: palette.divider,
+                  borderRadius: 12,
+                  padding: 8,
+                }}
+              >
+                <Text style={{ color: palette.subtext, fontSize: 12 }}>Recent triage</Text>
+                {(commandCenter?.recent_triage ?? []).slice(0, 2).map((record: any) => (
+                  <Text key={record.id} style={{ color: palette.text, fontSize: 12 }}>
+                    {record.patient} · {record.acuity_level}
+                  </Text>
+                ))}
+              </View>
+            ) : null}
+          </View>
+        )}
+      </View>
+
+      <View style={[styles.section, { backgroundColor: palette.card }]}>
+        <Text style={[styles.sectionTitle, { color: palette.text }]}>Clinical tasks</Text>
+        <View style={{ gap: 8 }}>
+          {tasks.length === 0 ? (
+            <Text style={{ color: palette.subtext }}>No active tasks yet.</Text>
+          ) : (
+            tasks.map((task) => (
+              <View
+                key={task.id}
+                style={[
+                  styles.listCard,
+                  { borderColor: palette.divider, backgroundColor: palette.surface },
+                ]}
+              >
+                <Text style={{ color: palette.text, fontWeight: '700' }}>{task.title}</Text>
+                <Text style={{ color: palette.subtext, fontSize: 12 }}>{task.description}</Text>
+                <Text style={{ color: palette.subtext, fontSize: 11 }}>
+                  Assigned to: {task.assigned_to || 'unassigned'}
+                </Text>
+                <Text style={{ color: palette.subtext, fontSize: 11 }}>
+                  Priority: {task.priority} · Status: {task.status}
+                </Text>
+                {task.due_at && (
+                  <Text style={{ color: palette.subtext, fontSize: 11 }}>
+                    Due {new Date(task.due_at).toLocaleString()}
+                  </Text>
+                )}
+                <KISButton
+                  title="Mark completed"
+                  size="xs"
+                  variant="secondary"
+                  onPress={() => handleCompleteTask(task.id)}
+                  disabled={task.status === 'completed'}
+                />
+              </View>
+            ))
+          )}
+        </View>
+        <View style={[styles.formColumn, { marginTop: 12 }]}>
+          <Text style={[styles.sectionTitle, { fontSize: 14, color: palette.text }]}>Create task</Text>
+          <TextInput
+            value={taskForm.title}
+            onChangeText={(value) => handleTaskFormChange('title', value)}
+            placeholder="Task title"
+            placeholderTextColor={palette.subtext}
+            style={[styles.input, { backgroundColor: palette.card }]}
+          />
+          <TextInput
+            value={taskForm.description}
+            onChangeText={(value) => handleTaskFormChange('description', value)}
+            placeholder="Details"
+            placeholderTextColor={palette.subtext}
+            multiline
+            style={[styles.input, styles.textArea, { backgroundColor: palette.card }]}
+          />
+          <Text style={{ color: palette.subtext, fontSize: 11 }}>Assign to</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ gap: 8, marginVertical: 4 }}>
+            {staffProfiles.map((staff) => (
+              <Pressable
+                key={staff.id}
+                onPress={() => handleAssignTaskToStaff(staff.user?.id ?? '')}
+                style={[
+                  styles.chip,
+                  {
+                    borderColor:
+                      taskForm.assignedTo === staff.user?.id ? palette.primaryStrong : palette.divider,
+                    backgroundColor:
+                      taskForm.assignedTo === staff.user?.id ? palette.primarySoft : palette.surface,
+                  },
+                ]}
+              >
+                <Text style={{ color: palette.text, fontSize: 12 }}>
+                  {staff.user?.display_name || staff.role}
+                </Text>
+              </Pressable>
+            ))}
+          </ScrollView>
+          <TextInput
+            value={taskForm.dueAt}
+            onChangeText={(value) => handleTaskFormChange('dueAt', value)}
+            placeholder="Due (YYYY-MM-DDTHH:mm)"
+            placeholderTextColor={palette.subtext}
+            style={[styles.input, { backgroundColor: palette.card }]}
+          />
+          <TextInput
+            value={taskForm.priority}
+            onChangeText={(value) => handleTaskFormChange('priority', value)}
+            placeholder="Priority (low/medium/high)"
+            placeholderTextColor={palette.subtext}
+            style={[styles.input, { backgroundColor: palette.card }]}
+          />
+          <KISButton
+            title={taskSubmitting ? 'Creating…' : 'Add task'}
+            onPress={handleCreateClinicalTask}
+            disabled={taskSubmitting}
+          />
+        </View>
+      </View>
+
+      <View style={[styles.section, { backgroundColor: palette.card }]}>
+        <Text style={[styles.sectionTitle, { color: palette.text }]}>Emergency escalations</Text>
+        <View style={{ gap: 8 }}>
+          {escalations.length === 0 ? (
+            <Text style={{ color: palette.subtext }}>No escalations yet.</Text>
+          ) : (
+            escalations.map((escalation) => (
+              <View
+                key={escalation.id}
+                style={[
+                  styles.listCard,
+                  { borderColor: palette.divider, backgroundColor: palette.surface },
+                ]}
+              >
+                <Text style={{ color: palette.text, fontWeight: '700' }}>{escalation.summary}</Text>
+                <Text style={{ color: palette.subtext, fontSize: 11 }}>
+                  Severity: {escalation.severity} · Status: {escalation.status}
+                </Text>
+                <KISButton
+                  title="Resolve"
+                  size="xs"
+                  variant="outline"
+                  onPress={() => handleResolveEscalation(escalation.id)}
+                  disabled={escalation.status === 'resolved'}
+                />
+              </View>
+            ))
+          )}
+        </View>
+        <View style={[styles.formColumn, { marginTop: 12 }]}>
+          <Text style={[styles.sectionTitle, { fontSize: 14, color: palette.text }]}>
+            Log escalation
+          </Text>
+          <Text style={{ color: palette.subtext, fontSize: 11 }}>Severity</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ gap: 6, marginBottom: 6 }}>
+            {['low', 'medium', 'high', 'critical'].map((level) => (
+              <Pressable
+                key={level}
+                onPress={() => handleEscalationFormChange('severity', level)}
+                style={[
+                  styles.chip,
+                  {
+                    borderColor: escalationForm.severity === level ? palette.primaryStrong : palette.divider,
+                    backgroundColor:
+                      escalationForm.severity === level ? palette.primarySoft : palette.surface,
+                  },
+                ]}
+              >
+                <Text style={{ color: palette.text, fontSize: 12 }}>{level}</Text>
+              </Pressable>
+            ))}
+          </ScrollView>
+          <TextInput
+            value={escalationForm.summary}
+            onChangeText={(value) => handleEscalationFormChange('summary', value)}
+            placeholder="Describe the situation"
+            placeholderTextColor={palette.subtext}
+            multiline
+            style={[styles.input, styles.textArea, { backgroundColor: palette.card }]}
+          />
+          <KISButton
+            title={escalationSubmitting ? 'Logging…' : 'Create escalation'}
+            onPress={handleCreateEscalation}
+            disabled={escalationSubmitting}
+          />
+        </View>
+      </View>
+
+      <View style={[styles.section, { backgroundColor: palette.card }]}>
+        <Text style={[styles.sectionTitle, { color: palette.text }]}>Referral routing</Text>
+        <View style={{ gap: 6 }}>
+          {referrals.length === 0 ? (
+            <Text style={{ color: palette.subtext }}>No referrals yet.</Text>
+          ) : (
+            referrals.map((referral) => (
+              <View
+                key={referral.id}
+                style={[
+                  styles.listCard,
+                  { borderColor: palette.divider, backgroundColor: palette.surface },
+                ]}
+              >
+                <Text style={{ color: palette.text, fontWeight: '700' }}>{referral.reason}</Text>
+                <Text style={{ color: palette.subtext, fontSize: 11 }}>
+                  Status: {referral.status}
+                </Text>
+                {referral.metadata?.to_org_name ? (
+                  <Text style={{ color: palette.subtext, fontSize: 11 }}>
+                    Destination: {referral.metadata?.to_org_name}
+                  </Text>
+                ) : null}
+              </View>
+            ))
+          )}
+        </View>
+        <View style={[styles.formColumn, { marginTop: 12 }]}>
+          <Text style={[styles.sectionTitle, { fontSize: 14, color: palette.text }]}>
+            Create referral
+          </Text>
+          <TextInput
+            value={referralForm.toOrganization}
+            onChangeText={(value) => handleReferralFormChange('toOrganization', value)}
+            placeholder="Referred to (name)"
+            placeholderTextColor={palette.subtext}
+            style={[styles.input, { backgroundColor: palette.card }]}
+          />
+          <TextInput
+            value={referralForm.reason}
+            onChangeText={(value) => handleReferralFormChange('reason', value)}
+            placeholder="Reason for referral"
+            placeholderTextColor={palette.subtext}
+            multiline
+            style={[styles.input, styles.textArea, { backgroundColor: palette.card }]}
+          />
+          <KISButton
+            title={referralSubmitting ? 'Creating…' : 'Add referral'}
+            onPress={handleCreateReferral}
+            disabled={referralSubmitting}
+          />
+        </View>
+      </View>
+
+      <View style={[styles.section, { backgroundColor: palette.card }]}>
+        <Text style={[styles.sectionTitle, { color: palette.text }]}>Clinical event log</Text>
+        <View style={{ gap: 8 }}>
+          {eventsLoading ? (
+            <ActivityIndicator color={palette.primaryStrong} />
+          ) : events.length === 0 ? (
+            <Text style={{ color: palette.subtext }}>No clinical events recorded yet.</Text>
+          ) : (
+            events.slice(0, 4).map((event) => (
+              <View
+                key={event.id}
+                style={[
+                  styles.listCard,
+                  {
+                    borderColor: palette.divider,
+                    backgroundColor: palette.surface,
+                    flexDirection: 'row',
+                    justifyContent: 'space-between',
+                  },
+                ]}
+              >
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: palette.text, fontWeight: '700' }}>{event.event_type}</Text>
+                  <Text style={{ color: palette.subtext, fontSize: 11 }}>{event.description}</Text>
+                </View>
+                <Text style={{ color: palette.subtext, fontSize: 10 }}>
+                  {new Date(event.created_at).toLocaleString()}
+                </Text>
+              </View>
+            ))
+          )}
+        </View>
+      </View>
+
+      <View style={[styles.section, { backgroundColor: palette.card }]}>
+        <Text style={[styles.sectionTitle, { color: palette.text }]}>
+          Telehealth triage automation
+        </Text>
+        <Text style={{ color: palette.subtext, marginBottom: 6 }}>
+          Run triage and persist the response in the clinical log.
+        </Text>
+        <TextInput
+          value={triageForm.symptoms}
+          onChangeText={(value) => setTriageForm((prev) => ({ ...prev, symptoms: value }))}
+          placeholder="Symptoms, comma separated"
+          placeholderTextColor={palette.subtext}
+          style={[styles.input, styles.textArea, { backgroundColor: palette.card }]}
+        />
+        <KISButton
+          title={triageSubmitting ? 'Running…' : 'Run triage'}
+          onPress={handleRunTriage}
+          disabled={triageSubmitting}
+        />
+        {triageResult && (
+          <View style={[styles.resultBox, { borderColor: palette.divider }]}>
+            <Text style={{ color: palette.text, fontSize: 12 }} selectable>
+              {triageResult}
+            </Text>
+          </View>
+        )}
+        {triageRecords.length > 0 && (
+          <View style={{ marginTop: 8, gap: 6 }}>
+            {triageRecords.slice(0, 3).map((record: any) => (
+              <View
+                key={record.id}
+                style={[
+                  styles.listCard,
+                  { borderColor: palette.divider, backgroundColor: palette.surface },
+                ]}
+              >
+                <Text style={{ color: palette.text, fontWeight: '700' }}>{record.acuity_level}</Text>
+                <Text style={{ color: palette.subtext, fontSize: 11 }}>
+                  {(record.symptoms || []).join(', ')}
+                </Text>
+              </View>
+            ))}
+          </View>
         )}
       </View>
 
@@ -764,7 +2199,7 @@ export default function HealthcareScreen() {
           <Text style={{ color: palette.subtext }}>{patientCount} records</Text>
         </View>
         <Text style={{ color: palette.subtext, marginBottom: 10 }}>
-          Master index entries available for AI-assisted triage and clinical workflows.
+          Master index entries available for triage and clinical workflows.
         </Text>
         {loading && <ActivityIndicator color={palette.primaryStrong} />}
         <KISButton
@@ -940,28 +2375,24 @@ export default function HealthcareScreen() {
               </ScrollView>
             )}
           </View>
-          <View style={[styles.aiPanel, { borderColor: palette.divider, backgroundColor: palette.surface }]}>
-            <Text style={{ color: palette.text, fontWeight: '900', marginBottom: 6 }}>AI clinical assistant</Text>
-            <Text style={{ color: palette.subtext, fontSize: 12, marginBottom: 12 }}>
-              Groq insights for the selected patient and timeline.
+          <View style={[styles.timelineFocusPanel, { borderColor: palette.divider, backgroundColor: palette.surface }]}>
+            <Text style={{ color: palette.text, fontWeight: '900', marginBottom: 6 }}>Clinical focus</Text>
+            <Text style={{ color: palette.subtext, fontSize: 12, marginBottom: 10 }}>
+              Use timeline events, triage records, and task status to decide next actions.
             </Text>
-            {aiDoctorResult ? (
+            {triageRecords.length > 0 ? (
               <View style={[styles.resultBox, { borderColor: palette.divider, marginBottom: 6 }]}>
                 <Text style={{ color: palette.text, fontSize: 12 }} selectable>
-                  {aiDoctorResult}
+                  Latest triage: {triageRecords[0]?.acuity_level || 'n/a'}{'\n'}
+                  Recommended unit: {triageRecords[0]?.recommended_unit || 'Not specified'}
                 </Text>
               </View>
             ) : (
               <Text style={{ color: palette.subtext, fontSize: 12, marginBottom: 6 }}>
-                Run the assistant to summarize the clinical picture.
+                No triage summary available yet for this patient.
               </Text>
             )}
-            <KISButton
-              title={aiDoctorLoading ? 'Generating…' : 'Run AI assistant'}
-              onPress={handleDoctorAiInsight}
-              disabled={aiDoctorLoading}
-              size="sm"
-            />
+            <KISButton title="Run triage" onPress={handleRunTriage} disabled={triageSubmitting} size="sm" />
           </View>
         </View>
       </View>
@@ -1057,9 +2488,9 @@ export default function HealthcareScreen() {
       </View>
 
       <View style={[styles.section, { backgroundColor: palette.card }]}>
-        <Text style={[styles.sectionTitle, { color: palette.text }]}>Groq AI triage</Text>
+        <Text style={[styles.sectionTitle, { color: palette.text }]}>Clinical triage snapshot</Text>
         <Text style={{ color: palette.subtext, marginBottom: 8 }}>
-          Use the Groq advisory service to triage incoming symptoms in real time.
+          Review the latest saved triage output for quick handoff decisions.
         </Text>
         {triageResult ? (
           <View style={[styles.resultBox, { borderColor: palette.divider }]}>
@@ -1069,14 +2500,631 @@ export default function HealthcareScreen() {
           </View>
         ) : (
           <Text style={{ color: palette.subtext, fontSize: 12 }}>
-            Run an AI task to review a symptom set.
+            Run triage to review a symptom set.
           </Text>
         )}
         <KISButton
-          title={aiLoading ? 'Running…' : 'Run triage check'}
+          title={triageSubmitting ? 'Running…' : 'Run triage check'}
           onPress={handleRunTriage}
-          disabled={aiLoading}
+          disabled={triageSubmitting}
         />
+      </View>
+
+      <View style={[styles.section, { backgroundColor: palette.card }]}>
+        <View style={styles.sectionHeading}>
+          <Text style={[styles.sectionTitle, { color: palette.text }]}>Clinical analytics & population health</Text>
+          <KISButton
+            title="Refresh reports"
+            size="xs"
+            variant="outline"
+            onPress={handleRefreshAnalyticsReports}
+            disabled={analyticsLoading}
+          />
+        </View>
+        {analyticsLoading ? (
+          <ActivityIndicator color={palette.primaryStrong} />
+        ) : (
+          <View style={{ gap: 8 }}>
+            {(analyticsReports || []).map((report) => (
+              <View
+                key={report.id}
+                style={[styles.timelineEntry, { borderColor: palette.divider, backgroundColor: palette.surface }]}
+              >
+                <Text style={[styles.timelineLabel, { color: palette.text }]}>
+                  {report.report_type.replace('_', ' ')} · {report.status}
+                </Text>
+                <Text style={{ color: palette.subtext, fontSize: 12 }} numberOfLines={2}>
+                  {report.summary || 'No summary yet.'}
+                </Text>
+                <Text style={{ color: palette.subtext, fontSize: 11 }}>
+                  Period: {report.period_start} → {report.period_end}
+                </Text>
+                {report.metrics && (
+                  <Text style={{ color: palette.subtext, fontSize: 11 }}>
+                    Metrics: {JSON.stringify(report.metrics)}
+                  </Text>
+                )}
+              </View>
+            ))}
+            {(analyticsReports || []).length === 0 && (
+              <Text style={{ color: palette.subtext, fontSize: 12 }}>No analytics reports yet.</Text>
+            )}
+          </View>
+        )}
+      </View>
+
+      <View style={[styles.section, { backgroundColor: palette.card }]}>
+        <View style={styles.sectionHeading}>
+          <Text style={[styles.sectionTitle, { color: palette.text }]}>Risk stratification & outcomes</Text>
+          <KISButton
+            title="Compute risk"
+            size="xs"
+            variant="secondary"
+            onPress={handleComputeRisk}
+            disabled={riskLoading}
+          />
+        </View>
+        <View style={{ gap: 6 }}>
+          {(riskAssessments || []).map((row) => (
+            <View
+              key={row.id}
+              style={[styles.timelineEntry, { borderColor: palette.divider, backgroundColor: palette.surface }]}
+            >
+              <Text style={[styles.timelineLabel, { color: palette.text }]}>
+                {row.patient} · {row.level}
+              </Text>
+              <Text style={{ color: palette.subtext, fontSize: 11 }}>
+                Score: {row.score} · Updated: {row.assessed_at}
+              </Text>
+            </View>
+          ))}
+          {(riskAssessments || []).length === 0 && (
+            <Text style={{ color: palette.subtext, fontSize: 12 }}>No risk assessments yet.</Text>
+          )}
+        </View>
+        <View style={styles.formGrid}>
+          <Text style={[styles.sectionTitle, { fontSize: 14, color: palette.text }]}>Record outcome benchmark</Text>
+          <TextInput
+            value={outcomeForm.metric_name}
+            onChangeText={(value) => setOutcomeForm((prev) => ({ ...prev, metric_name: value }))}
+            placeholder="Metric name"
+            placeholderTextColor={palette.subtext}
+            style={[styles.input, { backgroundColor: palette.surface, borderColor: palette.divider }]}
+          />
+          <View style={[styles.row, { gap: 8 }]}>
+            <TextInput
+              value={outcomeForm.actual_value}
+              onChangeText={(value) => setOutcomeForm((prev) => ({ ...prev, actual_value: value }))}
+              placeholder="Actual value"
+              placeholderTextColor={palette.subtext}
+              keyboardType="numeric"
+              style={[styles.input, { flex: 1, backgroundColor: palette.surface, borderColor: palette.divider }]}
+            />
+            <TextInput
+              value={outcomeForm.target_value}
+              onChangeText={(value) => setOutcomeForm((prev) => ({ ...prev, target_value: value }))}
+              placeholder="Target value"
+              placeholderTextColor={palette.subtext}
+              keyboardType="numeric"
+              style={[styles.input, { flex: 1, backgroundColor: palette.surface, borderColor: palette.divider }]}
+            />
+          </View>
+          <View style={[styles.row, { gap: 8 }]}>
+            <TextInput
+              value={outcomeForm.period_start}
+              onChangeText={(value) => setOutcomeForm((prev) => ({ ...prev, period_start: value }))}
+              placeholder="Period start"
+              placeholderTextColor={palette.subtext}
+              style={[styles.input, { flex: 1, backgroundColor: palette.surface, borderColor: palette.divider }]}
+            />
+            <TextInput
+              value={outcomeForm.period_end}
+              onChangeText={(value) => setOutcomeForm((prev) => ({ ...prev, period_end: value }))}
+              placeholder="Period end"
+              placeholderTextColor={palette.subtext}
+              style={[styles.input, { flex: 1, backgroundColor: palette.surface, borderColor: palette.divider }]}
+            />
+          </View>
+          <TextInput
+            value={outcomeForm.notes}
+            onChangeText={(value) => setOutcomeForm((prev) => ({ ...prev, notes: value }))}
+            placeholder="Notes"
+            placeholderTextColor={palette.subtext}
+            style={[styles.input, { backgroundColor: palette.surface, borderColor: palette.divider }]}
+          />
+          <KISButton title="Save benchmark" onPress={handleCreateOutcomeBenchmark} size="sm" />
+        </View>
+      </View>
+
+      <View style={[styles.section, { backgroundColor: palette.card }]}>
+        <Text style={[styles.sectionTitle, { color: palette.text }]}>Patient satisfaction & outreach</Text>
+        <View style={{ gap: 8 }}>
+          {(satisfactionScores || []).slice(0, 3).map((score) => (
+            <View
+              key={score.id}
+              style={[styles.timelineEntry, { borderColor: palette.divider, backgroundColor: palette.surface }]}
+            >
+              <Text style={[styles.timelineLabel, { color: palette.text }]}>
+                {score.patient} · {score.score}
+              </Text>
+              <Text style={{ color: palette.subtext, fontSize: 11 }}>
+                Channel: {score.channel} · {score.recorded_at}
+              </Text>
+            </View>
+          ))}
+        </View>
+        <View style={styles.formGrid}>
+          <TextInput
+            value={satisfactionForm.score}
+            onChangeText={(value) => setSatisfactionForm((prev) => ({ ...prev, score: value }))}
+            placeholder="Score (1-10)"
+            placeholderTextColor={palette.subtext}
+            keyboardType="numeric"
+            style={[styles.input, { backgroundColor: palette.card, borderColor: palette.divider }]}
+          />
+          <TextInput
+            value={satisfactionForm.channel}
+            onChangeText={(value) => setSatisfactionForm((prev) => ({ ...prev, channel: value }))}
+            placeholder="Channel"
+            placeholderTextColor={palette.subtext}
+            style={[styles.input, { backgroundColor: palette.card, borderColor: palette.divider }]}
+          />
+          <TextInput
+            value={satisfactionForm.comments}
+            onChangeText={(value) => setSatisfactionForm((prev) => ({ ...prev, comments: value }))}
+            placeholder="Comments"
+            placeholderTextColor={palette.subtext}
+            style={[styles.input, { backgroundColor: palette.card, borderColor: palette.divider }]}
+          />
+          <KISButton title="Record satisfaction" onPress={handleRecordSatisfactionScore} size="sm" />
+        </View>
+        <View style={[styles.formGrid, { marginTop: 12 }]}>
+          <TextInput
+            value={outreachForm.name}
+            onChangeText={(value) => setOutreachForm((prev) => ({ ...prev, name: value }))}
+            placeholder="Campaign name"
+            placeholderTextColor={palette.subtext}
+            style={[styles.input, { backgroundColor: palette.card, borderColor: palette.divider }]}
+          />
+          <TextInput
+            value={outreachForm.channel}
+            onChangeText={(value) => setOutreachForm((prev) => ({ ...prev, channel: value }))}
+            placeholder="Channel"
+            placeholderTextColor={palette.subtext}
+            style={[styles.input, { backgroundColor: palette.card, borderColor: palette.divider }]}
+          />
+          <TextInput
+            value={outreachForm.target_population}
+            onChangeText={(value) => setOutreachForm((prev) => ({ ...prev, target_population: value }))}
+            placeholder="Target population (JSON)"
+            placeholderTextColor={palette.subtext}
+            style={[styles.input, { backgroundColor: palette.card, borderColor: palette.divider }]}
+          />
+          <TextInput
+            value={outreachForm.status}
+            onChangeText={(value) => setOutreachForm((prev) => ({ ...prev, status: value }))}
+            placeholder="Status"
+            placeholderTextColor={palette.subtext}
+            style={[styles.input, { backgroundColor: palette.card, borderColor: palette.divider }]}
+          />
+          <KISButton title="Create outreach" onPress={handleCreateOutreachCampaign} size="sm" />
+        </View>
+        <View style={{ gap: 6, marginTop: 8 }}>
+          {(outreachCampaigns || []).map((campaign) => (
+            <View
+              key={campaign.id}
+              style={[styles.timelineEntry, { borderColor: palette.divider, backgroundColor: palette.surface }]}
+            >
+              <Text style={[styles.timelineLabel, { color: palette.text }]}>
+                {campaign.name} · {campaign.status}
+              </Text>
+              <View style={styles.actionsRow}>
+                <KISButton
+                  title="Set active"
+                  size="xs"
+                  variant="outline"
+                  onPress={() => handleUpdateCampaignStatus(campaign.id, 'active')}
+                />
+                <KISButton
+                  title="Complete"
+                  size="xs"
+                  variant="secondary"
+                  onPress={() => handleUpdateCampaignStatus(campaign.id, 'completed')}
+                />
+              </View>
+            </View>
+          ))}
+        </View>
+      </View>
+
+      <View style={[styles.section, { backgroundColor: palette.card }]}>
+        <Text style={[styles.sectionTitle, { color: palette.text }]}>Wellness challenges & habit tracking</Text>
+        <View style={{ gap: 6 }}>
+          {(wellnessChallenges || []).map((challenge) => (
+            <View
+              key={challenge.id}
+              style={[styles.timelineEntry, { borderColor: palette.divider, backgroundColor: palette.surface }]}
+            >
+              <Text style={[styles.timelineLabel, { color: palette.text }]}>
+                {challenge.title} · {challenge.goal}
+              </Text>
+              <Text style={{ color: palette.subtext, fontSize: 11 }}>
+                {challenge.start_date} → {challenge.end_date}
+              </Text>
+            </View>
+          ))}
+        </View>
+        <View style={styles.formGrid}>
+          <TextInput
+            value={challengeForm.title}
+            onChangeText={(value) => setChallengeForm((prev) => ({ ...prev, title: value }))}
+            placeholder="Challenge title"
+            placeholderTextColor={palette.subtext}
+            style={[styles.input, { backgroundColor: palette.card, borderColor: palette.divider }]}
+          />
+          <TextInput
+            value={challengeForm.goal}
+            onChangeText={(value) => setChallengeForm((prev) => ({ ...prev, goal: value }))}
+            placeholder="Goal"
+            placeholderTextColor={palette.subtext}
+            style={[styles.input, { backgroundColor: palette.card, borderColor: palette.divider }]}
+          />
+          <View style={[styles.row, { gap: 8 }]}>
+            <TextInput
+              value={challengeForm.start_date}
+              onChangeText={(value) => setChallengeForm((prev) => ({ ...prev, start_date: value }))}
+              placeholder="Start date"
+              placeholderTextColor={palette.subtext}
+              style={[styles.input, { flex: 1, backgroundColor: palette.card, borderColor: palette.divider }]}
+            />
+            <TextInput
+              value={challengeForm.end_date}
+              onChangeText={(value) => setChallengeForm((prev) => ({ ...prev, end_date: value }))}
+              placeholder="End date"
+              placeholderTextColor={palette.subtext}
+              style={[styles.input, { flex: 1, backgroundColor: palette.card, borderColor: palette.divider }]}
+            />
+          </View>
+          <TextInput
+            value={challengeForm.description}
+            onChangeText={(value) => setChallengeForm((prev) => ({ ...prev, description: value }))}
+            placeholder="Description"
+            placeholderTextColor={palette.subtext}
+            style={[styles.input, { backgroundColor: palette.card, borderColor: palette.divider }]}
+          />
+          <TextInput
+            value={challengeForm.participation_target}
+            onChangeText={(value) => setChallengeForm((prev) => ({ ...prev, participation_target: value }))}
+            placeholder="Participation target"
+            placeholderTextColor={palette.subtext}
+            keyboardType="numeric"
+            style={[styles.input, { backgroundColor: palette.card, borderColor: palette.divider }]}
+          />
+          <KISButton title="Add challenge" onPress={handleCreateWellnessChallenge} size="sm" />
+        </View>
+        <View style={[styles.formGrid, { marginTop: 12 }]}>
+          <TextInput
+            value={habitForm.challengeId}
+            onChangeText={(value) => setHabitForm((prev) => ({ ...prev, challengeId: value }))}
+            placeholder="Challenge ID"
+            placeholderTextColor={palette.subtext}
+            style={[styles.input, { backgroundColor: palette.card, borderColor: palette.divider }]}
+          />
+          <TextInput
+            value={habitForm.habit_name}
+            onChangeText={(value) => setHabitForm((prev) => ({ ...prev, habit_name: value }))}
+            placeholder="Habit name"
+            placeholderTextColor={palette.subtext}
+            style={[styles.input, { backgroundColor: palette.card, borderColor: palette.divider }]}
+          />
+          <TextInput
+            value={habitForm.progress_value}
+            onChangeText={(value) => setHabitForm((prev) => ({ ...prev, progress_value: value }))}
+            placeholder="Progress value"
+            placeholderTextColor={palette.subtext}
+            keyboardType="numeric"
+            style={[styles.input, { backgroundColor: palette.card, borderColor: palette.divider }]}
+          />
+          <TextInput
+            value={habitForm.notes}
+            onChangeText={(value) => setHabitForm((prev) => ({ ...prev, notes: value }))}
+            placeholder="Notes"
+            placeholderTextColor={palette.subtext}
+            style={[styles.input, { backgroundColor: palette.card, borderColor: palette.divider }]}
+          />
+          <KISButton title="Log habit" onPress={handleLogHabitEntry} size="sm" />
+        </View>
+        <View style={{ gap: 6, marginTop: 8 }}>
+          {(habitEntries || []).map((entry) => (
+            <View
+              key={entry.id}
+              style={[styles.timelineEntry, { borderColor: palette.divider, backgroundColor: palette.surface }]}
+            >
+              <Text style={[styles.timelineLabel, { color: palette.text }]}>
+                {entry.habit_name} · {entry.progress_value}
+              </Text>
+              <Text style={{ color: palette.subtext, fontSize: 11 }}>
+                Logged at: {entry.logged_at}
+              </Text>
+            </View>
+          ))}
+        </View>
+      </View>
+
+      <View style={[styles.section, { backgroundColor: palette.card }]}>
+        <Text style={[styles.sectionTitle, { color: palette.text }]}>Inventory & diagnostics</Text>
+        {inventoryLoading ? (
+          <ActivityIndicator color={palette.primaryStrong} />
+        ) : (
+          <View style={{ gap: 6 }}>
+            {(inventoryItems || []).map((item) => (
+              <View
+                key={item.id}
+                style={[styles.timelineEntry, { borderColor: palette.divider, backgroundColor: palette.surface }]}
+              >
+                <Text style={[styles.timelineLabel, { color: palette.text }]}>{item.name}</Text>
+                <Text style={{ color: palette.subtext, fontSize: 12 }}>
+                  Qty: {item.quantity_on_hand} {item.unit} · Reorder {item.reorder_level}
+                </Text>
+                <Text style={{ color: palette.subtext, fontSize: 11 }}>
+                  Category: {item.category || '—'}
+                </Text>
+              </View>
+            ))}
+            {(inventoryItems || []).length === 0 && (
+              <Text style={{ color: palette.subtext }}>No inventory items tracked yet.</Text>
+            )}
+          </View>
+        )}
+        <View style={[styles.formGrid, { flexDirection: 'column' }]}>
+          <TextInput
+            value={inventoryForm.name}
+            onChangeText={(value) => setInventoryForm((prev) => ({ ...prev, name: value }))}
+            placeholder="Item name"
+            placeholderTextColor={palette.subtext}
+            style={[styles.input, { backgroundColor: palette.surface, borderColor: palette.divider }]}
+          />
+          <TextInput
+            value={inventoryForm.category}
+            onChangeText={(value) => setInventoryForm((prev) => ({ ...prev, category: value }))}
+            placeholder="Category"
+            placeholderTextColor={palette.subtext}
+            style={[styles.input, { backgroundColor: palette.surface, borderColor: palette.divider }]}
+          />
+          <TextInput
+            value={inventoryForm.sku}
+            onChangeText={(value) => setInventoryForm((prev) => ({ ...prev, sku: value }))}
+            placeholder="SKU"
+            placeholderTextColor={palette.subtext}
+            style={[styles.input, { backgroundColor: palette.surface, borderColor: palette.divider }]}
+          />
+          <TextInput
+            value={inventoryForm.unit}
+            onChangeText={(value) => setInventoryForm((prev) => ({ ...prev, unit: value }))}
+            placeholder="Unit (e.g. doses)"
+            placeholderTextColor={palette.subtext}
+            style={[styles.input, { backgroundColor: palette.surface, borderColor: palette.divider }]}
+          />
+          <View style={[styles.row, { gap: 8 }]}>
+            <TextInput
+              value={inventoryForm.quantity_on_hand}
+              onChangeText={(value) => setInventoryForm((prev) => ({ ...prev, quantity_on_hand: value }))}
+              placeholder="Quantity"
+              placeholderTextColor={palette.subtext}
+              keyboardType="numeric"
+              style={[styles.input, { flex: 1, backgroundColor: palette.surface, borderColor: palette.divider }]}
+            />
+            <TextInput
+              value={inventoryForm.reorder_level}
+              onChangeText={(value) => setInventoryForm((prev) => ({ ...prev, reorder_level: value }))}
+              placeholder="Reorder level"
+              placeholderTextColor={palette.subtext}
+              keyboardType="numeric"
+              style={[styles.input, { flex: 1, backgroundColor: palette.surface, borderColor: palette.divider }]}
+            />
+          </View>
+          <KISButton
+            title="Add inventory item"
+            onPress={handleCreateInventoryItem}
+            disabled={inventoryLoading}
+          />
+        </View>
+      </View>
+
+      <View style={[styles.section, { backgroundColor: palette.card }]}>
+        <Text style={[styles.sectionTitle, { color: palette.text }]}>Diagnostics & imaging</Text>
+        <View style={{ gap: 10 }}>
+          <Text style={{ color: palette.subtext, fontSize: 12 }}>Pending orders</Text>
+          {(diagnosticOrders || []).map((order) => (
+            <View
+              key={order.id}
+              style={[styles.timelineEntry, { borderColor: palette.divider, backgroundColor: palette.surface }]}
+            >
+              <Text style={[styles.timelineLabel, { color: palette.text }]}>
+                {order.test_name} · {order.status}
+              </Text>
+              <Text style={{ color: palette.subtext, fontSize: 11 }}>
+                Requested: {order.created_at}
+              </Text>
+            </View>
+          ))}
+          {(diagnosticOrders || []).length === 0 && (
+            <Text style={{ color: palette.subtext, fontSize: 12 }}>No diagnostic orders yet.</Text>
+          )}
+          {(imagingStudies || []).map((study) => (
+            <View
+              key={study.id}
+              style={[styles.timelineEntry, { borderColor: palette.divider, backgroundColor: palette.surface }]}
+            >
+              <Text style={[styles.timelineLabel, { color: palette.text }]}>
+                {study.modality} · {study.status}
+              </Text>
+              <Text style={{ color: palette.subtext, fontSize: 11 }}>
+                Region: {study.body_region || 'Unknown'} · Scheduled: {study.scheduled_at || 'TBD'}
+              </Text>
+            </View>
+          ))}
+          {(imagingStudies || []).length === 0 && (
+            <Text style={{ color: palette.subtext, fontSize: 12 }}>No imaging studies scheduled.</Text>
+          )}
+        </View>
+        <View style={styles.formGrid}>
+          <TextInput
+            value={diagnosticForm.test_name}
+            onChangeText={(value) => setDiagnosticForm((prev) => ({ ...prev, test_name: value }))}
+            placeholder="New diagnostic test name"
+            placeholderTextColor={palette.subtext}
+            style={[styles.input, { backgroundColor: palette.card, borderColor: palette.divider }]}
+          />
+          <TextInput
+            value={diagnosticForm.specimen_collected_at}
+            onChangeText={(value) => setDiagnosticForm((prev) => ({ ...prev, specimen_collected_at: value }))}
+            placeholder="Specimen collected at (ISO)"
+            placeholderTextColor={palette.subtext}
+            style={[styles.input, { backgroundColor: palette.card, borderColor: palette.divider }]}
+          />
+          <KISButton title="Order diagnostics" onPress={handleCreateDiagnosticOrder} size="sm" />
+          <TextInput
+            value={imagingForm.modality}
+            onChangeText={(value) => setImagingForm((prev) => ({ ...prev, modality: value }))}
+            placeholder="Imaging modality (MRI/CT)"
+            placeholderTextColor={palette.subtext}
+            style={[styles.input, { backgroundColor: palette.card, borderColor: palette.divider }]}
+          />
+          <TextInput
+            value={imagingForm.body_region}
+            onChangeText={(value) => setImagingForm((prev) => ({ ...prev, body_region: value }))}
+            placeholder="Body region"
+            placeholderTextColor={palette.subtext}
+            style={[styles.input, { backgroundColor: palette.card, borderColor: palette.divider }]}
+          />
+          <TextInput
+            value={imagingForm.scheduled_at}
+            onChangeText={(value) => setImagingForm((prev) => ({ ...prev, scheduled_at: value }))}
+            placeholder="Scheduled ISO timestamp"
+            placeholderTextColor={palette.subtext}
+            style={[styles.input, { backgroundColor: palette.card, borderColor: palette.divider }]}
+          />
+          <KISButton title="Schedule imaging" onPress={handleCreateImagingStudy} size="sm" />
+        </View>
+      </View>
+
+      <View style={[styles.section, { backgroundColor: palette.card }]}>
+        <Text style={[styles.sectionTitle, { color: palette.text }]}>Medication adherence</Text>
+        {remindersLoading ? (
+          <ActivityIndicator color={palette.primaryStrong} />
+        ) : (
+          <View style={{ gap: 6 }}>
+            {(adherenceReminders || []).map((reminder) => (
+              <View
+                key={reminder.id}
+                style={[styles.timelineEntry, { borderColor: palette.divider, backgroundColor: palette.surface }]}
+              >
+                <Text style={[styles.timelineLabel, { color: palette.text }]}>
+                  {reminder.channel} reminder · {reminder.status}
+                </Text>
+                <View style={styles.actionsRow}>
+                  <KISButton
+                    title="Mark sent"
+                    size="xs"
+                    variant="outline"
+                    onPress={() => handleSendReminderNow(reminder.id)}
+                  />
+                  <KISButton
+                    title="Acknowledge"
+                    size="xs"
+                    variant="secondary"
+                    onPress={() => handleAcknowledgeReminder(reminder.id)}
+                  />
+                </View>
+              </View>
+            ))}
+            {(adherenceReminders || []).length === 0 && (
+              <Text style={{ color: palette.subtext, fontSize: 12 }}>No reminders scheduled.</Text>
+            )}
+          </View>
+        )}
+        <View style={styles.formGrid}>
+          <TextInput
+            value={reminderForm.scheduled_at}
+            onChangeText={(value) => setReminderForm((prev) => ({ ...prev, scheduled_at: value }))}
+            placeholder="Scheduled time (YYYY-MM-DDTHH:mm)"
+            placeholderTextColor={palette.subtext}
+            style={[styles.input, { backgroundColor: palette.card, borderColor: palette.divider }]}
+          />
+          <TextInput
+            value={reminderForm.channel}
+            onChangeText={(value) => setReminderForm((prev) => ({ ...prev, channel: value }))}
+            placeholder="Channel (sms/email)"
+            placeholderTextColor={palette.subtext}
+            style={[styles.input, { backgroundColor: palette.card, borderColor: palette.divider }]}
+          />
+          <TextInput
+            value={reminderForm.notes}
+            onChangeText={(value) => setReminderForm((prev) => ({ ...prev, notes: value }))}
+            placeholder="Notes"
+            placeholderTextColor={palette.subtext}
+            style={[styles.input, { backgroundColor: palette.card, borderColor: palette.divider }]}
+          />
+          <KISButton title="Create reminder" onPress={handleCreateAdherenceReminder} size="sm" />
+        </View>
+      </View>
+
+      <View style={[styles.section, { backgroundColor: palette.card }]}>
+        <Text style={[styles.sectionTitle, { color: palette.text }]}>Supply forecasting</Text>
+        {forecastLoading ? (
+          <ActivityIndicator color={palette.primaryStrong} />
+        ) : (
+          <View style={{ gap: 6 }}>
+            {(supplyForecasts || []).map((forecast) => (
+              <View
+                key={forecast.id}
+                style={[styles.timelineEntry, { borderColor: palette.divider, backgroundColor: palette.surface }]}
+              >
+                <Text style={[styles.timelineLabel, { color: palette.text }]}>
+                  {forecast.category} · {forecast.period_start} → {forecast.period_end}
+                </Text>
+                <Text style={{ color: palette.subtext, fontSize: 11 }}>
+                  Predicted usage: {forecast.predicted_usage}
+                </Text>
+              </View>
+            ))}
+          </View>
+        )}
+        <View style={styles.formGrid}>
+          <TextInput
+            value={forecastForm.category}
+            onChangeText={(value) => setForecastForm((prev) => ({ ...prev, category: value }))}
+            placeholder="Category (e.g. PPE)"
+            placeholderTextColor={palette.subtext}
+            style={[styles.input, { backgroundColor: palette.card, borderColor: palette.divider }]}
+          />
+          <View style={[styles.row, { gap: 8 }]}>
+            <TextInput
+              value={forecastForm.period_start}
+              onChangeText={(value) => setForecastForm((prev) => ({ ...prev, period_start: value }))}
+              placeholder="Period start"
+              placeholderTextColor={palette.subtext}
+              style={[styles.input, { flex: 1, backgroundColor: palette.card, borderColor: palette.divider }]}
+            />
+            <TextInput
+              value={forecastForm.period_end}
+              onChangeText={(value) => setForecastForm((prev) => ({ ...prev, period_end: value }))}
+              placeholder="Period end"
+              placeholderTextColor={palette.subtext}
+              style={[styles.input, { flex: 1, backgroundColor: palette.card, borderColor: palette.divider }]}
+            />
+          </View>
+          <TextInput
+            value={forecastForm.predicted_usage}
+            onChangeText={(value) => setForecastForm((prev) => ({ ...prev, predicted_usage: value }))}
+            placeholder="Predicted usage"
+            placeholderTextColor={palette.subtext}
+            keyboardType="numeric"
+            style={[styles.input, { backgroundColor: palette.card, borderColor: palette.divider }]}
+          />
+          <KISButton title="Save forecast" onPress={handleCreateSupplyForecast} size="sm" />
+        </View>
       </View>
     </ScrollView>
   );
@@ -1119,6 +3167,13 @@ const makeStyles = (tokens: typeof KIS_TOKENS) =>
       justifyContent: 'space-between',
       alignItems: 'center',
     },
+    sessionForm: {
+      borderWidth: 2,
+      borderRadius: tokens.radius.md,
+      padding: tokens.spacing.sm,
+      marginTop: tokens.spacing.sm,
+      gap: tokens.spacing.xs,
+    },
     resultBox: {
       borderWidth: 2,
       borderRadius: tokens.radius.md,
@@ -1152,6 +3207,17 @@ const makeStyles = (tokens: typeof KIS_TOKENS) =>
       borderWidth: 2,
       borderRadius: tokens.radius.md,
       padding: tokens.spacing.sm,
+    },
+    listCard: {
+      borderWidth: 2,
+      borderRadius: tokens.radius.md,
+      padding: tokens.spacing.sm,
+    },
+    chip: {
+      borderWidth: 2,
+      borderRadius: tokens.radius.md,
+      paddingVertical: tokens.spacing.xs,
+      paddingHorizontal: tokens.spacing.sm,
     },
     formGrid: {
       flexDirection: 'row',
@@ -1191,7 +3257,7 @@ const makeStyles = (tokens: typeof KIS_TOKENS) =>
       borderRadius: tokens.radius.md,
       padding: tokens.spacing.sm,
     },
-    aiPanel: {
+    timelineFocusPanel: {
       flex: 1,
       minHeight: 220,
       borderWidth: 2,

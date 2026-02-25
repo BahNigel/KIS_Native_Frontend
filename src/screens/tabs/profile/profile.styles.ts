@@ -251,6 +251,7 @@ export const styles = StyleSheet.create({
     borderWidth: 2,
     borderRadius: 14,
     padding: 10,
+    borderColor: '#FF8A33',
   },
   managementStatValue: {
     ...TYPOGRAPHY_PRESETS.title,
@@ -348,9 +349,8 @@ export const styles = StyleSheet.create({
    *  Section headers
    *  ───────────────────────── */
   headerRow: {
-    flexDirection: 'row',
+    flexDirection: 'column',
     alignItems: 'flex-start',
-    justifyContent: 'space-between',
     gap: 10,
   },
 
@@ -520,5 +520,17 @@ export const styles = StyleSheet.create({
     borderTopRightRadius: 26,
     padding: 16,
     flex: 1,
+  },
+  sheetHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    paddingBottom: 12,
+  },
+  sheetTitle: {
+    ...TYPOGRAPHY_PRESETS.title,
+    fontWeight: FONT_WEIGHTS.extrabold,
   },
 });

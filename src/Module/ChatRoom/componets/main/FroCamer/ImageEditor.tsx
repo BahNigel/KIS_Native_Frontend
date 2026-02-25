@@ -123,7 +123,6 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({
     cropRect,
     isCapturing,
     viewShotRef,
-    filterOverlayStyle,
     panHandlers,
     onOverlayLayout,
     handleRotateLeft,
@@ -290,7 +289,6 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({
             flipH={flipH}
             flipV={flipV}
             scale={scale}
-            filterOverlayStyle={filterOverlayStyle}
             brushStrokes={brushStrokes}
             mosaicBlocks={mosaicBlocks}
             textTags={textTags}

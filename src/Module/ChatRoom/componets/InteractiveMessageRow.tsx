@@ -7,7 +7,7 @@ import {
   Animated,
 } from 'react-native';
 
-import type { ChatMessage } from '../ChatRoomPage';
+import type { ChatMessage } from '../chatTypes';
 import { MessageBubble } from './MessageBubble';
 
 type Props = {

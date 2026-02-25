@@ -44,7 +44,7 @@ export type Chat = {
    * Conversation type – mirrors Django Conversation.type
    * ('direct' | 'group' | 'channel' | 'post' | 'thread' | 'system'),
    */
-  kind?: 'direct' | 'group' | 'community' | 'channel';
+  kind?: 'direct' | 'group' | 'community' | 'channel' | 'post' | 'thread' | 'system';
   isGroup?: boolean;
   isGroupChat?: boolean;
   isCommunityChat?: boolean;

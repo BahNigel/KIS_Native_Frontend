@@ -102,14 +102,14 @@ export default function UpdatesTab({ searchTerm = '', onOpenChat }: UpdatesTabPr
   const [statusComposerOpen, setStatusComposerOpen] = useState(false);
   const [statusDraftText, setStatusDraftText] = useState('');
   const [statusDraftAssets, setStatusDraftAssets] = useState<any[]>([]);
-  const [statusDraftType, setStatusDraftType] = useState<'text' | 'image' | 'video'>('text');
+  const [statusDraftType, setStatusDraftType] = useState<'text' | 'image' | 'video' | 'audio'>('text');
   const [suppressMyOpen, setSuppressMyOpen] = useState(false);
   const suppressMyOpenRef = useRef(false);
   const [isRecording, setIsRecording] = useState(false);
   const [recordingMs, setRecordingMs] = useState(0);
   const recorderRef = useRef(new AudioRecorderPlayer());
   const mediaDurationRef = useRef(0);
-  const mediaFallbackRef = useRef<NodeJS.Timeout | null>(null);
+  const mediaFallbackRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastMediaProgressRef = useRef(0);
   const [mediaPaused, setMediaPaused] = useState(false);
   const [statusDraftStyle, setStatusDraftStyle] = useState({
@@ -129,8 +129,12 @@ export default function UpdatesTab({ searchTerm = '', onOpenChat }: UpdatesTabPr
   const [previewChannel, setPreviewChannel] = useState<any | null>(null);
   const [channelSubscribing, setChannelSubscribing] = useState(false);
 
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const progressRef = useRef(0);
+  const channelsLoadInFlightRef = useRef(false);
+  const statusesLoadInFlightRef = useRef(false);
+  const channelsLastLoadAtRef = useRef(0);
+  const statusesLastLoadAtRef = useRef(0);
 
   const handleOpenChannel = useCallback(
     (channel: any) => {
@@ -205,13 +209,21 @@ export default function UpdatesTab({ searchTerm = '', onOpenChat }: UpdatesTabPr
   }, [previewChannel, handleOpenChannel]);
 
   const loadChannels = useCallback(async () => {
+    const now = Date.now();
+    if (channelsLoadInFlightRef.current) return;
+    if (now - channelsLastLoadAtRef.current < 15000) return;
+    channelsLoadInFlightRef.current = true;
+    channelsLastLoadAtRef.current = now;
     setChannelsLoading(true);
     const res = await getRequest(ROUTES.channels.getAllChannels, {
       errorMessage: 'Failed to load channels',
     });
-    const list = res?.data?.results ?? res?.data ?? res ?? [];
-    setChannels(Array.isArray(list) ? list : []);
+    if (res?.success) {
+      const list = res?.data?.results ?? res?.data ?? res ?? [];
+      setChannels(Array.isArray(list) ? list : []);
+    }
     setChannelsLoading(false);
+    channelsLoadInFlightRef.current = false;
   }, []);
 
   React.useEffect(() => {
@@ -219,6 +231,11 @@ export default function UpdatesTab({ searchTerm = '', onOpenChat }: UpdatesTabPr
   }, [loadChannels]);
 
   const loadStatuses = useCallback(async () => {
+    const now = Date.now();
+    if (statusesLoadInFlightRef.current) return;
+    if (now - statusesLastLoadAtRef.current < 15000) return;
+    statusesLoadInFlightRef.current = true;
+    statusesLastLoadAtRef.current = now;
     setStatusesLoading(true);
     try {
       const contacts = await refreshFromDeviceAndBackendWithOptions({});
@@ -230,6 +247,10 @@ export default function UpdatesTab({ searchTerm = '', onOpenChat }: UpdatesTabPr
       const uniqueIds = Array.from(new Set(visibleIds));
       const qs = uniqueIds.length ? `?userIds=${uniqueIds.join(',')}` : '';
       const res = await getRequest(`${ROUTES.statuses.list}${qs}`);
+      if (!res?.success) {
+        if (Number(res?.status) === 429) return;
+        throw new Error(res?.message || 'Unable to load statuses');
+      }
 
       const list = res?.data?.results ?? [];
       const mapped = Array.isArray(list)
@@ -271,6 +292,7 @@ export default function UpdatesTab({ searchTerm = '', onOpenChat }: UpdatesTabPr
       setStatusUsers([{ id: 'me', name: 'My status', items: [] }]);
     } finally {
       setStatusesLoading(false);
+      statusesLoadInFlightRef.current = false;
     }
   }, [currentUserId]);
 
@@ -448,7 +470,7 @@ export default function UpdatesTab({ searchTerm = '', onOpenChat }: UpdatesTabPr
     setViewerProgress(0);
   };
 
-  const handleNext = () => {
+  function handleNext() {
     if (!activeUser) return;
     if (viewerIndex + 1 < activeUser.items.length) {
       setViewerIndex((prev) => prev + 1);
@@ -462,7 +484,7 @@ export default function UpdatesTab({ searchTerm = '', onOpenChat }: UpdatesTabPr
         closeViewer();
       }
     }
-  };
+  }
 
   const handlePrev = () => {
     if (!activeUser) return;
@@ -1246,7 +1268,7 @@ export default function UpdatesTab({ searchTerm = '', onOpenChat }: UpdatesTabPr
                   mediaDurationRef.current = e.duration ?? 0;
                 }}
                 onProgress={(e) => {
-                  const dur = mediaDurationRef.current || e.playableDuration || e.duration || 0;
+                  const dur = mediaDurationRef.current || e.seekableDuration || e.playableDuration || 0;
                   if (dur > 0) setViewerProgress(Math.min(1, e.currentTime / dur));
                   lastMediaProgressRef.current = Date.now();
                 }}
@@ -1265,7 +1287,7 @@ export default function UpdatesTab({ searchTerm = '', onOpenChat }: UpdatesTabPr
                     mediaDurationRef.current = e.duration ?? 0;
                   }}
                   onProgress={(e) => {
-                    const dur = mediaDurationRef.current || e.playableDuration || e.duration || 0;
+                    const dur = mediaDurationRef.current || e.seekableDuration || e.playableDuration || 0;
                     if (dur > 0) setViewerProgress(Math.min(1, e.currentTime / dur));
                     lastMediaProgressRef.current = Date.now();
                   }}

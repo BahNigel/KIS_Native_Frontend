@@ -11,6 +11,14 @@ export const formatMoney = (cents = 0) => {
   return `${value.toFixed(2)}`;
 };
 
+export const parseCsv = (value: string | null | undefined): string[] => {
+  if (!value) return [];
+  return value
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+};
+
 export const tierMetaFor = (tier: any) => {
   const name = String(tier?.name ?? '').toLowerCase();
   const features = tier?.features_json ?? {};
@@ -101,7 +109,6 @@ export const tierMetaFor = (tier: any) => {
 
   addFeature(`Communities: ${features.communities ?? 'Included'}`, list);
   addFeature(`Groups per community: ${features.groups_per_community ?? 'Included'}`, list);
-  addFeature(`AI queries/day: ${features.ai_queries_per_day ?? 'Included'}`, list);
   addFeature(`Storage: ${features.storage_gb ?? 'Included'} GB`, list);
   if (features.partner_accounts !== undefined && features.partner_accounts !== null) {
     const raw = features.partner_accounts;

@@ -8,6 +8,7 @@ import {
   Pressable,
   Alert,
   ActivityIndicator,
+  ScrollView,
 } from 'react-native';
 
 import { KIS_TOKENS } from '../../../theme/constants';
@@ -20,6 +21,7 @@ type NewGroupFormProps = {
   palette: {
     bg: string;
     card: string;
+    surface?: string;
     text: string;
     subtext: string;
     primary: string;

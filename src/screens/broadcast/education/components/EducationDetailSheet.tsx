@@ -3,21 +3,14 @@ import React from 'react';
 import { Modal, ScrollView, Text, View } from 'react-native';
 import { useKISTheme } from '@/theme/useTheme';
 import KISButton from '@/constants/KISButton';
-import { EducationCourse, EducationContentType, EducationCredential, EducationMentorship, EducationProgram, EducationWorkshop } from '@/screens/broadcast/education/api/education.models';
-
-type ContentItem =
-  | EducationCourse
-  | EducationWorkshop
-  | EducationProgram
-  | EducationCredential
-  | EducationMentorship;
+import { EducationContentItem, EducationCourse } from '@/screens/broadcast/education/api/education.models';
 
 type Props = {
   visible: boolean;
-  item: ContentItem | null;
+  item: EducationContentItem | null;
   onClose: () => void;
-  onEnroll: (item: ContentItem) => void;
-  onPreview: (item: ContentItem) => void;
+  onEnroll: (item: EducationContentItem) => void;
+  onPreview: (item: EducationContentItem) => void;
 };
 
 const renderSyllabus = (course?: EducationCourse) => {
@@ -69,7 +62,7 @@ export default function EducationDetailSheet({ visible, item, onClose, onEnroll,
 
   const typeLabel = item.type.charAt(0).toUpperCase() + item.type.slice(1);
 
-  const partnerLine = item.partnerName ?? (item as EducationProgram).courses?.[0]?.partnerName ?? '';
+  const partnerLine = item.partnerName ?? (item as any).courses?.[0]?.partnerName ?? '';
 
   return (
     <Modal visible={visible} transparent animationType="slide">

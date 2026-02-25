@@ -106,10 +106,22 @@ export default function KISTextInput({
   const { palette, tokens } = useKISTheme();
   const [secure, setSecure] = useState(!!secureTextEntry);
 
-  const labelStyle = getTypographyStyle('label', palette.subtext);
-  const helperStyle = getTypographyStyle('helper', palette.subtext);
-  const errorStyle = getTypographyStyle('helper', palette.danger);
-  const inputTextStyle = getTypographyStyle('input');
+  const labelStyle = useMemo(
+    () => getTypographyStyle('label', palette.subtext),
+    [palette.subtext],
+  );
+  const helperStyle = useMemo(
+    () => getTypographyStyle('helper', palette.subtext),
+    [palette.subtext],
+  );
+  const errorStyle = useMemo(
+    () => getTypographyStyle('helper', palette.danger),
+    [palette.danger],
+  );
+  const inputTextStyle = useMemo(
+    () => getTypographyStyle('input', palette.text),
+    [palette.text],
+  );
 
   const hasError = !!errorText || !!error;
 
@@ -220,7 +232,7 @@ export default function KISTextInput({
         >
           <Text
             style={{
-              color: palette.subtext,
+              color: palette.text,
               fontWeight: FONT_WEIGHTS.semibold,
               fontFamily: FONT_FAMILIES.body,
             }}
@@ -263,15 +275,13 @@ export default function KISTextInput({
     return null;
   }, [loading, secure, secureTextEntry, right, palette.subtext, showClear]);
 
-  // Respect caller-provided placeholderTextColor if present
-  const resolvedPlaceholderTextColor =
-    placeholderTextColor ?? rest.placeholderTextColor ?? palette.subtext;
+  const resolvedPlaceholderTextColor = placeholderTextColor ?? palette.subtext;
 
   return (
-    <View style={[{ marginBottom: 16,position: 'relative', height: 40 }, containerStyle]}>
-      {label ? <Text style={{ marginBottom: 6 }}>{label}</Text> : null}
+    <View style={[{ marginBottom: 40,position: 'relative', height: 40 }, containerStyle]}>
+      {label ? <Text style={[labelStyle, { marginBottom: 6 }]}>{label}</Text> : null}
 
-      <View style={[styles.inputWrap, computedWrapStyle, layout?.wrapStyle, { minWidth: "90%", justifyContent: 'center',}]}>
+      <View style={[styles.inputWrap, computedWrapStyle, layout?.wrapStyle, { minWidth: "90%", justifyContent: 'center',marginBottom: 20}]}>
         {left ? (
           <View style={[styles.adornment, { marginLeft: 2 }]}>
             {typeof left === 'function' ? left(palette.subtext) : left}
@@ -288,8 +298,8 @@ export default function KISTextInput({
           textAlignVertical={multiline ? 'top' : (rest as any).textAlignVertical}
           style={[
             styles.input,
+            inputTextStyle,
             {
-              color: palette.text,
               paddingVertical: 0,
             },
             layout?.inputStyle,
@@ -316,6 +326,7 @@ const styles = StyleSheet.create({
   },
   input: {
     flex: 1,
+    paddingBottom: 4,
   },
   adornment: {
     marginHorizontal: 6,

@@ -3,14 +3,14 @@ import React from 'react';
 import { Linking, Modal, ScrollView, Text, View } from 'react-native';
 import { useKISTheme } from '@/theme/useTheme';
 import KISButton from '@/constants/KISButton';
-import type { EducationCourse, EducationContentType, EducationPricing } from '@/screens/broadcast/education/api/education.models';
+import type { EducationContentItem, EducationPricing } from '@/screens/broadcast/education/api/education.models';
 
 type Props = {
   visible: boolean;
-  content: EducationCourse | null;
+  content: EducationContentItem | null;
   onClose: () => void;
-  onFreeEnroll: (content: EducationCourse) => void;
-  onCheckout: (content: EducationCourse) => void;
+  onFreeEnroll: (content: EducationContentItem) => void;
+  onCheckout: (content: EducationContentItem) => void;
   paymentState: 'idle' | 'processing' | 'success' | 'error';
   receiptUrl?: string | null;
 };
@@ -34,7 +34,8 @@ export default function EducationEnrollmentSheet({
 
   if (!content) return null;
 
-  const priceLabel = formatPrice(content.price);
+  const pricing = 'price' in content ? content.price : undefined;
+  const priceLabel = formatPrice(pricing);
 
   return (
     <Modal visible={visible} transparent animationType="slide">
@@ -58,7 +59,7 @@ export default function EducationEnrollmentSheet({
             </Text>
             <Text style={{ marginTop: 12, color: palette.subtext }}>{content.summary}</Text>
             <View style={{ marginTop: 18, flexDirection: 'row', gap: 12 }}>
-              {content.price?.isFree ? (
+              {pricing?.isFree ? (
                 <KISButton title="Free enroll" onPress={() => onFreeEnroll(content)} />
               ) : (
                 <KISButton title="Checkout" onPress={() => onCheckout(content)} />

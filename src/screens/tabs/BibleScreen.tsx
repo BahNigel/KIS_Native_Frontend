@@ -6,7 +6,6 @@ import { useBibleData } from './bible/useBibleData';
 import DailyDevotionsPanel from '../../components/Bible/DailyDevotionsPanel';
 import BibleReaderPanel from '../../components/Bible/BibleReaderPanel';
 import MeditationPanel from '../../components/Bible/MeditationPanel';
-import BibleBotPanel from '../../components/Bible/BibleBotPanel';
 import BiblePlansPanel from '../../components/Bible/BiblePlansPanel';
 import BibleStatsPanel from '../../components/Bible/BibleStatsPanel';
 import StudyToolsPanel from '../../components/Bible/StudyToolsPanel';
@@ -25,11 +24,8 @@ export default function BibleScreen() {
     reader,
     devotionals,
     meditations,
-    botMessages,
     loadingReader,
     loadReader,
-    generateMeditation,
-    sendBotMessage,
   } = useBibleData();
 
   const tabs = useMemo(
@@ -38,7 +34,6 @@ export default function BibleScreen() {
       { key: 'read', label: 'Read', icon: 'book' },
       { key: 'meditate', label: 'Meditate', icon: 'sparkles' },
       { key: 'prayer', label: 'Prayer', icon: 'heart' },
-      { key: 'bot', label: 'Bot', icon: 'chat' },
       { key: 'plans', label: 'Plans', icon: 'list' },
       { key: 'stats', label: 'Stats', icon: 'poll' },
       { key: 'study', label: 'Study', icon: 'school' },
@@ -64,11 +59,9 @@ export default function BibleScreen() {
           />
         );
       case 'meditate':
-        return <MeditationPanel meditations={meditations} onGenerate={generateMeditation} />;
+        return <MeditationPanel meditations={meditations} />;
       case 'prayer':
         return <PrayerPanel />;
-      case 'bot':
-        return <BibleBotPanel messages={botMessages} onSend={sendBotMessage} />;
       case 'plans':
         return <BiblePlansPanel />;
       case 'stats':
@@ -91,7 +84,7 @@ export default function BibleScreen() {
       <View style={styles.header}>
         <Text style={{ color: palette.text, fontSize: 28, fontWeight: '900' }}>Bible</Text>
         <Text style={{ color: palette.subtext, marginTop: 6 }}>
-          Read, listen, and grow with daily devotionals, meditations, and Bible-only chat.
+          Read, listen, and grow with daily devotionals, meditations, and guided study tools.
         </Text>
       </View>
 

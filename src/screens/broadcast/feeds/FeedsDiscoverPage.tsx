@@ -48,20 +48,25 @@ export default function FeedsDiscoverPage({
   }, [items, searchTerm]);
 
   const displayItems = useMemo(() => {
+    const nonHealthcare = filteredFeed.filter(
+      (item) =>
+        String(item.source_type || '').toLowerCase() !== 'healthcare' &&
+        String(item.source?.type || '').toLowerCase() !== 'healthcare',
+    );
     const context = (searchContext ?? '').trim().toLowerCase();
     if (!context || context === 'latest') {
-      return filteredFeed;
+      return nonHealthcare;
     }
 
     if (context === 'saved') {
-      return filteredFeed.filter((item) => Boolean(item.source?.is_subscribed));
+      return nonHealthcare.filter((item) => Boolean(item.source?.is_subscribed));
     }
 
     if (context === 'trending') {
-      return [...filteredFeed].sort((a, b) => (b.reaction_count ?? 0) - (a.reaction_count ?? 0));
+      return [...nonHealthcare].sort((a, b) => (b.reaction_count ?? 0) - (a.reaction_count ?? 0));
     }
 
-    return filteredFeed;
+    return nonHealthcare;
   }, [filteredFeed, searchContext]);
 
   const handleTrendingSeeAll = () => {

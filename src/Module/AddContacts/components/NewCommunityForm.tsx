@@ -19,6 +19,7 @@ type NewCommunityFormProps = {
   palette: {
     bg: string;
     card: string;
+    surface?: string;
     text: string;
     subtext: string;
     primary: string;

@@ -311,7 +311,7 @@ export default function FeedScreen<T extends FeedPost>({
     };
   }, []);
 
-  const videoPlayerRef = useRef<Video>(null);
+  const videoPlayerRef = useRef<any>(null);
 
   const normalizedFeedType = feedType;
   const logImpression = useCallback(
@@ -1754,7 +1754,7 @@ export const InlineCommentSheet: React.FC<InlineCommentSheetProps> = ({
           return;
         }
         const mapped = items.map((item: any) => mapMessage(item));
-        mapped.sort((a, b) => parseTimestamp(a.createdAt) - parseTimestamp(b.createdAt));
+        mapped.sort((a: CommentMessage, b: CommentMessage) => parseTimestamp(a.createdAt) - parseTimestamp(b.createdAt));
         setMessages(mapped);
       },
     );

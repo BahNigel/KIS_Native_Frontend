@@ -76,7 +76,7 @@ export async function encryptConversationPayload(
   const iv = crypto.randomBytes(12);
   const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
   const aad = buildAad(conversationId, payload.clientId, payload.kind);
-  cipher.setAAD(aad);
+  cipher.setAAD(Uint8Array.from(aad));
 
   const plaintext = JSON.stringify(payload);
   const encrypted = Buffer.concat([
@@ -119,13 +119,14 @@ export async function decryptConversationPayload(
     key,
     Buffer.from(iv, 'base64'),
   );
-  decipher.setAuthTag(Buffer.from(tag, 'base64'));
+  decipher.setAuthTag(Uint8Array.from(Buffer.from(tag, 'base64')));
 
   if (aadBase64) {
     try {
       const aad = Buffer.from(aadBase64, 'base64');
-      if (aad.length) {
-        decipher.setAAD(aad);
+      const aadBytes = Uint8Array.from(aad);
+      if (aadBytes.length) {
+        decipher.setAAD(aadBytes);
       }
     } catch {
       console.warn('[customE2EE] invalid AAD for decryption');

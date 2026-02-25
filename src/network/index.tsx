@@ -9,6 +9,7 @@ import miscRoutes from './routes/miscRoutes';
 import socialRoutes from './routes/socialRoutes';
 import adminRoutes from './routes/adminRoutes';
 import personalizationRoutes from './routes/personalizationRoutes';
+import billingRoutes from './routes/billingRoutes';
 import {
   API_BASE_URL,
   BG_REMOVAL_START_URL,
@@ -26,7 +27,7 @@ import {
   WEBSOCKET_URL,
 } from './config';
 
-const ROUTES = {
+const ROUTES: any = {
   ...authRoutes,
   ...socialRoutes,
   ...broadcastRoutes,
@@ -34,6 +35,13 @@ const ROUTES = {
   ...miscRoutes,
   ...adminRoutes,
   ...personalizationRoutes,
+  ...billingRoutes,
+};
+
+// Keep health analytics endpoints and admin analytics endpoints under one key.
+ROUTES.analytics = {
+  ...((healthRoutes as any).analytics || {}),
+  ...((adminRoutes as any).analytics || {}),
 };
 
 export default ROUTES;

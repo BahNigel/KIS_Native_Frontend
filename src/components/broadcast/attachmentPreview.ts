@@ -13,7 +13,7 @@ const pickFirst = (source: Record<string, any>, keys: string[]) => {
 const normalizeUrl = (value: unknown) => {
   if (!value) return null;
   const str = typeof value === 'string' ? value : String(value);
-  return resolveBackendAssetUrl(str);
+  return resolveBackendAssetUrl(str) ?? null;
 };
 
 export type AttachmentPreviewInfo = {

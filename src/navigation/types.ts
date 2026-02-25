@@ -1,7 +1,9 @@
 // src/navigation/types.ts
 import type { PartnerOrganizationApp } from '@/screens/tabs/partners/hooks/usePartnerOrganizationApps';
+import type { HealthInstitutionType } from '@/screens/tabs/profile-screen/types';
 
 export type RootStackParamList = {
+  Welcome: undefined;
   Login: undefined;
   Register: undefined;
   DeviceVerification: { phone?: string | null; email?: string | null } | undefined;
@@ -20,6 +22,71 @@ export type RootStackParamList = {
   NotificationsDashboard: undefined;
   OrganizationApp: { app: PartnerOrganizationApp };
   OrganizationAppForm: { partnerId: string; app?: PartnerOrganizationApp };
+  HealthInstitutionDetail: {
+    institutionId: string;
+    institutionType: HealthInstitutionType;
+    institutionName?: string;
+  };
+  HealthInstitutionManagement: {
+    institutionId?: string;
+    institutionName?: string;
+    institutionType?: HealthInstitutionType;
+    employees?: number;
+  };
+  InstitutionProfileEditor: {
+    institutionId: string;
+    institutionType: HealthInstitutionType;
+  };
+  AvailabilityManagement: {
+    institutionId: string;
+    institutionType: HealthInstitutionType;
+  };
+  HealthInstitutionMembers: {
+    institutionId: string;
+    institutionName?: string;
+  };
+  HealthInstitutionServicesCatalog: {
+    institutionId: string;
+    institutionType?: HealthInstitutionType;
+    institutionName?: string;
+  };
+  HealthInstitutionCards: {
+    institutionId: string;
+    institutionType?: HealthInstitutionType;
+    institutionName?: string;
+  };
+  HealthServiceSession: {
+    institutionId: string;
+    institutionType?: HealthInstitutionType;
+    institutionName?: string;
+    cardId: string;
+    sessionId?: string;
+    workflowSessionId?: string;
+    appointmentBookingId?: string;
+    sessionSource?: 'broadcasts' | 'health_ops';
+    serviceId?: string;
+    serviceName: string;
+    serviceDescription?: string;
+    dateKey?: string;
+    timeValue?: string;
+    statusLabel?: string;
+    basePriceCents?: number;
+    memberPriceCents?: number;
+    ownerPreview?: boolean;
+  };
+  InstitutionLandingPreview: {
+    institutionId?: string;
+    institutionType?: HealthInstitutionType;
+    institutionName?: string;
+    draft: any;
+    previewHeroImageUri?: string;
+    previewGalleryImageUris?: string[];
+  };
+  ProfileLandingEditor: {
+    kind: 'market' | 'education' | 'partner';
+    profileLabel?: string;
+    partnerId?: string;
+  };
 };
 
 export type BroadcastTabId = 'feeds' | 'education' | 'market' | 'health';

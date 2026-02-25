@@ -132,6 +132,16 @@ export type KISPalette = {
   timestampBg: string;
   onTimestamp: string;
   readStatus: string;
+
+  // Compatibility aliases used across legacy screens
+  muted: string;
+  accent: string;
+  accentPrimary: string;
+  surfaceSoft: string;
+  successSoft: string;
+  dangerSoft: string;
+
+  [key: string]: string | undefined;
 };
 
 export const createPalette = (tone: KISTone): KISPalette => {
@@ -215,6 +225,15 @@ export const createPalette = (tone: KISTone): KISPalette => {
       ? 'rgba(255,255,255,0.30)'
       : 'rgba(0,0,0,0.35)';
 
+  const successSoft =
+    tone === 'dark'
+      ? 'rgba(34,197,94,0.22)'
+      : 'rgba(34,197,94,0.14)';
+  const dangerSoft =
+    tone === 'dark'
+      ? 'rgba(239,68,68,0.22)'
+      : 'rgba(239,68,68,0.14)';
+
   return {
     // Core surfaces
     bg: base.bg,
@@ -291,6 +310,14 @@ export const createPalette = (tone: KISTone): KISPalette => {
     timestampBg,
     onTimestamp,
     readStatus,
+
+    // Compatibility aliases
+    muted: base.subtext,
+    accent: c.brand.primary,
+    accentPrimary: c.brand.primary,
+    surfaceSoft: elevated,
+    successSoft,
+    dangerSoft,
   };
 };
 
@@ -332,6 +359,7 @@ export const KIS_TOKENS = {
     weight: {
       regular: '400' as const,
       medium: '600' as const,
+      semibold: '600' as const,
       bold: '700' as const,
       extrabold: '800' as const,
     },

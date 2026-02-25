@@ -101,6 +101,14 @@ export interface EducationMentorship extends EducationBase {
   meetUrl?: string;
 }
 
+export type EducationContentItem =
+  | EducationCourse
+  | EducationLesson
+  | EducationWorkshop
+  | EducationProgram
+  | EducationCredential
+  | EducationMentorship;
+
 export interface EducationEnrollment {
   id: string;
   contentId: string;
@@ -149,14 +157,7 @@ export interface EducationDiscoverySection {
   id: string;
   title: string;
   type: EducationContentType;
-  items: Array<
-    | EducationCourse
-    | EducationLesson
-    | EducationWorkshop
-    | EducationProgram
-    | EducationCredential
-    | EducationMentorship
-  >;
+  items: EducationContentItem[];
   summary?: string;
 }
 

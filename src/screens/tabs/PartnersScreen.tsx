@@ -32,6 +32,7 @@ import usePartnerProfileLinks from './partners/usePartnerProfileLinks';
 import { PartnerOrganizationAppsProvider } from '@/context/partners/PartnerOrganizationAppsContext';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '@/navigation/types';
+import type { PartnerOrganizationApp } from '@/screens/tabs/partners/hooks/usePartnerOrganizationApps';
 
 export default function PartnersScreen({ setHidNav, onOpenInfo }: any) {
   const navigation = useNavigation<any>();
@@ -39,7 +40,7 @@ export default function PartnersScreen({ setHidNav, onOpenInfo }: any) {
   const { setAuth } = useAuth();
   const { width, height } = useWindowDimensions();
   const rootNavigation =
-    navigation.getParent<NativeStackNavigationProp<RootStackParamList>>();
+    navigation.getParent?.() as NativeStackNavigationProp<RootStackParamList> | undefined;
   const openInsights = useCallback(() => {
     rootNavigation?.navigate('PartnerInsights');
   }, [rootNavigation]);
@@ -84,26 +85,6 @@ export default function PartnersScreen({ setHidNav, onOpenInfo }: any) {
     setRole,
     refresh: refreshLinks,
   } = usePartnerProfileLinks(selectedPartner?.id);
-  useEffect(() => {
-    const sub = DeviceEventEmitter.addListener('partner.open', (payload: any) => {
-      const partnerId = String(payload?.partnerId ?? '');
-      if (!partnerId) return;
-      setSelectedPartnerId(partnerId);
-      setSelectedGroupId(null);
-      setSelectedChannelId(null);
-      setSelectedFeed(payload?.feed ?? 'general');
-      setSelectedCommunityFeedId(null);
-      openMessagesPane();
-    });
-    return () => sub.remove();
-  }, [
-    openMessagesPane,
-    setSelectedChannelId,
-    setSelectedCommunityFeedId,
-    setSelectedFeed,
-    setSelectedGroupId,
-    setSelectedPartnerId,
-  ]);
   const partnerRole = normalizePartnerRole(
     selectedPartner?.role ?? selectedPartner?.member_role ?? selectedPartner?.access_level,
     'member',
@@ -122,6 +103,26 @@ export default function PartnersScreen({ setHidNav, onOpenInfo }: any) {
     animateMessagesPane,
     panHandlers,
   } = useMessagesPane(width, setHidNav);
+  useEffect(() => {
+    const sub = DeviceEventEmitter.addListener('partner.open', (payload: any) => {
+      const partnerId = String(payload?.partnerId ?? '');
+      if (!partnerId) return;
+      setSelectedPartnerId(partnerId);
+      setSelectedGroupId(null);
+      setSelectedChannelId(null);
+      setSelectedFeed((payload?.feed ?? 'general') as any);
+      setSelectedCommunityFeedId(null);
+      openMessagesPane();
+    });
+    return () => sub.remove();
+  }, [
+    openMessagesPane,
+    setSelectedChannelId,
+    setSelectedCommunityFeedId,
+    setSelectedFeed,
+    setSelectedGroupId,
+    setSelectedPartnerId,
+  ]);
   const {
     isPartnerSheetOpen,
     sheetHeight,
@@ -245,11 +246,11 @@ export default function PartnersScreen({ setHidNav, onOpenInfo }: any) {
     onCommunityFeedPress,
     onChannelPress,
   } = usePartnerNavigationActions({
-    selectedPartner,
+    selectedPartner: selectedPartner as any,
     isMessagesExpanded,
     setSelectedGroupId,
     setSelectedChannelId,
-    setSelectedFeed,
+    setSelectedFeed: (value: string | null) => setSelectedFeed(value as any),
     setSelectedCommunityFeedId,
     openMessagesPane,
   });
@@ -306,6 +307,30 @@ export default function PartnersScreen({ setHidNav, onOpenInfo }: any) {
       openOrgProfilePanel();
     }, 240);
   };
+
+  const handleOpenPartnerInfo = useCallback(() => {
+    const activePartnerId = String(selectedPartner?.id || '');
+    if (!activePartnerId) {
+      onOpenInfo?.();
+      return;
+    }
+    Alert.alert('Partner actions', 'Choose what to open.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Open info',
+        onPress: () => onOpenInfo?.(),
+      },
+      {
+        text: 'Landing page builder',
+        onPress: () =>
+          rootNavigation?.navigate('ProfileLandingEditor', {
+            kind: 'partner',
+            partnerId: activePartnerId,
+            profileLabel: selectedPartner?.name || 'Partner Profile',
+          }),
+      },
+    ]);
+  }, [onOpenInfo, rootNavigation, selectedPartner?.id, selectedPartner?.name]);
   const {
     rootPanHandlers,
     onLogout,
@@ -343,7 +368,7 @@ export default function PartnersScreen({ setHidNav, onOpenInfo }: any) {
         rootPanHandlers={rootPanHandlers}
         partners={partners}
         selectedPartnerId={selectedPartnerId}
-        setSelectedPartnerId={setSelectedPartnerId}
+        setSelectedPartnerId={(id) => setSelectedPartnerId(id as any)}
         onAddPartnerPress={onAddPartnerPress}
         onLogout={onLogout}
         selectedPartner={selectedPartner}
@@ -368,7 +393,7 @@ export default function PartnersScreen({ setHidNav, onOpenInfo }: any) {
         isMessagesExpanded={isMessagesExpanded}
         toggleMessagesPane={toggleMessagesPane}
         handleCloseMessages={handleCloseMessages}
-        onOpenInfo={onOpenInfo}
+        onOpenInfo={handleOpenPartnerInfo}
         isPartnerSheetOpen={isPartnerSheetOpen}
         sheetHeight={sheetHeight}
         sheetOffsetAnim={sheetOffsetAnim}

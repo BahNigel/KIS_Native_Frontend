@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { getRequest } from '@/network/get';
 import ROUTES from '@/network';
@@ -26,10 +27,24 @@ export default function useEducationTier() {
   const [tierLabel, setTierLabel] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const blockedUntilRef = useRef(0);
 
   const load = useCallback(async () => {
+    const now = Date.now();
+    if (now < blockedUntilRef.current) return;
     setLoading(true);
     try {
+      const cached = await AsyncStorage.getItem('kis_profile_cache_v1');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        const cachedTier = parsed?.account?.tier ?? parsed?.tier ?? null;
+        const normalizedCachedTier = normalizeTierLabel(cachedTier);
+        if (normalizedCachedTier) {
+          setTierLabel(normalizedCachedTier);
+          setError(null);
+          return;
+        }
+      }
       const res = await getRequest(ROUTES.profiles.me, {
         errorMessage: 'Unable to load profile data.',
       });
@@ -38,6 +53,10 @@ export default function useEducationTier() {
         setTierLabel(normalizeTierLabel(rawTier));
         setError(null);
       } else {
+        if (Number(res?.status) === 429) {
+          blockedUntilRef.current = Date.now() + 60 * 1000;
+          return;
+        }
         setError(res.message);
       }
     } catch (err: any) {

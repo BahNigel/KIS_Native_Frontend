@@ -3,7 +3,6 @@ import React, { useEffect, useRef, useCallback } from 'react';
 import {
   View,
   StyleSheet,
-  Pressable,
   Animated,
   Linking,
   useWindowDimensions,
@@ -31,6 +30,8 @@ import ROUTES from '@/network';
 import { useAuth } from '../../App';
 
 const PRIVACY_URL = 'https://christiancommunit.netlify.app';
+const AUTH_429_BACKOFF_MS = 2 * 60 * 1000;
+let welcomeAuthCheckBlockedUntil = 0;
 
 Ionicons.loadFont?.();
 
@@ -39,6 +40,8 @@ export default function WelcomeScreen() {
   const { palette, tone } = useKISTheme();
   const { setAuth, setPhone } = useAuth(); // keep global auth in sync if we auto-redirect
   const fade = useRef(new Animated.Value(0)).current;
+  const loginCheckInFlightRef = useRef(false);
+  const lastLoginCheckAtRef = useRef(0);
   const { width, height } = useWindowDimensions();
 
   const heroSource = tone === 'dark' ? avatarsDark : avatarsLight;
@@ -97,7 +100,7 @@ export default function WelcomeScreen() {
     },
   ];
 
-  const quickTags = ['Live Worship', 'Partner Communities', 'Partners', 'Market Pro', 'AI Broadcast Tools'];
+  const quickTags = ['Live Worship', 'Partner Communities', 'Partners', 'Market Pro', 'Broadcast Tools'];
   const statsData = [
     { label: 'Live Studios', value: '180+' },
     { label: 'Partner Cities', value: '52' },
@@ -114,6 +117,12 @@ export default function WelcomeScreen() {
 
   // NEW: check if logged in and redirect if so
   const checkAndRedirectIfLoggedIn = useCallback(async () => {
+    const now = Date.now();
+    if (now < welcomeAuthCheckBlockedUntil) return;
+    if (loginCheckInFlightRef.current) return;
+    if (now - lastLoginCheckAtRef.current < 15000) return;
+    loginCheckInFlightRef.current = true;
+    lastLoginCheckAtRef.current = now;
     try {
       const token = await AsyncStorage.getItem('access_token');
       const storedPhone = await AsyncStorage.getItem('user_phone');
@@ -125,7 +134,18 @@ export default function WelcomeScreen() {
       const res = await getRequest(`${ROUTES.auth.checkLogin}${qs}`, {
         errorMessage: 'Status check failed.',
         cacheType: 'AUTH_CACHE',
+        forceNetwork: true,
       });
+      if (!res?.success) {
+        if (Number(res?.status) === 429) {
+          welcomeAuthCheckBlockedUntil = Date.now() + AUTH_429_BACKOFF_MS;
+          setAuth?.(true);
+          goMain();
+          return;
+        }
+        setAuth?.(false);
+        return;
+      }
 
       const u = res?.data?.user ?? res?.data ?? {};
       const active = res?.success && (u.is_active || u.status === 'active');
@@ -139,6 +159,8 @@ export default function WelcomeScreen() {
     } catch {
       // swallow — stay on Welcome if anything fails
       setAuth?.(false);
+    } finally {
+      loginCheckInFlightRef.current = false;
     }
   }, [goMain, setAuth, setPhone]);
 

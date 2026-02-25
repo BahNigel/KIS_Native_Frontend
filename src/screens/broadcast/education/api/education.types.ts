@@ -43,11 +43,11 @@ export type EducationModule = {
 };
 
 export type EducationHomePayload = {
-  featured?: EducationLesson | null;
-  live_lessons?: EducationLesson[];
-  popular_courses?: EducationCourse[];
-  modules?: EducationModule[];
-  categories?: { id: string; name: string; icon?: string }[];
+  featured: EducationLesson | null;
+  live_lessons: EducationLesson[];
+  popular_courses: EducationCourse[];
+  modules: EducationModule[];
+  categories: { id: string; name: string; icon?: string }[];
 };
 
 export const normalizeHome = (data: any): EducationHomePayload => {

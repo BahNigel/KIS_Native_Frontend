@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -18,10 +17,8 @@ type StaffConsoleProps = {
   profileId: string | null;
   updatingId: string | null;
   shiftLoadingId: string | null;
-  aiLoadingId: string | null;
   onUpdateRole: (id: string, payload: { role?: string; scope?: string }) => Promise<void>;
   onAssignShift: (id: string, shifts: any[]) => Promise<void>;
-  onRunAi: (staff: any) => Promise<void>;
 };
 
 export default function StaffConsole({
@@ -30,12 +27,11 @@ export default function StaffConsole({
   profileId,
   updatingId,
   shiftLoadingId,
-  aiLoadingId,
   onUpdateRole,
   onAssignShift,
-  onRunAi,
 }: StaffConsoleProps) {
   const { palette, tokens } = useKISTheme();
+  const styles = useMemo(() => makeStyles(tokens), [tokens]);
   const [formState, setFormState] = useState<Record<string, { role: string; scope: string; shiftNote: string }>>({});
 
   useEffect(() => {
@@ -140,13 +136,6 @@ export default function StaffConsole({
                       ])
                     }
                     disabled={shiftLoadingId === entry.id}
-                  />
-                  <KISButton
-                    title={aiLoadingId === entry.id ? 'AI running…' : 'AI approval'}
-                    size="xs"
-                    variant="outline"
-                    onPress={() => onRunAi(entry)}
-                    disabled={aiLoadingId === entry.id}
                   />
                 </View>
                 <TextInput

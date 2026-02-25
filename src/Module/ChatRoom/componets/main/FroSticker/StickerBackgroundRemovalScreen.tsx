@@ -48,7 +48,7 @@ export const StickerBackgroundRemovalScreen: React.FC<
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [hasResult, setHasResult] = useState(false);
 
-  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const pollingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const isMountedRef = useRef(true);
 
   /* ------------------------------------------------------------- */

@@ -19,7 +19,11 @@ import EducationEnrollmentSheet from '@/screens/broadcast/education/components/E
 import EducationFilterSheet from '@/screens/broadcast/education/components/EducationFilterSheet';
 import useEducationDiscovery, { EDUCATION_SORT_OPTIONS } from '@/screens/broadcast/education/hooks/useEducationDiscovery';
 import useEducationOfflineStore from '@/screens/broadcast/education/hooks/useEducationOfflineStore';
-import type { EducationCourse, EducationContentType, EducationProgress } from '@/screens/broadcast/education/api/education.models';
+import type {
+  EducationContentItem,
+  EducationContentType,
+  EducationProgress,
+} from '@/screens/broadcast/education/api/education.models';
 
 type Props = {
   searchTerm?: string;
@@ -64,10 +68,10 @@ export default function EducationV2DiscoverPage({
   });
   const { scheduleDownload, isDownloaded } = useEducationOfflineStore();
   const [filterSheetOpen, setFilterSheetOpen] = useState(false);
-  const [detailItem, setDetailItem] = useState<EducationCourse | null>(null);
+  const [detailItem, setDetailItem] = useState<EducationContentItem | null>(null);
   const [detailVisible, setDetailVisible] = useState(false);
   const [enrollmentVisible, setEnrollmentVisible] = useState(false);
-  const [selectedCourse, setSelectedCourse] = useState<EducationCourse | null>(null);
+  const [selectedCourse, setSelectedCourse] = useState<EducationContentItem | null>(null);
   const [paymentState, setPaymentState] = useState<'idle' | 'processing' | 'success' | 'error'>('idle');
   const [receiptUrl, setReceiptUrl] = useState<string | null>(null);
 
@@ -89,23 +93,23 @@ export default function EducationV2DiscoverPage({
     return parts.length ? parts.join(' · ') : 'All filters';
   }, [filters]);
 
-  const openDetails = (item: EducationCourse) => {
+  const openDetails = (item: EducationContentItem) => {
     setDetailItem(item);
     setDetailVisible(true);
   };
 
-  const enrollCourse = (item: EducationCourse) => {
+  const enrollCourse = (item: EducationContentItem) => {
     setSelectedCourse(item);
     setEnrollmentVisible(true);
     setPaymentState('idle');
     setReceiptUrl(null);
   };
 
-  const previewCourse = (item: EducationCourse) => {
+  const previewCourse = (item: EducationContentItem) => {
     Alert.alert('Preview lesson', `Playing preview for “${item.title}”.`);
   };
 
-  const freeEnroll = (item: EducationCourse) => {
+  const freeEnroll = (item: EducationContentItem) => {
     setPaymentState('processing');
     setTimeout(() => {
       setPaymentState('success');
@@ -114,7 +118,7 @@ export default function EducationV2DiscoverPage({
     }, 1400);
   };
 
-  const checkout = (item: EducationCourse) => {
+  const checkout = (item: EducationContentItem) => {
     setPaymentState('processing');
     setTimeout(() => {
       setPaymentState('success');
@@ -123,7 +127,7 @@ export default function EducationV2DiscoverPage({
     }, 1800);
   };
 
-  const downloadContent = (item: EducationCourse) => {
+  const downloadContent = (item: EducationContentItem) => {
     scheduleDownload({
       contentId: item.id,
       contentType: item.type,
@@ -135,6 +139,7 @@ export default function EducationV2DiscoverPage({
 
   const renderHero = () => {
     if (!heroContent) return null;
+    const heroPricing = 'price' in heroContent ? heroContent.price : undefined;
     return (
       <View
         style={{
@@ -155,7 +160,7 @@ export default function EducationV2DiscoverPage({
           <KISButton title="Preview" size="sm" variant="outline" onPress={() => previewCourse(heroContent)} />
           <KISButton title="Details" size="sm" variant="secondary" onPress={() => openDetails(heroContent)} />
           <KISButton
-            title={heroContent.price?.isFree ? 'Free enroll' : 'Enroll'}
+            title={heroPricing?.isFree ? 'Free enroll' : 'Enroll'}
             size="sm"
             onPress={() => enrollCourse(heroContent)}
           />
@@ -174,15 +179,15 @@ export default function EducationV2DiscoverPage({
             <Text style={{ color: palette.primaryStrong, fontSize: 12 }}>See all</Text>
           </Pressable>
         </View>
-        <FlatList
-          data={section.items}
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          keyExtractor={(item: any) => `${item.type}-${item.id}`}
-          renderItem={({ item }: { item: EducationCourse }) => (
-            <EducationContentCard
-              item={item}
-              onSelect={openDetails}
+          <FlatList
+            data={section.items}
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            keyExtractor={(item: any) => `${item.type}-${item.id}`}
+            renderItem={({ item }: { item: EducationContentItem }) => (
+              <EducationContentCard
+                item={item}
+                onSelect={openDetails}
               onPrimaryAction={openDetails}
               onDownload={downloadContent}
               downloaded={isDownloaded(item.id, item.type)}

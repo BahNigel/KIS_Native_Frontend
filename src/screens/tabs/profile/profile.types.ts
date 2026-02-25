@@ -40,6 +40,8 @@ export type ProfilePayload = {
     highlights?: string[];
   };
   stats?: Record<string, number>;
+  tier?: any;
+  subscription?: any;
   account?: {
     tier?: any;
     subscription?: any;

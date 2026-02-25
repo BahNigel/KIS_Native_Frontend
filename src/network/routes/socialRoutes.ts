@@ -64,6 +64,14 @@ const socialRoutes = {
     mine: `${API_BASE_URL}/api/v1/statuses/mine/`,
     view: (id: string) => `${API_BASE_URL}/api/v1/statuses/${id}/view/`,
   },
+  chat: {
+    listConversations: `${API_BASE_URL}/api/v1/chats/conversations/`,
+    directConversation: `${API_BASE_URL}/api/v1/chats/conversations/direct/`,
+  },
+  e2ee: {
+    conversationKey: (conversationId: string) =>
+      `${API_BASE_URL}/api/v1/auth/e2ee/conversations/${conversationId}/key/`,
+  },
 };
 
 export default socialRoutes;

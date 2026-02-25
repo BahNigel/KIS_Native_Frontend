@@ -24,7 +24,7 @@ type BroadcastSourceMeta = {
   followers_count?: number;
 };
 
-type BroadcastFeedItem = {
+export type BroadcastFeedItem = {
   id: string;
   source_type: string;
   title?: string;
@@ -83,7 +83,7 @@ type Props = {
   contextLabel?: string;
   showComments?: boolean;
   onToggleComments?: () => void;
-  onSubscribe?: () => void | Promise<void>;
+  onSubscribe?: () => void | Promise<void | boolean>;
 };
 
 const fallbackAvatar = require('@/assets/logo-light.png');

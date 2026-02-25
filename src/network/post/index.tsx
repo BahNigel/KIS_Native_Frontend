@@ -1,11 +1,9 @@
 // src/network/postRequest.ts
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import apiService from '../../services/apiService';
-import { isOnline } from '../../services/networkMonitor';
-import { getCache, setCache } from '../cache';
-import { CacheKeys, CacheTypes } from '../cacheKeys';
-
-type HeadersInit = Record<string, string>;
+import { setCache } from '../cache';
+import { CacheTypes } from '../cacheKeys';
+import type { ApiResult, HeadersInit } from '../types';
 
 const sanitizeFileData = (obj: any): any => {
   if (Array.isArray(obj)) return obj.map(sanitizeFileData);
@@ -28,7 +26,7 @@ export const postRequest = async (
     successMessage?: string;
     errorMessage?: string;
   } = {}
-) => {
+): Promise<ApiResult> => {
   try {
     // if (!(await isOnline())) throw new Error('No internet connection.');
 

@@ -7,7 +7,6 @@ import TranslationPicker from './TranslationPicker';
 import KISButton from '@/constants/KISButton';
 import { KISIcon } from '@/constants/kisIcons';
 import { getRequest } from '@/network/get';
-import { postRequest } from '@/network/post';
 import ROUTES, {
   API_BASE_URL,
   buildMediaSource,
@@ -45,7 +44,6 @@ export default function BibleReaderPanel({
   const mediaHeaders = useMediaHeaders();
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [searching, setSearching] = useState(false);
-  const [aiSuggestion, setAiSuggestion] = useState<string | null>(null);
 
   useEffect(() => {
     setSelectedTranslation(reader?.translation?.code);
@@ -59,7 +57,7 @@ export default function BibleReaderPanel({
     if (!isPlaying) return;
     if (!reader?.audio?.segments?.length) return;
     setActiveVerse(null);
-  }, [isPlaying, verses]);
+  }, [isPlaying, reader?.audio?.segments?.length]);
 
   const onStartPlayback = () => {
     setActiveVerse(null);
@@ -139,20 +137,6 @@ export default function BibleReaderPanel({
     const payload = res?.data?.results ?? [];
     setSearchResults(Array.isArray(payload) ? payload : []);
     setSearching(false);
-  };
-
-  const runAiSearch = async () => {
-    if (!searchQuery.trim()) return;
-    const res = await postRequest(
-      ROUTES.bible.botChat,
-      {
-        message: `Find Bible verses about: ${searchQuery.trim()}. Respond with a short suggestion and verse reference.`,
-        topic: 'Bible Search',
-      },
-      { errorMessage: 'Unable to reach the Bible bot.' },
-    );
-    const suggestion = res?.data?.reply ?? '';
-    setAiSuggestion(suggestion || null);
   };
 
   return (
@@ -293,13 +277,7 @@ export default function BibleReaderPanel({
             style={[styles.searchInput, { borderColor: palette.divider, color: palette.text }]}
           />
           <KISButton title={searching ? '...' : 'Search'} size="xs" onPress={runSearch} />
-          <KISButton title="Ask AI" size="xs" variant="outline" onPress={runAiSearch} />
         </View>
-        {aiSuggestion ? (
-          <View style={[styles.suggestionBox, { borderColor: palette.divider }]}>
-            <Text style={{ color: palette.subtext }}>{aiSuggestion}</Text>
-          </View>
-        ) : null}
         <View style={{ gap: 8 }}>
           {limitedSearchResults.map((verse, index) => {
             const previousBookName = limitedSearchResults[index - 1]?.chapter?.book?.name;

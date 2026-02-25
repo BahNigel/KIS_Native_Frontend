@@ -109,6 +109,7 @@ export default function BroadcastFeedSection({
   onUpgrade,
   forYouTabOverride,
   onForYouTabChange,
+  onSubscribeToSource,
 }: Props) {
   const { palette } = useKISTheme();
   const navigation = useNavigation();
@@ -122,6 +123,7 @@ export default function BroadcastFeedSection({
   const [forYouTab, setForYouTab] = useState<ForYouTab>('for_you'); // for_you | following
   const [sourceChip, setSourceChip] = useState<SourceChip>('all'); // all/channel/community/partner/market/lessons/live
   const [sortMode, setSortMode] = useState<SortMode>('latest'); // latest/trending
+  const [autoplayEnabled, setAutoplayEnabled] = useState(true);
   const [compactMode, setCompactMode] = useState(false); // future: compact cards
   const [safeMode, setSafeMode] = useState(false); // future: content gating
   const activeForYouTab = forYouTabOverride ?? forYouTab;
@@ -555,7 +557,6 @@ export default function BroadcastFeedSection({
   const [videoModalVisible, setVideoModalVisible] = useState(false);
   const [videoQueue, setVideoQueue] = useState<BroadcastFeedItem[]>([]);
   const [currentVideoIndex, setCurrentVideoIndex] = useState(0);
-  const [autoplayEnabled, setAutoplayEnabled] = useState(true);
   const [isVideoPlaying, setIsVideoPlaying] = useState(false);
   const translateY = useRef(new Animated.Value(0)).current;
 

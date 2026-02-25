@@ -125,8 +125,8 @@ export default function useEducationData({ q = '', activeProfileId = null }: Par
         ? profilesRes?.data?.profiles
         : [];
       const activeProfile =
-        (activeProfileId && educationProfiles.find((profile) => profile.id === activeProfileId)) ??
-        educationProfiles.find((profile) => profile.is_default) ??
+        (activeProfileId && educationProfiles.find((profile: any) => profile.id === activeProfileId)) ??
+        educationProfiles.find((profile: any) => profile.is_default) ??
         educationProfiles[0] ??
         null;
       const profileCourses = Array.isArray(activeProfile?.courses) ? activeProfile.courses : [];
@@ -138,7 +138,7 @@ export default function useEducationData({ q = '', activeProfileId = null }: Par
       ];
 
       const normalizedModules = profileModules
-        .map((mod, index) => normalizeProfileModule(mod, index))
+        .map((mod: any, index: number) => normalizeProfileModule(mod, index))
         .filter((mod): mod is EducationModule => Boolean(mod));
 
       const profilesPayload = profilesRes?.data?.profiles ?? {};
@@ -175,7 +175,7 @@ export default function useEducationData({ q = '', activeProfileId = null }: Par
 
   const updateCourse = useCallback((updated: EducationCourse) => {
     setHome((prev) => {
-      const updatedCourses = prev.popular_courses.map((course) =>
+      const updatedCourses = (prev.popular_courses ?? []).map((course) =>
         course.id === updated.id ? { ...course, ...updated } : course,
       );
       return {

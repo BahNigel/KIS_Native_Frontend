@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo } from 'react';
+import React, { useMemo } from 'react';
 import { RefreshControl, Text, View } from 'react-native';
 import { useKISTheme } from '@/theme/useTheme';
 

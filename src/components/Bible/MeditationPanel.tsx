@@ -16,21 +16,12 @@ const scheduleSuggestions = [
 
 type Props = {
   meditations: MeditationEntry[];
-  onGenerate: (topic: string) => Promise<any>;
 };
 
-export default function MeditationPanel({ meditations, onGenerate }: Props) {
+export default function MeditationPanel({ meditations }: Props) {
   const { palette } = useKISTheme();
   const [topic, setTopic] = useState('Faith');
-  const [busy, setBusy] = useState(false);
   const [schedules, setSchedules] = useState<any[]>([]);
-
-  const handleGenerate = async () => {
-    if (!topic) return;
-    setBusy(true);
-    await onGenerate(topic);
-    setBusy(false);
-  };
 
   const loadSchedules = async () => {
     const res = await getRequest(ROUTES.bible.schedules, {
@@ -57,9 +48,9 @@ export default function MeditationPanel({ meditations, onGenerate }: Props) {
 
   return (
     <BibleSectionCard>
-      <Text style={[styles.title, { color: palette.text }]}>AI meditations & schedules</Text>
+      <Text style={[styles.title, { color: palette.text }]}>Meditations & schedules</Text>
       <Text style={{ color: palette.subtext }}>
-        Choose a topic and receive a daily meditation and prayer.
+        Choose a topic and manage your daily devotion rhythm.
       </Text>
 
       <TextInput
@@ -69,7 +60,6 @@ export default function MeditationPanel({ meditations, onGenerate }: Props) {
         placeholderTextColor={palette.subtext}
         style={[styles.input, { borderColor: palette.divider, color: palette.text }]}
       />
-      <KISButton title={busy ? 'Generating...' : 'Generate meditation'} onPress={handleGenerate} />
 
       <View style={styles.sectionRow}>
         {scheduleSuggestions.map((schedule) => (

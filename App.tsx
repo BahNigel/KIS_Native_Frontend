@@ -21,6 +21,7 @@ import LoginScreen from './src/screens/LoginScreen';
 import RegisterScreen from './src/screens/RegisterScreen';
 import DeviceVerificationScreen from './src/screens/DeviceVerificationScreen';
 import { MainTabs } from '@/navigation/AppNavigator';
+import type { RootStackParamList } from '@/navigation/types';
 import ProfileInsightsScreen from './src/screens/insights/ProfileInsightsScreen';
 import PartnerInsightsScreen from './src/screens/insights/PartnerInsightsScreen';
 import AdminToolsScreen from './src/screens/insights/AdminToolsScreen';
@@ -35,6 +36,16 @@ import TiersDashboardScreen from './src/screens/insights/TiersDashboardScreen';
 import NotificationsDashboardScreen from './src/screens/insights/NotificationsDashboardScreen';
 import OrganizationAppScreen from './src/screens/partners/OrganizationAppScreen';
 import OrganizationAppFormScreen from './src/screens/partners/OrganizationAppFormScreen';
+import HealthInstitutionDetailScreen from './src/screens/health/HealthInstitutionDetailScreen';
+import HealthInstitutionManagementScreen from './src/screens/health/HealthInstitutionManagementScreen';
+import InstitutionProfileEditorScreen from './src/screens/health/InstitutionProfileEditorScreen';
+import ProfileLandingEditorScreen from './src/screens/profile/ProfileLandingEditorScreen';
+import AvailabilityManagementScreen from './src/screens/health/AvailabilityManagementScreen';
+import HealthInstitutionMembersScreen from './src/screens/health/HealthInstitutionMembersScreen';
+import InstitutionServicesCatalogScreen from './src/screens/health/InstitutionServicesCatalogScreen';
+import InstitutionLandingPreviewScreen from './src/screens/health/InstitutionLandingPreviewScreen';
+import HealthInstitutionCardsScreen from './src/screens/health/HealthInstitutionCardsScreen';
+import HealthServiceSessionScreen from './src/screens/health/HealthServiceSessionScreen';
 import { getRequest } from '@/network/get';
 import ROUTES, { NEST_API_BASE_URL } from '@/network';
 import { postRequest } from '@/network/post';
@@ -49,7 +60,9 @@ type AuthCtx = {
 const AuthContext = createContext<AuthCtx>({ isAuth: false, setAuth: () => {} });
 export const useAuth = () => useContext(AuthContext);
 
-const RootStack = createNativeStackNavigator();
+const RootStack = createNativeStackNavigator<RootStackParamList>();
+const AUTH_429_BACKOFF_MS = 2 * 60 * 1000;
+let appAuthCheckBlockedUntil = 0;
 
 export default function App() {
   const scheme = useColorScheme();
@@ -57,7 +70,7 @@ export default function App() {
 
   const [isAuth, setAuth] = useState(false);
   const [load, setLoad] = useState(false);
-  const [phone, setPhone] = useState<string | null>(null);
+  const [_phone, setPhone] = useState<string | null>(null);
 
   const checkAuth = async () => {
     try {
@@ -73,11 +86,17 @@ export default function App() {
         return;
       }
 
+      if (Date.now() < appAuthCheckBlockedUntil) {
+        setAuth(true);
+        return;
+      }
+
       try {
         const qs = storedPhone ? `?phone=${encodeURIComponent(storedPhone)}` : '';
         const res = await getRequest(`${ROUTES.auth.checkLogin}${qs}`, {
           errorMessage: 'Status check failed.',
           cacheType: 'AUTH_CACHE',
+          forceNetwork: true,
         });
 
         console.log('checkLogin response:', res);
@@ -87,6 +106,9 @@ export default function App() {
         console.log('active from backend:', active);
 
         if (active) {
+          setAuth(true);
+        } else if (Number(res?.status) === 429) {
+          appAuthCheckBlockedUntil = Date.now() + AUTH_429_BACKOFF_MS;
           setAuth(true);
         } else if (res?.success === false && res?.message === 'No internet connection.') {
           console.log('Offline but token exists — trusting local auth.');
@@ -246,6 +268,46 @@ export default function App() {
                   name="NotificationsDashboard"
                   component={NotificationsDashboardScreen}
                   options={{ presentation: 'modal' }}
+                />
+                <RootStack.Screen
+                  name="HealthInstitutionDetail"
+                  component={HealthInstitutionDetailScreen}
+                />
+                <RootStack.Screen
+                  name="HealthInstitutionManagement"
+                  component={HealthInstitutionManagementScreen}
+                />
+                <RootStack.Screen
+                  name="InstitutionProfileEditor"
+                  component={InstitutionProfileEditorScreen}
+                />
+                <RootStack.Screen
+                  name="ProfileLandingEditor"
+                  component={ProfileLandingEditorScreen}
+                />
+                <RootStack.Screen
+                  name="AvailabilityManagement"
+                  component={AvailabilityManagementScreen}
+                />
+                <RootStack.Screen
+                  name="HealthInstitutionMembers"
+                  component={HealthInstitutionMembersScreen}
+                />
+                <RootStack.Screen
+                  name="HealthInstitutionServicesCatalog"
+                  component={InstitutionServicesCatalogScreen}
+                />
+                <RootStack.Screen
+                  name="HealthInstitutionCards"
+                  component={HealthInstitutionCardsScreen}
+                />
+                <RootStack.Screen
+                  name="HealthServiceSession"
+                  component={HealthServiceSessionScreen}
+                />
+                <RootStack.Screen
+                  name="InstitutionLandingPreview"
+                  component={InstitutionLandingPreviewScreen}
                 />
                 <RootStack.Screen
                   name="AdminDashboard"

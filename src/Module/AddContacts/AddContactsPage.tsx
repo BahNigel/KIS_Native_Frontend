@@ -55,6 +55,7 @@ import { getCache, setCache } from '@/network/cache';
 export type AddContactsPageProps = {
   onClose: () => void;
   onOpenChat: (chat: Chat) => void;
+  onSelectKISContact?: (contact: KISContact) => void | Promise<void>;
   initialMode?: Mode;
   initialGroupContext?: { communityId?: string | null; communityName?: string | null } | null;
 };
@@ -304,6 +305,7 @@ const findExistingDirectConversationForContact = async (
 export const AddContactsPage: React.FC<AddContactsPageProps> = ({
   onClose,
   onOpenChat,
+  onSelectKISContact,
   initialMode,
   initialGroupContext,
 }) => {
@@ -660,6 +662,11 @@ export const AddContactsPage: React.FC<AddContactsPageProps> = ({
    */
   const handleKISContactPress = useCallback(
     async (c: KISContact) => {
+      if (onSelectKISContact) {
+        await onSelectKISContact(c);
+        onClose();
+        return;
+      }
       try {
         // 1) Look for an existing backend conversation in cache
         const existingConv = await findExistingDirectConversationForContact(c);
@@ -733,7 +740,7 @@ export const AddContactsPage: React.FC<AddContactsPageProps> = ({
         );
       }
     },
-    [onClose, onOpenChat],
+    [onClose, onOpenChat, onSelectKISContact],
   );
 
   // 🚪 When tap on non-KIS contact → offer invite via SMS / WhatsApp

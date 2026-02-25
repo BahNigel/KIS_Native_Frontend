@@ -323,6 +323,8 @@ const styles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   section: { marginBottom: 16 },
   sectionTitle: { fontSize: 12, fontWeight: '600', textTransform: 'uppercase', marginBottom: 8 },
+  card: { borderWidth: 2, borderRadius: 16, padding: 12 },
+  cardRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   feedCard: { borderWidth: 2, borderRadius: 12, padding: 12, marginBottom: 10 },
   feedHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   overlay: {

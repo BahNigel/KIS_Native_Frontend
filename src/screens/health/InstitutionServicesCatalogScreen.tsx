@@ -1,0 +1,1172 @@
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  ActivityIndicator,
+  Alert,
+  SafeAreaView,
+  ScrollView,
+  Text,
+  TouchableOpacity,
+  View,
+  useColorScheme,
+} from 'react-native';
+import { NativeStackScreenProps } from '@react-navigation/native-stack';
+import LinearGradient from 'react-native-linear-gradient';
+import { KISIcon } from '@/constants/kisIcons';
+import KISButton from '@/constants/KISButton';
+import KISTextInput from '@/constants/KISTextInput';
+import { RootStackParamList } from '@/navigation/types';
+import {
+  getHealthThemeBorders,
+  getHealthThemeColors,
+  HEALTH_THEME_SPACING,
+  HEALTH_THEME_TYPOGRAPHY,
+} from '@/theme/health';
+import type {
+  HealthDashboardInstitutionType,
+  ServiceDefinition,
+} from '@/features/health-dashboard/models';
+import { HEALTH_DASHBOARD_DEFAULT_SERVICES } from '@/features/health-dashboard/defaults';
+import { fetchHealthProfileState, updateHealthInstitutions } from '@/services/healthProfileService';
+import { startHealthServiceSession } from '@/services/healthOpsAppointmentService';
+import { nanoid } from 'nanoid/non-secure';
+import { getRequest } from '@/network/get';
+import { postRequest } from '@/network/post';
+import { deleteRequest } from '@/network/delete';
+import ROUTES from '@/network';
+
+type Props = NativeStackScreenProps<RootStackParamList, 'HealthInstitutionServicesCatalog'>;
+type MediumRow = {
+  id: string;
+  name: string;
+  description: string;
+  system_flag: boolean;
+};
+type ServiceApiRow = {
+  id: string;
+  name: string;
+  description: string;
+  is_default: boolean;
+  medium_ids: string[];
+  medium_links?: Array<{
+    medium?: {
+      id?: string;
+      name?: string;
+    };
+  }>;
+};
+
+type BookNowAction = {
+  id: string;
+  label: string;
+  run: () => void | Promise<void>;
+};
+type ViewerRole = 'owner' | 'admin' | 'manager' | 'staff' | 'analyst' | 'member' | 'unassigned';
+type EngineKey =
+  | 'appointment'
+  | 'video'
+  | 'lab'
+  | 'prescription'
+  | 'payment'
+  | 'surgery'
+  | 'admission'
+  | 'emergency'
+  | 'wellness'
+  | 'logistics';
+type EngineExecutionRow = {
+  id: string;
+  engine: EngineKey | string;
+  service_id?: string;
+  service_name?: string;
+  status?: string;
+  created_at?: string;
+};
+type PreviewCardRow = {
+  id: string;
+  date: string;
+  time: string;
+  statusKey: string;
+  statusLabel: string;
+  serviceId: string;
+  serviceName: string;
+  serviceDescription: string;
+  basePriceCents?: number;
+};
+
+const SUPPORTED_TYPES: HealthDashboardInstitutionType[] = [
+  'clinic',
+  'hospital',
+  'lab',
+  'diagnostics',
+  'pharmacy',
+  'wellness_center',
+];
+
+const normalizeInstitutionType = (value: string | undefined): HealthDashboardInstitutionType => {
+  const raw = String(value ?? '').trim();
+  if (raw === 'laboratory') return 'lab';
+  if (raw === 'diagnostics_center') return 'diagnostics';
+  return SUPPORTED_TYPES.includes(raw as HealthDashboardInstitutionType)
+    ? (raw as HealthDashboardInstitutionType)
+    : 'clinic';
+};
+
+const normalizeServiceRow = (raw: any, index: number): ServiceDefinition | null => {
+  if (!raw || typeof raw !== 'object') return null;
+  const id = String(raw.id ?? raw.service_id ?? raw.key ?? `service_${index + 1}`).trim();
+  const name = String(raw.name ?? raw.title ?? raw.label ?? '').trim();
+  if (!name) return null;
+  const description = String(raw.description ?? raw.summary ?? '').trim();
+  return {
+    id,
+    name,
+    description,
+    active: raw.active !== false,
+    basePriceCents: Number.isFinite(Number(raw.basePriceCents))
+      ? Number(raw.basePriceCents)
+      : Number.isFinite(Number(raw.base_price_cents))
+      ? Number(raw.base_price_cents)
+      : undefined,
+  };
+};
+
+const resolveInstitutionServices = (institution: any): ServiceDefinition[] => {
+  const candidates = [
+    institution?.services,
+    institution?.service_templates,
+    institution?.serviceTemplates,
+    institution?.dashboard?.services,
+  ];
+  for (const candidate of candidates) {
+    if (!Array.isArray(candidate)) continue;
+    const mapped = candidate
+      .map((entry, index) => normalizeServiceRow(entry, index))
+      .filter(Boolean) as ServiceDefinition[];
+    if (mapped.length > 0) return mapped;
+  }
+  return [];
+};
+
+const money = (amountCents?: number) =>
+  Number.isFinite(Number(amountCents)) ? `$${(Number(amountCents) / 100).toLocaleString()}` : null;
+
+const toKisc = (micro?: number) => {
+  if (!Number.isFinite(Number(micro))) return '0.000';
+  return (Number(micro) / 100000).toFixed(3);
+};
+
+const normalizeViewerRole = (value: unknown): ViewerRole => {
+  const role = String(value || '').trim().toLowerCase();
+  if (
+    role === 'owner' ||
+    role === 'admin' ||
+    role === 'manager' ||
+    role === 'staff' ||
+    role === 'analyst' ||
+    role === 'member' ||
+    role === 'unassigned'
+  ) {
+    return role;
+  }
+  return 'unassigned';
+};
+
+const normalizeEngineName = (value: string) => value.trim().toLowerCase();
+
+const ENGINE_ICON_BY_NAME: Record<string, 'calendar' | 'video' | 'chat' | 'file' | 'cart' | 'bell' | 'heart' | 'list'> = {
+  'appointment engine': 'calendar',
+  'video consultation engine': 'video',
+  'secure messaging / chat engine': 'chat',
+  'e-prescription engine': 'file',
+  'lab order engine': 'file',
+  'imaging order engine': 'list',
+  'admission & bed management engine': 'list',
+  'surgery scheduling engine': 'calendar',
+  'emergency dispatch engine': 'bell',
+  'pharmacy & fulfillment engine': 'cart',
+  'payment & billing engine': 'cart',
+  'ehr / health records engine': 'file',
+  'home logistics engine': 'list',
+  'wellness program engine': 'heart',
+  'notification & reminder engine': 'bell',
+};
+
+export default function InstitutionServicesCatalogScreen({ navigation, route }: Props) {
+  const { institutionId, institutionName: routeName, institutionType: routeType } = route.params;
+  const scheme = useColorScheme();
+  const palette = getHealthThemeColors(scheme === 'light' ? 'light' : 'dark');
+  const borders = getHealthThemeBorders(palette);
+  const spacing = HEALTH_THEME_SPACING;
+  const typography = HEALTH_THEME_TYPOGRAPHY;
+
+  const [loading, setLoading] = useState(true);
+  const [institutionName, setInstitutionName] = useState(routeName || 'Institution');
+  const [institutionType, setInstitutionType] = useState<HealthDashboardInstitutionType>(
+    normalizeInstitutionType(routeType),
+  );
+  const [services, setServices] = useState<ServiceDefinition[]>([]);
+  const [institutions, setInstitutions] = useState<any[]>([]);
+  const [institutionIndex, setInstitutionIndex] = useState(-1);
+  const [saving, setSaving] = useState(false);
+  const [newServiceName, setNewServiceName] = useState('');
+  const [newServiceDescription, setNewServiceDescription] = useState('');
+  const [mediums, setMediums] = useState<MediumRow[]>([]);
+  const [mediumLoading, setMediumLoading] = useState(false);
+  const [apiServices, setApiServices] = useState<ServiceApiRow[]>([]);
+  const [, setServiceLoading] = useState(false);
+  const [newServiceMediumIds, setNewServiceMediumIds] = useState<string[]>([]);
+  const [bookNowActions, setBookNowActions] = useState<BookNowAction[]>([]);
+  const [bookNowServiceName, setBookNowServiceName] = useState('');
+  const [engineExecutions, setEngineExecutions] = useState<EngineExecutionRow[]>([]);
+  const [viewerRole, setViewerRole] = useState<ViewerRole>('unassigned');
+  const [previewCards, setPreviewCards] = useState<PreviewCardRow[]>([]);
+
+  const loadServices = useCallback(async () => {
+    setLoading(true);
+    try {
+      const profileState = await fetchHealthProfileState();
+      const institutionList = Array.isArray(profileState.profile?.institutions)
+        ? profileState.profile.institutions
+        : [];
+      const institution = institutionList.find((item: any) => String(item?.id) === String(institutionId));
+      const index = institutionList.findIndex((item: any) => String(item?.id) === String(institutionId));
+      const resolvedType = normalizeInstitutionType(institution?.type ?? routeType);
+      const customServices = resolveInstitutionServices(institution);
+      const fallbackServices = HEALTH_DASHBOARD_DEFAULT_SERVICES[resolvedType];
+      setInstitutions(institutionList);
+      setInstitutionIndex(index);
+      setInstitutionName(institution?.name || routeName || 'Institution');
+      setInstitutionType(resolvedType);
+      setServices(customServices.length > 0 ? customServices : fallbackServices);
+    } catch (error: any) {
+      Alert.alert('Services page', error?.message || 'Unable to load institution services.');
+      const fallbackType = normalizeInstitutionType(routeType);
+      setInstitutionType(fallbackType);
+      setServices(HEALTH_DASHBOARD_DEFAULT_SERVICES[fallbackType]);
+    } finally {
+      setLoading(false);
+    }
+  }, [institutionId, routeName, routeType]);
+
+  const loadMediums = useCallback(async () => {
+    setMediumLoading(true);
+    try {
+      const [mediumRes, cardsRes] = await Promise.all([
+        getRequest(ROUTES.broadcasts.healthMediums, {
+          errorMessage: 'Unable to load engines.',
+        }),
+        getRequest(ROUTES.broadcasts.healthCards(institutionId), {
+          errorMessage: 'Unable to load engine activity.',
+        }),
+      ]);
+
+      if (mediumRes?.success) {
+        const rows = Array.isArray(mediumRes?.data?.results) ? mediumRes.data.results : [];
+        setMediums(
+          rows.map((row: any) => ({
+            id: String(row?.id || ''),
+            name: String(row?.name || ''),
+            description: String(row?.description || ''),
+            system_flag: !!row?.system_flag,
+          })),
+        );
+      }
+      const viewer = cardsRes?.data?.viewer ?? {};
+      setViewerRole(normalizeViewerRole(viewer?.role));
+      const rawCards = Array.isArray(cardsRes?.data?.cards) ? cardsRes.data.cards : [];
+      const normalizedCards: PreviewCardRow[] = rawCards
+        .map((row: any, index: number) => {
+          const service = row?.service && typeof row.service === 'object' ? row.service : {};
+          const serviceId = String(service?.id || '').trim();
+          const serviceName = String(service?.name || '').trim();
+          if (!serviceId || !serviceName) return null;
+          const centsRaw = service?.basePriceCents ?? service?.base_price_cents;
+          const basePriceCents = Number.isFinite(Number(centsRaw)) ? Number(centsRaw) : undefined;
+          return {
+            id: String(row?.id || `preview-${index + 1}`),
+            date: String(row?.date || row?.dateKey || ''),
+            time: String(row?.time || row?.timeValue || ''),
+            statusKey: String(row?.statusKey || 'available'),
+            statusLabel: String(row?.statusLabel || 'Available'),
+            serviceId,
+            serviceName,
+            serviceDescription: String(service?.description || ''),
+            basePriceCents,
+          } as PreviewCardRow;
+        })
+        .filter(Boolean) as PreviewCardRow[];
+      normalizedCards.sort((a, b) => `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`));
+      setPreviewCards(normalizedCards);
+
+      const executionRows = Array.isArray(cardsRes?.data?.engine_executions)
+        ? cardsRes.data.engine_executions
+        : [];
+      setEngineExecutions(
+        executionRows.slice(0, 20).map((row: any, index: number) => ({
+          id: String(row?.id || `engine-${index + 1}`),
+          engine: String(row?.engine || ''),
+          service_id: String(row?.service_id || row?.serviceId || ''),
+          service_name: String(row?.service_name || row?.serviceName || ''),
+          status: String(row?.status || ''),
+          created_at: String(row?.created_at || row?.createdAt || ''),
+        })),
+      );
+    } catch (error: any) {
+      Alert.alert('Engines', error?.message || 'Unable to load engine settings.');
+    } finally {
+      setMediumLoading(false);
+    }
+  }, [institutionId]);
+
+  const loadServiceCatalog = useCallback(async () => {
+    setServiceLoading(true);
+    try {
+      const response = await getRequest(ROUTES.broadcasts.healthServices, {
+        errorMessage: 'Unable to load service-engine mappings.',
+      });
+      if (!response?.success) {
+        throw new Error(response?.message || 'Unable to load service catalog.');
+      }
+      const rows = Array.isArray(response?.data?.results) ? response.data.results : [];
+      setApiServices(
+        rows.map((row: any) => ({
+          id: String(row?.id || ''),
+          name: String(row?.name || ''),
+          description: String(row?.description || ''),
+          is_default: !!row?.is_default,
+          medium_ids: Array.isArray(row?.medium_ids) ? row.medium_ids.map((id: any) => String(id)) : [],
+          medium_links: Array.isArray(row?.medium_links) ? row.medium_links : [],
+        })),
+      );
+    } catch (error: any) {
+      Alert.alert('Services', error?.message || 'Unable to load service catalog.');
+    } finally {
+      setServiceLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadServices().catch(() => {});
+  }, [loadServices]);
+
+  useEffect(() => {
+    loadMediums().catch(() => {});
+  }, [loadMediums]);
+
+  useEffect(() => {
+    loadServiceCatalog().catch(() => {});
+  }, [loadServiceCatalog]);
+
+  const activeCount = useMemo(
+    () => services.filter((service) => service.active !== false).length,
+    [services],
+  );
+
+  const defaultServiceIdSet = useMemo(
+    () => new Set(HEALTH_DASHBOARD_DEFAULT_SERVICES[institutionType].map((service) => service.id)),
+    [institutionType],
+  );
+
+  const serviceMediumNamesByName = useMemo(() => {
+    const out = new Map<string, string[]>();
+    apiServices.forEach((service) => {
+      const mediumNames = (service.medium_links || [])
+        .map((link) => String(link?.medium?.name || '').trim())
+        .filter(Boolean);
+      if (mediumNames.length > 0) {
+        out.set(service.name.trim().toLowerCase(), mediumNames);
+      }
+    });
+    return out;
+  }, [apiServices]);
+
+  const persistServices = useCallback(
+    async (nextServices: ServiceDefinition[]) => {
+      if (institutionIndex < 0) throw new Error('Institution not found.');
+      const nextInstitutions = [...institutions];
+      const institution = nextInstitutions[institutionIndex];
+      nextInstitutions[institutionIndex] = {
+        ...(institution || {}),
+        services: nextServices,
+        dashboard: {
+          ...(institution?.dashboard || {}),
+          services: nextServices,
+        },
+      };
+      const res = await updateHealthInstitutions(nextInstitutions);
+      if (!res?.success) {
+        throw new Error(res?.message || 'Unable to update services.');
+      }
+      setInstitutions(nextInstitutions);
+      setServices(nextServices);
+    },
+    [institutionIndex, institutions],
+  );
+
+  const toggleServiceActive = useCallback(
+    async (serviceId: string) => {
+      if (saving) return;
+      setSaving(true);
+      try {
+        const next = services.map((service) =>
+          service.id === serviceId ? { ...service, active: service.active === false } : service,
+        );
+        await persistServices(next);
+      } catch (error: any) {
+        Alert.alert('Services', error?.message || 'Unable to update service.');
+      } finally {
+        setSaving(false);
+      }
+    },
+    [persistServices, saving, services],
+  );
+
+  const deleteCustomService = useCallback(
+    async (serviceId: string) => {
+      if (saving) return;
+      if (defaultServiceIdSet.has(serviceId)) {
+        Alert.alert('Services', 'Default services cannot be deleted.');
+        return;
+      }
+      setSaving(true);
+      try {
+        if (!serviceId.startsWith('custom_')) {
+          const url = `${ROUTES.broadcasts.healthService(serviceId)}?institution_id=${encodeURIComponent(institutionId)}`;
+          const response = await deleteRequest(url, {
+            errorMessage: 'Unable to delete service mapping.',
+          });
+          if (!response?.success && Number(response?.status) !== 404) {
+            throw new Error(response?.message || 'Unable to delete service mapping.');
+          }
+        }
+        const next = services.filter((service) => service.id !== serviceId);
+        await persistServices(next);
+        await loadServiceCatalog();
+      } catch (error: any) {
+        Alert.alert('Services', error?.message || 'Unable to delete service.');
+      } finally {
+        setSaving(false);
+      }
+    },
+    [defaultServiceIdSet, institutionId, loadServiceCatalog, persistServices, saving, services],
+  );
+
+  const addCustomService = useCallback(async () => {
+    if (saving) return;
+    const name = newServiceName.trim();
+    const description = newServiceDescription.trim();
+    if (!name) {
+      Alert.alert('Services', 'Service name is required.');
+      return;
+    }
+    if (newServiceMediumIds.length === 0) {
+      Alert.alert('Services', 'Select at least one engine for this service.');
+      return;
+    }
+    setSaving(true);
+    try {
+      const createResponse = await postRequest(
+        ROUTES.broadcasts.healthServices,
+        {
+          institution_id: institutionId,
+          name,
+          description,
+          medium_ids: newServiceMediumIds,
+        },
+        { errorMessage: 'Unable to create service.' },
+      );
+      if (!createResponse?.success) {
+        throw new Error(createResponse?.message || 'Unable to create service.');
+      }
+      const created = createResponse?.data?.service ?? {};
+      const createdServiceId = String(created?.id || `custom_${nanoid(10)}`);
+      const selectedMediumNames = mediums
+        .filter((medium) => newServiceMediumIds.includes(medium.id))
+        .map((medium) => medium.name);
+      const next: ServiceDefinition[] = [
+        ...services,
+        {
+          id: createdServiceId,
+          name,
+          description,
+          active: true,
+          mediumIds: [...newServiceMediumIds],
+          mediumNames: selectedMediumNames,
+        },
+      ];
+      await persistServices(next);
+      setNewServiceName('');
+      setNewServiceDescription('');
+      setNewServiceMediumIds([]);
+      await loadServiceCatalog();
+    } catch (error: any) {
+      Alert.alert('Services', error?.message || 'Unable to add service.');
+    } finally {
+      setSaving(false);
+    }
+  }, [institutionId, loadServiceCatalog, mediums, newServiceDescription, newServiceMediumIds, newServiceName, persistServices, saving, services]);
+
+  const resolveServiceMediumNames = useCallback(
+    (service: ServiceDefinition) => {
+      if (Array.isArray(service.mediumNames) && service.mediumNames.length > 0) {
+        return service.mediumNames;
+      }
+      return serviceMediumNamesByName.get(service.name.trim().toLowerCase()) || [];
+    },
+    [serviceMediumNamesByName],
+  );
+
+  const handleBookNow = useCallback(
+    (service: ServiceDefinition) => {
+      const mediumNames = resolveServiceMediumNames(service);
+      if (mediumNames.length === 0) {
+        Alert.alert('Book Now', 'No engine is attached to this service yet.');
+        return;
+      }
+
+      const normalized = new Set(mediumNames.map(normalizeEngineName));
+      const actions: BookNowAction[] = [];
+      const executeEngine = async (engine: EngineKey) => {
+        const response = await postRequest(
+          ROUTES.broadcasts.healthCards(institutionId),
+          {
+            action: 'execute_engine',
+            engine,
+            serviceId: service.id,
+            serviceName: service.name,
+            mediumNames,
+          },
+          { errorMessage: `Unable to execute ${engine} engine.` },
+        );
+        if (response?.success) {
+          const rows = Array.isArray(response?.data?.engine_executions)
+            ? response.data.engine_executions
+            : [];
+          setEngineExecutions(
+            rows.slice(0, 20).map((row: any, index: number) => ({
+              id: String(row?.id || `engine-${index + 1}`),
+              engine: String(row?.engine || ''),
+              service_id: String(row?.service_id || row?.serviceId || ''),
+              service_name: String(row?.service_name || row?.serviceName || ''),
+              status: String(row?.status || ''),
+              created_at: String(row?.created_at || row?.createdAt || ''),
+            })),
+          );
+        }
+      };
+
+      if (normalized.has('appointment engine')) {
+        actions.push({
+          id: 'appointment',
+          label: 'Open Booking',
+          run: async () => {
+            await executeEngine('appointment');
+            navigation.navigate('AvailabilityManagement', {
+              institutionId,
+              institutionType,
+            });
+          },
+        });
+      }
+      if (normalized.has('video consultation engine')) {
+        actions.push({
+          id: 'video',
+          label: 'Schedule Video',
+          run: async () => {
+            await executeEngine('video');
+            navigation.navigate('AvailabilityManagement', {
+              institutionId,
+              institutionType,
+            });
+          },
+        });
+      }
+      if (normalized.has('lab order engine')) {
+        actions.push({
+          id: 'lab',
+          label: 'Open Lab Selector',
+          run: async () => {
+            await executeEngine('lab');
+            navigation.navigate('HealthInstitutionCards', {
+              institutionId,
+              institutionType,
+              institutionName,
+            });
+          },
+        });
+      }
+      if (normalized.has('e-prescription engine')) {
+        actions.push({
+          id: 'rx',
+          label: 'Open Prescription',
+          run: async () => {
+            await executeEngine('prescription');
+            navigation.navigate('HealthInstitutionCards', {
+              institutionId,
+              institutionType,
+              institutionName,
+            });
+          },
+        });
+      }
+      if (normalized.has('payment & billing engine')) {
+        actions.push({
+          id: 'billing',
+          label: 'Open Billing',
+          run: async () => {
+            await executeEngine('payment');
+            Alert.alert(
+              'Payment & Billing',
+              money(service.basePriceCents)
+                ? `Consultation charge starts at ${money(service.basePriceCents)}.`
+                : 'Payment workflow is ready for this service.',
+            );
+          },
+        });
+      }
+      if (normalized.has('surgery scheduling engine')) {
+        actions.push({
+          id: 'surgery',
+          label: 'Schedule Surgery',
+          run: async () => {
+            await executeEngine('surgery');
+            navigation.navigate('AvailabilityManagement', {
+              institutionId,
+              institutionType,
+            });
+          },
+        });
+      }
+      if (normalized.has('admission & bed management engine')) {
+        actions.push({
+          id: 'admission',
+          label: 'Open Admission',
+          run: async () => {
+            await executeEngine('admission');
+            navigation.navigate('HealthInstitutionCards', {
+              institutionId,
+              institutionType,
+              institutionName,
+            });
+          },
+        });
+      }
+      if (normalized.has('emergency dispatch engine')) {
+        actions.push({
+          id: 'emergency',
+          label: 'Dispatch Emergency',
+          run: async () => {
+            await executeEngine('emergency');
+            Alert.alert('Emergency Dispatch', 'Emergency workflow has been triggered for this service.');
+          },
+        });
+      }
+      if (normalized.has('wellness program engine')) {
+        actions.push({
+          id: 'wellness',
+          label: 'Open Wellness',
+          run: async () => {
+            await executeEngine('wellness');
+            navigation.navigate('HealthInstitutionCards', {
+              institutionId,
+              institutionType,
+              institutionName,
+            });
+          },
+        });
+      }
+      if (normalized.has('home logistics engine')) {
+        actions.push({
+          id: 'logistics',
+          label: 'Start Logistics',
+          run: async () => {
+            await executeEngine('logistics');
+            Alert.alert('Home Logistics', 'Home logistics workflow has been started.');
+          },
+        });
+      }
+
+      if (actions.length === 0) {
+        actions.push({
+          id: 'generic',
+          label: 'Open Service',
+          run: () => Alert.alert('Book Now', 'Service engine action opened.'),
+        });
+      }
+
+      if (actions.length === 1) {
+        Promise.resolve(actions[0].run()).catch(() => undefined);
+        return;
+      }
+
+      setBookNowServiceName(service.name);
+      setBookNowActions(actions);
+    },
+    [institutionId, institutionName, institutionType, navigation, resolveServiceMediumNames],
+  );
+
+  const isOwnerViewer = viewerRole === 'owner';
+
+  const handleOwnerPreview = useCallback(
+    async (service: ServiceDefinition) => {
+      if (!isOwnerViewer) {
+        Alert.alert('Owner preview', 'Only the institution owner can run free preview flows.');
+        return;
+      }
+
+      const candidate =
+        previewCards.find(
+          (row) =>
+            String(row.serviceId) === String(service.id) &&
+            String(row.statusKey || '').toLowerCase() !== 'blocked' &&
+            String(row.statusKey || '').toLowerCase() !== 'holiday',
+        ) || null;
+
+      if (!candidate) {
+        Alert.alert(
+          'Owner preview',
+          'No schedulable health card was found for this service yet. Set availability first, then retry.',
+        );
+        return;
+      }
+
+      try {
+        const start = await startHealthServiceSession({
+          institutionId,
+          cardId: candidate.id,
+          serviceId: service.id,
+          date: candidate.date,
+          time: candidate.time,
+          ownerPreview: true,
+        });
+
+        if (!start?.success) {
+          if (Number(start?.status) === 402) {
+            const requiredMicro = Number(start?.data?.required_micro || 0);
+            const availableMicro = Number(start?.data?.available_micro || 0);
+            if (requiredMicro > 0 || availableMicro > 0) {
+              Alert.alert(
+                'Insufficient KIS balance',
+                `You need ${toKisc(requiredMicro)} KISC but you only have ${toKisc(availableMicro)} KISC.`,
+              );
+            } else {
+              Alert.alert('Owner preview', 'Preview could not be started.');
+            }
+            return;
+          }
+          throw new Error(start?.message || 'Unable to start owner preview.');
+        }
+
+        const sessions = Array.isArray(start?.data?.service_sessions) ? start.data.service_sessions : [];
+        const startedSession = sessions.find(
+          (item: any) =>
+            String(item?.card_id || item?.cardId || '') === String(candidate.id) &&
+            String(item?.status || '') === 'started',
+        );
+        const legacySessionId = String(startedSession?.id || '');
+        const workflowSessionId = String(start?.data?.session?.id || '').trim();
+        const appointmentBookingId = String(start?.data?.booking?.id || '').trim();
+        const sessionSource = String(start?.source || '').trim().toLowerCase() === 'health_ops' ? 'health_ops' : 'broadcasts';
+        const sessionId = workflowSessionId || legacySessionId;
+
+        console.log('sessionSource 1', sessionSource, 'sessionId', sessionId, 'workflowSessionId', workflowSessionId, 'appointmentBookingId', appointmentBookingId);
+
+        navigation.navigate('HealthServiceSession', {
+          institutionId,
+          institutionType,
+          institutionName,
+          cardId: candidate.id,
+          sessionId: sessionId || undefined,
+          workflowSessionId: workflowSessionId || undefined,
+          appointmentBookingId: appointmentBookingId || undefined,
+          sessionSource,
+          serviceId: service.id,
+          serviceName: service.name,
+          serviceDescription: service.description || candidate.serviceDescription,
+          dateKey: candidate.date,
+          timeValue: candidate.time,
+          statusLabel: candidate.statusLabel,
+          basePriceCents: candidate.basePriceCents,
+          ownerPreview: true,
+        });
+      } catch (error: any) {
+        Alert.alert('Owner preview', error?.message || 'Unable to start owner preview.');
+      }
+    },
+    [institutionId, institutionName, institutionType, isOwnerViewer, navigation, previewCards],
+  );
+
+  if (loading) {
+    return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: palette.background }}>
+        <LinearGradient colors={[palette.gradientStart, palette.gradientEnd]} style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+          <View style={{ position: 'absolute', right: spacing.lg, top: spacing.lg }}>
+            <TouchableOpacity
+              onPress={() => navigation.goBack()}
+              style={{
+                borderWidth: 1,
+                borderColor: palette.divider,
+                borderRadius: 12,
+                padding: spacing.xs,
+                backgroundColor: palette.card,
+              }}
+              accessibilityLabel="Close services page"
+            >
+              <KISIcon name="close" size={18} color={palette.text} />
+            </TouchableOpacity>
+          </View>
+          <ActivityIndicator size="large" color={palette.accentPrimary} />
+          <Text style={{ ...typography.body, color: palette.subtext, marginTop: spacing.sm }}>
+            Loading services...
+          </Text>
+        </LinearGradient>
+      </SafeAreaView>
+    );
+  }
+
+  return (
+    <SafeAreaView style={{ flex: 1, backgroundColor: palette.background }}>
+      <LinearGradient colors={[palette.gradientStart, palette.gradientEnd]} style={{ flex: 1 }}>
+        <View style={{ alignItems: 'flex-end', paddingHorizontal: spacing.lg, paddingTop: spacing.sm }}>
+          <TouchableOpacity
+            onPress={() => navigation.goBack()}
+            style={{
+              borderWidth: 1,
+              borderColor: palette.divider,
+              borderRadius: 12,
+              padding: spacing.xs,
+              backgroundColor: palette.card,
+            }}
+            accessibilityLabel="Close services page"
+          >
+            <KISIcon name="close" size={18} color={palette.text} />
+          </TouchableOpacity>
+        </View>
+        <ScrollView contentContainerStyle={{ padding: spacing.lg, paddingBottom: spacing.xl }}>
+          <View
+            style={{
+              borderRadius: spacing.lg,
+              padding: spacing.md,
+              backgroundColor: palette.card,
+              ...borders.card,
+            }}
+          >
+            <Text style={{ ...typography.h2, color: palette.text }}>{institutionName} Services</Text>
+            <Text style={{ ...typography.body, color: palette.subtext, marginTop: spacing.xs }}>
+              {institutionType.replace('_', ' ')} • {activeCount} active services
+            </Text>
+            {isOwnerViewer ? (
+              <Text style={{ ...typography.caption, color: palette.accentPrimary, marginTop: spacing.xs }}>
+                Owner preview is enabled. You can run engine flows without KIS charges from this catalog.
+              </Text>
+            ) : null}
+            <View style={{ marginTop: spacing.sm }}>
+              <KISButton title="Reload Services" variant="outline" onPress={loadServices} />
+            </View>
+          </View>
+
+          <View
+            style={{
+              marginTop: spacing.lg,
+              borderRadius: spacing.lg,
+              padding: spacing.md,
+              backgroundColor: palette.card,
+              ...borders.card,
+            }}
+          >
+            <Text style={{ ...typography.h3, color: palette.text }}>Engine Activity</Text>
+            <Text style={{ ...typography.body, color: palette.subtext, marginTop: spacing.xs }}>
+              Latest engine executions for this institution.
+            </Text>
+            <View style={{ marginTop: spacing.sm, gap: spacing.xs }}>
+              {engineExecutions.map((row) => (
+                <View
+                  key={`engine-${row.id}`}
+                  style={{
+                    borderRadius: spacing.sm,
+                    borderWidth: 1,
+                    borderColor: palette.divider,
+                    backgroundColor: palette.surface,
+                    padding: spacing.sm,
+                  }}
+                >
+                  <Text style={{ ...typography.label, color: palette.text }}>
+                    {String(row.engine || '').toUpperCase()} • {row.service_name || row.service_id || 'Service'}
+                  </Text>
+                  <Text style={{ ...typography.caption, color: palette.subtext, marginTop: 2 }}>
+                    {row.status || 'executed'} {row.created_at ? `• ${row.created_at}` : ''}
+                  </Text>
+                </View>
+              ))}
+              {engineExecutions.length === 0 ? (
+                <Text style={{ ...typography.body, color: palette.subtext }}>
+                  No engine activity yet.
+                </Text>
+              ) : null}
+            </View>
+          </View>
+
+          <View
+            style={{
+              marginTop: spacing.lg,
+              borderRadius: spacing.lg,
+              padding: spacing.md,
+              backgroundColor: palette.card,
+              ...borders.card,
+            }}
+          >
+            <Text style={{ ...typography.h3, color: palette.text }}>Add Custom Service</Text>
+            <KISTextInput
+              label="Service name"
+              value={newServiceName}
+              onChangeText={setNewServiceName}
+              style={{ marginTop: spacing.sm }}
+            />
+            <KISTextInput
+              label="Description"
+              value={newServiceDescription}
+              onChangeText={setNewServiceDescription}
+              style={{ marginTop: spacing.sm }}
+            />
+            <Text style={{ ...typography.label, color: palette.text, marginTop: spacing.sm }}>
+              Select Engines (required)
+            </Text>
+            <View style={{ marginTop: spacing.xs, flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs }}>
+              {mediums.map((medium) => {
+                const selected = newServiceMediumIds.includes(medium.id);
+                return (
+                  <KISButton
+                    key={medium.id}
+                    title={medium.name}
+                    size="xs"
+                    variant={selected ? 'primary' : 'outline'}
+                    onPress={() =>
+                      setNewServiceMediumIds((prev) =>
+                        prev.includes(medium.id)
+                          ? prev.filter((id) => id !== medium.id)
+                          : [...prev, medium.id],
+                      )
+                    }
+                    disabled={saving}
+                  />
+                );
+              })}
+            </View>
+            <View style={{ marginTop: spacing.sm }}>
+              <KISButton title={saving ? 'Saving...' : 'Add Service'} onPress={addCustomService} disabled={saving} />
+            </View>
+          </View>
+
+          <View
+            style={{
+              marginTop: spacing.lg,
+              borderRadius: spacing.lg,
+              padding: spacing.md,
+              backgroundColor: palette.card,
+              ...borders.card,
+            }}
+          >
+            <Text style={{ ...typography.h3, color: palette.text }}>Available Engines</Text>
+            <Text style={{ ...typography.body, color: palette.subtext, marginTop: spacing.xs }}>
+              Engines are fixed system capabilities. Creating, editing, and deleting engines is disabled.
+            </Text>
+            <View style={{ marginTop: spacing.sm }}>
+              <KISButton
+                title={mediumLoading ? 'Loading engines...' : 'Reload Engines'}
+                variant="outline"
+                onPress={() => loadMediums().catch(() => {})}
+                disabled={mediumLoading}
+              />
+            </View>
+            <View style={{ marginTop: spacing.sm, gap: spacing.xs }}>
+              {mediums.map((medium) => (
+                <View
+                  key={medium.id}
+                  style={{
+                    borderRadius: spacing.sm,
+                    borderWidth: 1,
+                    borderColor: palette.divider,
+                    backgroundColor: palette.surface,
+                    padding: spacing.sm,
+                  }}
+                >
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <Text style={{ ...typography.h3, color: palette.text, flex: 1 }}>{medium.name}</Text>
+                    <Text style={{ ...typography.label, color: palette.accentPrimary }}>
+                      FIXED
+                    </Text>
+                  </View>
+                  {medium.description ? (
+                    <Text style={{ ...typography.body, color: palette.subtext, marginTop: spacing.xs }}>
+                      {medium.description}
+                    </Text>
+                  ) : null}
+                </View>
+              ))}
+              {mediums.length === 0 ? (
+                <Text style={{ ...typography.body, color: palette.subtext }}>
+                  No engines available.
+                </Text>
+              ) : null}
+            </View>
+          </View>
+
+          <View
+            style={{
+              marginTop: spacing.lg,
+              borderRadius: spacing.lg,
+              padding: spacing.md,
+              backgroundColor: palette.card,
+              ...borders.card,
+              gap: spacing.sm,
+            }}
+          >
+            {services.map((service) => (
+              <View
+                key={service.id}
+                style={{
+                  borderRadius: spacing.sm,
+                  borderWidth: 1,
+                  borderColor: palette.divider,
+                  backgroundColor: palette.surface,
+                  padding: spacing.sm,
+                }}
+              >
+                {(() => {
+                  const mediumNames = resolveServiceMediumNames(service);
+                  return mediumNames.length > 0 ? (
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, marginBottom: spacing.xs }}>
+                      {mediumNames.map((mediumName) => {
+                        const iconName =
+                          ENGINE_ICON_BY_NAME[normalizeEngineName(mediumName)] || 'list';
+                        return (
+                          <View
+                            key={`${service.id}-${mediumName}`}
+                            style={{
+                              flexDirection: 'row',
+                              alignItems: 'center',
+                              borderWidth: 1,
+                              borderColor: palette.divider,
+                              borderRadius: 999,
+                              paddingHorizontal: spacing.xs,
+                              paddingVertical: 4,
+                              backgroundColor: palette.card,
+                            }}
+                          >
+                            <KISIcon name={iconName} size={13} color={palette.accentPrimary} />
+                            <Text style={{ ...typography.caption, color: palette.text, marginLeft: 4 }}>
+                              {mediumName}
+                            </Text>
+                          </View>
+                        );
+                      })}
+                    </View>
+                  ) : null;
+                })()}
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Text style={{ ...typography.h3, color: palette.text, flex: 1 }}>{service.name}</Text>
+                  <Text style={{ ...typography.label, color: service.active ? palette.accentPrimary : palette.subtext }}>
+                    {service.active ? 'ACTIVE' : 'INACTIVE'}
+                  </Text>
+                </View>
+                {service.description && (
+                  <Text style={{ ...typography.body, color: palette.subtext, marginTop: spacing.xs }}>
+                    {service.description}
+                  </Text>
+                )}
+                {resolveServiceMediumNames(service).length > 0 ? (
+                  <Text style={{ ...typography.body, color: palette.subtext, marginTop: spacing.xs }}>
+                    Engines: {resolveServiceMediumNames(service).join(', ')}
+                  </Text>
+                ) : null}
+                {money(service.basePriceCents) ? (
+                  <Text style={{ ...typography.label, color: palette.text, marginTop: spacing.xs }}>
+                    Starting at {money(service.basePriceCents)}
+                  </Text>
+                ) : null}
+                <View style={{ marginTop: spacing.sm, flexDirection: 'column', gap: spacing.xs }}>
+                  {isOwnerViewer ? (
+                    <KISButton
+                      title="Owner Preview"
+                      size="sm"
+                      variant="outline"
+                      onPress={() => {
+                        handleOwnerPreview(service).catch(() => undefined);
+                      }}
+                      disabled={saving || service.active === false}
+                    />
+                  ) : null}
+                  <KISButton
+                    title="Book Now"
+                    size="sm"
+                    onPress={() => handleBookNow(service)}
+                    disabled={saving || service.active === false}
+                  />
+                  <KISButton
+                    title={service.active ? 'Deactivate' : 'Activate'}
+                    size="sm"
+                    variant={service.active ? 'outline' : 'primary'}
+                    onPress={() => toggleServiceActive(service.id)}
+                    disabled={saving}
+                  />
+                  {!defaultServiceIdSet.has(service.id) ? (
+                    <KISButton
+                      title="Delete"
+                      size="sm"
+                      variant="outline"
+                      onPress={() => deleteCustomService(service.id)}
+                      disabled={saving}
+                    />
+                  ) : null}
+                </View>
+              </View>
+            ))}
+          </View>
+
+          {bookNowActions.length > 1 ? (
+            <View
+              style={{
+                marginTop: spacing.lg,
+                borderRadius: spacing.lg,
+                padding: spacing.md,
+                backgroundColor: palette.card,
+                ...borders.card,
+              }}
+            >
+              <Text style={{ ...typography.h3, color: palette.text }}>
+                Book Now Options - {bookNowServiceName}
+              </Text>
+              <Text style={{ ...typography.body, color: palette.subtext, marginTop: spacing.xs }}>
+                Multiple engines are attached. Choose the workflow to continue.
+              </Text>
+              <View style={{ marginTop: spacing.sm, gap: spacing.xs }}>
+                {bookNowActions.map((action) => (
+                  <KISButton
+                    key={action.id}
+                    title={action.label}
+                    variant="outline"
+                    onPress={() => {
+                      Promise.resolve(action.run())
+                        .catch(() => undefined)
+                        .finally(() => {
+                          setBookNowActions([]);
+                          setBookNowServiceName('');
+                        });
+                    }}
+                  />
+                ))}
+                <KISButton
+                  title="Cancel"
+                  variant="ghost"
+                  onPress={() => {
+                    setBookNowActions([]);
+                    setBookNowServiceName('');
+                  }}
+                />
+              </View>
+            </View>
+          ) : null}
+        </ScrollView>
+      </LinearGradient>
+    </SafeAreaView>
+  );
+}

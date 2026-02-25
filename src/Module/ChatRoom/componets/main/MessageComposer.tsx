@@ -126,7 +126,7 @@ type MessageComposerProps = {
   editing?: ChatMessage | null;
   onCancelEditing?: () => void;
 
-  onSendAttachment?: (files: AttachmentFilePayload) => void;
+  onSendAttachment?: (files: AttachmentFilePayload) => Promise<boolean | void> | boolean | void;
 
   // NEW: contacts / polls / events
   onSendContacts?: (contacts: SimpleContact[]) => void;
@@ -224,8 +224,8 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
           uri: String(s.uri),
           text: typeof s.text === 'string' ? s.text : undefined,
           fileType: 'kis-sticker',
-          mimeType: (s.mimeType as string) ?? 'image/png',
-          extension: (s.extension as string) ?? '.kisstk',
+          mimeType: 'image/png',
+          extension: '.png',
           metaPath: (s.metaPath as string) ?? '',
         }));
 

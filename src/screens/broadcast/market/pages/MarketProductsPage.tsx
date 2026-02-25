@@ -68,7 +68,7 @@ export default function MarketProductsPage({ ownerId = null }: Props) {
   };
 
   const pickImage = async () => {
-    const result = await launchImageLibrary({ mediaType: 'photo', quality: 0.85, selectionLimit: 1 });
+    const result = await launchImageLibrary({ mediaType: 'photo', quality: 1, selectionLimit: 1 });
     if (result.didCancel) return;
     const asset = result.assets?.[0];
     const picked = buildPickedImage(asset, 'product');

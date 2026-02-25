@@ -1,5 +1,5 @@
 import React from 'react';
-import { Text, View, StyleSheet, ViewStyle, TextStyle } from 'react-native';
+import { Text, View, StyleSheet, ViewStyle, TextStyle, StyleProp } from 'react-native';
 import { useKISTheme } from '@/theme/useTheme';
 
 type RichTextMark = {
@@ -22,8 +22,9 @@ type RichTextDoc = {
 
 type Props = {
   doc?: RichTextDoc;
+  value?: RichTextDoc | string | null;
   fallback?: string;
-  style?: ViewStyle;
+  style?: StyleProp<ViewStyle | TextStyle>;
 };
 
 const HEADING_SIZES: Record<number, number> = {
@@ -37,6 +38,8 @@ const HEADING_SIZES: Record<number, number> = {
 
 const computeMarkStyle = (marks: RichTextMark[] = []): TextStyle => {
   const style: TextStyle = {};
+  let underline = false;
+  let strikethrough = false;
   marks.forEach((mark) => {
     switch (mark.type) {
       case 'bold':
@@ -46,14 +49,10 @@ const computeMarkStyle = (marks: RichTextMark[] = []): TextStyle => {
         style.fontStyle = 'italic';
         break;
       case 'underline':
-        style.textDecorationLine = style.textDecorationLine
-          ? `${style.textDecorationLine} underline`
-          : 'underline';
+        underline = true;
         break;
       case 'strikethrough':
-        style.textDecorationLine = style.textDecorationLine
-          ? `${style.textDecorationLine} line-through`
-          : 'line-through';
+        strikethrough = true;
         break;
       case 'inline_code':
         style.fontFamily = 'Courier';
@@ -104,6 +103,13 @@ const computeMarkStyle = (marks: RichTextMark[] = []): TextStyle => {
         break;
     }
   });
+  if (underline && strikethrough) {
+    style.textDecorationLine = 'underline line-through';
+  } else if (underline) {
+    style.textDecorationLine = 'underline';
+  } else if (strikethrough) {
+    style.textDecorationLine = 'line-through';
+  }
   return style;
 };
 
@@ -126,7 +132,7 @@ const renderListItem = (
   item: RichTextNode,
   index: number,
   bullet: string,
-  align?: 'left' | 'center' | 'right' | 'justify',
+  align?: TextStyle['textAlign'],
 ) => (
   <View key={`list-item-${index}`} style={styles.listItem}>
     <Text style={[styles.listBullet, align ? { textAlign: align } : {}]}>{bullet}</Text>
@@ -136,7 +142,7 @@ const renderListItem = (
 
 const renderBlock = (node: RichTextNode, index: number, theme: ReturnType<typeof useKISTheme>) => {
   const textAlign =
-    (node.attrs?.textAlign as ViewStyle['textAlign']) ?? 'left';
+    (node.attrs?.textAlign as TextStyle['textAlign']) ?? 'left';
   const blockStyle: TextStyle = { textAlign };
   if (node.attrs?.lineHeight) {
     blockStyle.lineHeight = Number(node.attrs.lineHeight);
@@ -232,17 +238,23 @@ const renderDoc = (doc: RichTextDoc | undefined, theme: ReturnType<typeof useKIS
   return doc.content?.map((node, index) => renderBlock(node, index, theme)) ?? null;
 };
 
-export default function RichTextRenderer({ doc, fallback, style }: Props) {
+export default function RichTextRenderer({ doc, value, fallback, style }: Props) {
   const theme = useKISTheme();
-  if (!doc || !doc.content?.length) {
-    if (!fallback) {
+  const normalizedDoc =
+    doc ??
+    (value && typeof value === 'object' && (value as RichTextDoc).type === 'doc'
+      ? (value as RichTextDoc)
+      : undefined);
+  const fallbackText = fallback ?? (typeof value === 'string' ? value : undefined);
+  if (!normalizedDoc || !normalizedDoc.content?.length) {
+    if (!fallbackText) {
       return null;
     }
     return (
-      <Text style={[styles.paragraph, { color: theme.palette.text }, style]}>{fallback}</Text>
+      <Text style={[styles.paragraph, { color: theme.palette.text }, style]}>{fallbackText}</Text>
     );
   }
-  return <View style={style}>{renderDoc(doc, theme)}</View>;
+  return <View style={style as StyleProp<ViewStyle>}>{renderDoc(normalizedDoc, theme)}</View>;
 }
 
 const styles = StyleSheet.create({

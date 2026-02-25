@@ -52,7 +52,6 @@ const adminRoutes = {
     tickets: `${API_BASE_URL}/api/v1/tickets/`,
     holograms: `${API_BASE_URL}/api/v1/holograms/`,
     quantum: `${API_BASE_URL}/api/v1/quantum/`,
-    aiModels: `${API_BASE_URL}/api/v1/ai-models/`,
   },
   notifications: {
     notifications: `${API_BASE_URL}/api/v1/notifications/`,

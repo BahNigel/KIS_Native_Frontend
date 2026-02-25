@@ -56,7 +56,7 @@ type SendAck = {
 };
 
 export default function CommentThreadPanel({
-  postId: _postId,
+  postId,
   initialConversationId,
   fetchConversationId,
   onConversationResolved,

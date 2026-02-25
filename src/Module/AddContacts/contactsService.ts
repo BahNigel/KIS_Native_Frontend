@@ -25,6 +25,20 @@ type CacheMeta = {
   savedAt: number;
 };
 
+type ContactLookupCacheEntry = {
+  at: number;
+  isRegistered: boolean;
+  userId?: string;
+};
+
+const contactLookupCache = new Map<string, ContactLookupCacheEntry>();
+const CONTACT_LOOKUP_TTL_MS = 5 * 60 * 1000;
+const CONTACT_LOOKUP_RATE_LIMIT_COOLDOWN_MS = 60 * 1000;
+const CONTACT_LOOKUP_NOT_FOUND_COOLDOWN_MS = 5 * 60 * 1000;
+const FORCED_REFRESH_MIN_INTERVAL_MS = 60 * 1000;
+let contactLookupBlockedUntil = 0;
+let lastBackendRefreshAt = 0;
+
 /**
  * Normalize phone number for backend lookup.
  */
@@ -124,14 +138,40 @@ export async function getDeviceContactsFromDevice(): Promise<KISDeviceContact[]>
 export async function markRegisteredOnBackend(
   deviceContacts: KISDeviceContact[],
 ): Promise<KISContact[]> {
+  const now = Date.now();
+  if (now < contactLookupBlockedUntil) {
+    return deviceContacts.map((contact) => {
+      const cached = contactLookupCache.get(contact.phone);
+      if (!cached || now - cached.at > CONTACT_LOOKUP_TTL_MS) {
+        return { ...contact, isRegistered: false };
+      }
+      return {
+        ...contact,
+        isRegistered: cached.isRegistered,
+        userId: cached.userId,
+      };
+    });
+  }
+
   const results: KISContact[] = [];
-  const BATCH = 50; // tune if needed
+  const BATCH = 8;
+  const REQUEST_GAP_MS = 120;
 
   for (let i = 0; i < deviceContacts.length; i += BATCH) {
     const batch = deviceContacts.slice(i, i + BATCH);
-
-    const promises = batch.map(async (contact) => {
+    for (const contact of batch) {
       try {
+        const cached = contactLookupCache.get(contact.phone);
+        const cacheNow = Date.now();
+        if (cached && cacheNow - cached.at <= CONTACT_LOOKUP_TTL_MS) {
+          results.push({
+            ...contact,
+            isRegistered: cached.isRegistered,
+            userId: cached.userId,
+          });
+          continue;
+        }
+
         const url = `${ROUTES.auth.checkContact}?phone=${encodeURIComponent(
           contact.phone,
         )}`;
@@ -141,30 +181,58 @@ export async function markRegisteredOnBackend(
           console.warn(
             `Backend check failed for ${contact.phone} (status: ${res.status} message: ${res.message})`,
           );
-          return { ...contact, isRegistered: false };
+          results.push({ ...contact, isRegistered: false });
+          if (Number(res.status) === 404) {
+            contactLookupBlockedUntil = Date.now() + CONTACT_LOOKUP_NOT_FOUND_COOLDOWN_MS;
+            break;
+          }
+          if (Number(res.status) === 429) {
+            contactLookupBlockedUntil = Date.now() + CONTACT_LOOKUP_RATE_LIMIT_COOLDOWN_MS;
+            break;
+          }
+        } else {
+          const payload = res?.data ?? {};
+          const registered = !!payload?.registered;
+          const rawUserId = payload?.userId ?? payload?.user_id ?? payload?.id ?? null;
+          const userId = rawUserId != null ? String(rawUserId) : undefined;
+          contactLookupCache.set(contact.phone, {
+            at: Date.now(),
+            isRegistered: registered,
+            userId,
+          });
+          results.push({
+            ...contact,
+            isRegistered: registered,
+            userId,
+          });
         }
-
-        const registered = !!res.data?.registered;
-        const userId = res.data?.userId ? String(res.data.userId) : undefined;
-
-        return {
-          ...contact,
-          isRegistered: registered,
-          userId,
-        };
       } catch (e) {
         console.warn(
           `Backend check error for contact ${contact.phone}: ${String(e)}`,
         );
-        return { ...contact, isRegistered: false };
+        results.push({ ...contact, isRegistered: false });
       }
-    });
-
-    const resolved = await Promise.all(promises);
-    results.push(...resolved);
+      await new Promise((resolve) => setTimeout(resolve, REQUEST_GAP_MS));
+    }
+    if (Date.now() < contactLookupBlockedUntil) break;
   }
 
-  return results;
+  if (results.length >= deviceContacts.length) return results;
+  const remainingPhones = new Set(results.map((item) => item.phone));
+  const rest = deviceContacts
+    .filter((contact) => !remainingPhones.has(contact.phone))
+    .map((contact) => {
+      const cached = contactLookupCache.get(contact.phone);
+      if (!cached || Date.now() - cached.at > CONTACT_LOOKUP_TTL_MS) {
+        return { ...contact, isRegistered: false };
+      }
+      return {
+        ...contact,
+        isRegistered: cached.isRegistered,
+        userId: cached.userId,
+      };
+    });
+  return [...results, ...rest];
 }
 
 /**
@@ -179,8 +247,9 @@ export async function refreshFromDeviceAndBackendWithOptions(options: {
   maxAgeMs?: number;
 }): Promise<KISContact[]> {
   const maxAgeMs = options.maxAgeMs ?? DEFAULT_CACHE_MAX_AGE_MS;
+  const now = Date.now();
 
-  if (!options.force) {
+  if (!options.force || now - lastBackendRefreshAt < FORCED_REFRESH_MIN_INTERVAL_MS) {
     const cached = await getCachedContacts(maxAgeMs);
     if (cached) return cached;
   }
@@ -188,6 +257,7 @@ export async function refreshFromDeviceAndBackendWithOptions(options: {
   const deviceContacts = await getDeviceContactsFromDevice();
   const marked = await markRegisteredOnBackend(deviceContacts);
   await setCachedContacts(marked);
+  lastBackendRefreshAt = Date.now();
   return marked;
 }
 
@@ -231,8 +301,7 @@ export async function saveContactToDevice(payload: {
 }): Promise<void> {
   await ensureContactsPermission();
 
-  const newContact: RNContact = {
-    recordID: '',
+  const newContact = {
     givenName: payload.name,
     familyName: '',
     phoneNumbers: [
@@ -242,7 +311,7 @@ export async function saveContactToDevice(payload: {
       },
     ],
     emailAddresses: [],
-  };
+  } as any;
 
   try {
     // Use the Promise-based API (no callback)

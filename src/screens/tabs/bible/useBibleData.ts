@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { getRequest } from '@/network/get';
-import { postRequest } from '@/network/post';
 import ROUTES from '@/network';
 
 export type BibleTranslation = {
@@ -67,20 +66,12 @@ export type MeditationEntry = {
   prayer_text?: string;
 };
 
-export type BibleBotMessage = {
-  id: string;
-  role: 'user' | 'assistant';
-  content: string;
-};
-
 export function useBibleData() {
   const [translations, setTranslations] = useState<BibleTranslation[]>([]);
   const [books, setBooks] = useState<BibleBook[]>([]);
   const [reader, setReader] = useState<BibleReaderPayload | null>(null);
   const [devotionals, setDevotionals] = useState<DailyDevotional[]>([]);
   const [meditations, setMeditations] = useState<MeditationEntry[]>([]);
-  const [botMessages, setBotMessages] = useState<BibleBotMessage[]>([]);
-  const [botSessionId, setBotSessionId] = useState<string | null>(null);
   const [loadingReader, setLoadingReader] = useState(false);
 
   const loadTranslations = useCallback(async () => {
@@ -128,32 +119,6 @@ export function useBibleData() {
     setMeditations(Array.isArray(payload) ? payload : []);
   }, []);
 
-  const generateMeditation = useCallback(async (topic: string) => {
-    const res = await postRequest(
-      ROUTES.bible.generateMeditation,
-      { topic },
-      { errorMessage: 'Unable to generate meditation.' },
-    );
-    if (res?.success) {
-      setMeditations((prev) => [res.data, ...prev]);
-    }
-    return res;
-  }, []);
-
-  const sendBotMessage = useCallback(async (message: string, topic?: string) => {
-    const res = await postRequest(
-      ROUTES.bible.botChat,
-      { message, session_id: botSessionId, topic },
-      { errorMessage: 'Unable to reach the Bible bot.' },
-    );
-    if (res?.success) {
-      setBotSessionId(res.data?.id ?? null);
-      const messages = res.data?.messages ?? [];
-      setBotMessages(messages);
-    }
-    return res;
-  }, [botSessionId]);
-
   useEffect(() => {
     loadTranslations();
     loadBooks();
@@ -176,11 +141,7 @@ export function useBibleData() {
     reader,
     devotionals,
     meditations,
-    botMessages,
-    botSessionId,
     loadingReader,
     loadReader,
-    generateMeditation,
-    sendBotMessage,
   };
 }

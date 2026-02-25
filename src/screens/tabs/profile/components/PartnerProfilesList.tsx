@@ -25,6 +25,7 @@ type Props = {
   onDeactivate: (id: string) => void;
   onReactivate: (id: string) => void;
   onDelete: (id: string) => void;
+  onOpenLandingBuilder?: (partnerId: string, partnerName?: string | null) => void;
 };
 
 const PartnerProfilesList = ({
@@ -37,6 +38,7 @@ const PartnerProfilesList = ({
   onDeactivate,
   onReactivate,
   onDelete,
+  onOpenLandingBuilder,
 }: Props) => {
   const { palette } = useKISTheme();
   const totalLabel = isUnlimited
@@ -122,6 +124,15 @@ const PartnerProfilesList = ({
             onPress={() => onDelete(partner.id)}
             disabled={isBusy}
           />
+          {onOpenLandingBuilder ? (
+            <KISButton
+              title="Landing Page"
+              size="xs"
+              variant="outline"
+              onPress={() => onOpenLandingBuilder(partner.id, partner.name)}
+              disabled={isBusy}
+            />
+          ) : null}
         </View>
       </View>
     );

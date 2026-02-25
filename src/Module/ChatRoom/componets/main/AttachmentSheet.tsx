@@ -34,7 +34,8 @@ import {
   AttachmentPreviewPage,
   PreviewKind,
 } from './ForAttachments/AttachmentPreviewPage';
-import { AttachmentFilePayload, FilesType } from '../../ChatRoomPage';
+import type { AttachmentFilePayload, FilesType } from '../../ChatRoomPage';
+export type { AttachmentFilePayload, FilesType } from '../../ChatRoomPage';
 
 
 
@@ -111,10 +112,10 @@ export const AttachmentSheet: React.FC<AttachmentSheetProps> = ({
       onProgress?: (uri: string, progress: number) => void;
       onStatus?: (uri: string, status: 'uploading' | 'done' | 'failed') => void;
     },
-  ) => {
+  ): Promise<boolean> => {
     if (!previewKind || !previewItems.length) {
       closePreview();
-      return;
+      return true;
     }
 
     const filesToBeSent = previewItems.map((item) => ({
@@ -135,7 +136,7 @@ export const AttachmentSheet: React.FC<AttachmentSheetProps> = ({
         );
         if (!ok) {
           shouldClose = false;
-          return;
+          return false;
         }
       } else {
         Alert.alert(
@@ -149,9 +150,11 @@ export const AttachmentSheet: React.FC<AttachmentSheetProps> = ({
         'Send error',
         'Something went wrong while sending your attachments.',
       );
+      return false;
     } finally {
       if (shouldClose) closePreview();
     }
+    return true;
   };
 
   /** ─────────────────────────

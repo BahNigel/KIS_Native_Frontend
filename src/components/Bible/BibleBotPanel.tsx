@@ -3,7 +3,12 @@ import { StyleSheet, Text, TextInput, View } from 'react-native';
 import { useKISTheme } from '@/theme/useTheme';
 import BibleSectionCard from './BibleSectionCard';
 import KISButton from '@/constants/KISButton';
-import type { BibleBotMessage } from '@/screens/tabs/bible/useBibleData';
+
+type BibleBotMessage = {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+};
 
 const emptyBotMessage = {
   id: 'bot-empty',

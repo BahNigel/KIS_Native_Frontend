@@ -173,6 +173,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
+  label: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
   pickerList: {
     marginTop: 8,
     borderWidth: 2,

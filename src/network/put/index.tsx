@@ -27,10 +27,11 @@
  * const result = await putData('/api/users/1', { name: 'John Doe' }, { messages: { success: 'User updated successfully' } });
  */
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import apiService from "@/src/services/apiService";
+import apiService from '../../services/apiService';
+import type { ApiResult, HeadersInit } from '../types';
 
 interface PutDataOptions {
-  headers?: Record<string, string>; // Custom headers for the API request
+  headers?: HeadersInit; // Custom headers for the API request
   messages?: {
     success?: string; // Custom success message
     error?: string; // Custom error message
@@ -41,20 +42,19 @@ export const putData = async (
   url: string,
   data: any,
   options: PutDataOptions = {}
-): Promise<any> => {
+): Promise<ApiResult> => {
   const { headers = {}, messages = {} } = options;
 
   try {
     // Retrieve the user token from AsyncStorage for authorization
     const userToken = await AsyncStorage.getItem('userToken');
     const deviceId = await AsyncStorage.getItem('device_id');
-    const authHeaders = userToken ? { Authorization: `Bearer ${userToken}` } : {};
-    const deviceHeaders = deviceId ? { 'X-Device-Id': deviceId } : {};
+    const requestHeaders: HeadersInit = { ...headers };
+    if (userToken) requestHeaders.Authorization = `Bearer ${userToken}`;
+    if (deviceId) requestHeaders['X-Device-Id'] = deviceId;
 
     // Send PUT request to the API
-    const response = await apiService.put(url, data, {
-      headers: { ...authHeaders, ...deviceHeaders, ...headers },
-    });
+    const response = await apiService.put(url, data, requestHeaders);
 
     // Parse the API response
     const responseData = await response.json();

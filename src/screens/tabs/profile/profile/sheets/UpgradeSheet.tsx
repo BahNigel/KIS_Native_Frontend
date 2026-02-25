@@ -77,12 +77,6 @@ export default function UpgradeSheet(props: {
     { label: 'Groups', usageKey: 'groups', limitKey: 'groups' },
     { label: 'Channels', usageKey: 'channels', limitKey: 'channels' },
     {
-      label: 'AI queries (today)',
-      usageKey: 'ai_queries',
-      usageAlt: ['ai_queries_today', 'ai_queries_used'],
-      limitKey: 'ai_queries_per_day',
-    },
-    {
       label: 'Storage used',
       usageKey: 'storage_mb',
       usageAlt: ['storage_bytes', 'storage_used_mb'],

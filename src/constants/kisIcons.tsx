@@ -10,6 +10,8 @@ export type KISIconName =
   | 'chat'
   | 'megaphone'
   | 'person'
+  | 'user'
+  | 'users'
   | 'home'
   | 'search'
   | 'cart'
@@ -52,6 +54,7 @@ export type KISIconName =
   | 'info'
   // NEW — for country picker
   | 'chevron-down'
+  | 'fullscreen'
   // NEW — camera / media
   | 'flash-on'
   | 'flash-off'
@@ -82,7 +85,18 @@ export type KISIconName =
   | 'file-text'
   | 'file-zip'
   // Already supported in component, just add to type
-  | 'keyboard';
+  | 'keyboard'
+  // Compatibility names used by legacy screens
+  | 'plus'
+  | 'bookmark'
+  | 'bolt'
+  | 'chevron-right'
+  | 'star'
+  | 'phone'
+  | 'document'
+  | 'shield'
+  // Allow forward-compatible icon names from feature modules.
+  | (string & {});
 
 type IconPair = { filled: string; outline: string };
 
@@ -98,6 +112,8 @@ const ion: IonMap = {
     outline: 'megaphone-outline',
   },
   person: { filled: 'person', outline: 'person-outline' },
+  user: { filled: 'person', outline: 'person-outline' },
+  users: { filled: 'people', outline: 'people-outline' },
 
   // UI
   home: { filled: 'home', outline: 'home-outline' },
@@ -117,6 +133,10 @@ const ion: IonMap = {
   'arrow-left': {
     filled: 'chevron-back',
     outline: 'chevron-back',
+  },
+  fullscreen: {
+    filled: 'expand',
+    outline: 'expand-outline',
   },
 
   // Chat tools
@@ -234,6 +254,14 @@ const ion: IonMap = {
   sparkles: { filled: 'sparkles', outline: 'sparkles-outline' },
   school: { filled: 'school', outline: 'school-outline' },
   list: { filled: 'list', outline: 'list-outline' },
+  plus: { filled: 'add', outline: 'add-outline' },
+  bookmark: { filled: 'bookmark', outline: 'bookmark-outline' },
+  bolt: { filled: 'flash', outline: 'flash-outline' },
+  'chevron-right': { filled: 'chevron-forward', outline: 'chevron-forward' },
+  star: { filled: 'star', outline: 'star-outline' },
+  phone: { filled: 'call', outline: 'call-outline' },
+  document: { filled: 'document', outline: 'document-outline' },
+  shield: { filled: 'shield-checkmark', outline: 'shield-checkmark-outline' },
 };
 
 export interface KISIconProps {

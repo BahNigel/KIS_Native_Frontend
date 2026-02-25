@@ -23,7 +23,6 @@ import { useKISTheme } from '@/theme/useTheme';
 import { postRequest } from '@/network/post';
 import { patchRequest } from '@/network/patch';
 import ROUTES from '@/network';
-import type { PartnerOrganizationApp } from '@/screens/tabs/partners/hooks/usePartnerOrganizationApps';
 import type { RootStackParamList } from '@/navigation/types';
 import { uploadFileToBackend } from '@/Module/ChatRoom/uploadFileToBackend';
 import { ORGANIZATION_APPS_UPDATED_EVENT } from '@/constants/partnerOrganizationApps';
@@ -32,7 +31,7 @@ const TYPE_OPTIONS: Array<{ id: string; label: string }> = [
   { id: 'kis', label: 'KIS App' },
   { id: 'bible', label: 'Bible App' },
   { id: 'external', label: 'Embedded App' },
-  { id: 'ai', label: 'AI App' },
+  { id: 'ai', label: 'Assistant App' },
 ];
 
 const VISIBILITY_OPTIONS: Array<{ id: string; label: string }> = [
@@ -142,7 +141,7 @@ const OrganizationAppFormScreen = () => {
     } finally {
       setIconUploading(false);
     }
-  }, [selectedIcon, iconRemoteUrl, partnerId]);
+  }, [selectedIcon, iconRemoteUrl]);
 
   const typeLabel = TYPE_OPTIONS.find((option) => option.id === formState.type)?.label || 'Organization App';
 
@@ -170,7 +169,7 @@ const OrganizationAppFormScreen = () => {
     if (selectedIcon) {
       try {
         iconUrl = await uploadSelectedIcon();
-      } catch (err: any) {
+      } catch {
         setSubmitting(false);
         return;
       }

@@ -238,12 +238,17 @@ export const StickerEditor: React.FC<StickerEditorProps> = ({
         setSaving(false);
         return;
       }
+      const capture = (viewShotRef.current as any).capture;
+      if (typeof capture !== 'function') {
+        setSaving(false);
+        return;
+      }
 
       // 1) Capture the composed sticker (image + text) as PNG
-      const captureUri = await viewShotRef.current.capture({
+      const captureUri = await capture({
         format: 'png',
         quality: 1,
-      } as any);
+      });
 
       if (!captureUri) {
         setSaving(false);

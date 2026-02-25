@@ -11,8 +11,6 @@ const broadcastRoutes = {
     topics: `${API_BASE_URL}/api/v1/bible/topics/`,
     schedules: `${API_BASE_URL}/api/v1/bible/schedules/`,
     meditations: `${API_BASE_URL}/api/v1/bible/meditations/`,
-    generateMeditation: `${API_BASE_URL}/api/v1/bible/meditations/generate/`,
-    botChat: `${API_BASE_URL}/api/v1/bible/bot/chat/`,
     prayers: `${API_BASE_URL}/api/v1/bible/prayers/`,
     prayersPublic: `${API_BASE_URL}/api/v1/bible/prayers/public/`,
     courses: `${API_BASE_URL}/api/v1/bible/courses/`,
@@ -157,10 +155,15 @@ const broadcastRoutes = {
     postReact: (id: string) => `${API_BASE_URL}/api/v1/partners/posts/${id}/react/`,
     postDelete: (id: string) => `${API_BASE_URL}/api/v1/partners/posts/${id}/delete/`,
     postBroadcast: (id: string) => `${API_BASE_URL}/api/v1/partners/posts/${id}/broadcast/`,
+    deactivate: (id: string) => `${API_BASE_URL}/api/v1/partners/${id}/deactivate/`,
+    reactivate: (id: string) => `${API_BASE_URL}/api/v1/partners/${id}/reactivate/`,
+    remove: (id: string) => `${API_BASE_URL}/api/v1/partners/${id}/remove/`,
   },
   broadcasts: {
     list: `${API_BASE_URL}/api/v1/broadcasts/`,
     react: (id: string) => `${API_BASE_URL}/api/v1/broadcasts/${id}/react/`,
+    share: (id: string) => `${API_BASE_URL}/api/v1/broadcasts/${id}/share/`,
+    hide: (id: string) => `${API_BASE_URL}/api/v1/broadcasts/${id}/hide/`,
     commentRoom: (id: string) => `${API_BASE_URL}/api/v1/broadcasts/${id}/comment-room/`,
     channelMessages: `${API_BASE_URL}/api/v1/broadcasts/channel-messages/`,
     features: `${API_BASE_URL}/api/v1/broadcasts/features/`,
@@ -189,6 +192,15 @@ const broadcastRoutes = {
     educationProfileBroadcast: (id: string) =>
       `${API_BASE_URL}/api/v1/broadcasts/education/profiles/${id}/broadcast/`,
     educationProfilePermissions: `${API_BASE_URL}/api/v1/broadcasts/education/profiles/permissions/`,
+    healthCards: (institutionId: string) =>
+      `${API_BASE_URL}/api/v1/broadcasts/health/cards/${encodeURIComponent(institutionId)}/`,
+    healthMediums: `${API_BASE_URL}/api/v1/broadcasts/health/mediums/`,
+    healthMedium: (mediumId: string) =>
+      `${API_BASE_URL}/api/v1/broadcasts/health/mediums/${encodeURIComponent(mediumId)}/`,
+    healthServices: `${API_BASE_URL}/api/v1/broadcasts/health/services/`,
+    healthService: (serviceId: string) =>
+      `${API_BASE_URL}/api/v1/broadcasts/health/services/${encodeURIComponent(serviceId)}/`,
+    upload: `${API_BASE_URL}/api/v1/broadcasts/upload/`,
   },
   commerce: {
     shops: `${API_BASE_URL}/api/v1/commerce/shops/`,

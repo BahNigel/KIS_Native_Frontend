@@ -45,7 +45,7 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({
   onGoNext,
   onDoneAll,
 }) => {
-  const playerRef = useRef<Video | null>(null);
+  const playerRef = useRef<any>(null);
 
   const [paused, setPaused] = useState(false);
   const [muted, setMuted] = useState(false);

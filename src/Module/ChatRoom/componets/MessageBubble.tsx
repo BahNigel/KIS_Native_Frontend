@@ -1040,7 +1040,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
 
     const starts = startsRaw ? new Date(startsRaw) : new Date(NaN);
     const ends = endsRaw ? new Date(endsRaw) : null;
-    const reminderMinutes = eventData.reminderMinutes;
+    const reminderMinutes = (eventData as any).reminderMinutes;
 
     const formatGcalDate = (dt: Date) =>
       dt.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, 'Z');

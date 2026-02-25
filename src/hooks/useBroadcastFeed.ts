@@ -100,11 +100,12 @@ export const useBroadcastFeed = (): UseBroadcastFeedResult => {
       if (!payload?.id || typeof payload.delta !== 'number') {
         return;
       }
+      const delta = payload.delta;
       updateItem(payload.id, (item) => ({
         ...item,
         engagement: {
           ...item.engagement,
-          reactions: Math.max(item.engagement.reactions + payload.delta, 0),
+          reactions: Math.max(item.engagement.reactions + delta, 0),
         },
       }));
     },
@@ -143,8 +144,8 @@ export const useBroadcastFeed = (): UseBroadcastFeedResult => {
           ? payload.data
           : [];
         const normalized = rawList
-          .map(normalizeBroadcastItem)
-          .filter((item): item is BroadcastItem => Boolean(item));
+          .map((item: any): BroadcastItem | null => normalizeBroadcastItem(item))
+          .filter((item: BroadcastItem | null): item is BroadcastItem => Boolean(item));
         setItems((prev) => {
           const merged = append ? [...prev, ...normalized] : normalized;
           const seen = new Set<string>();

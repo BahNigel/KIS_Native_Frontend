@@ -13,7 +13,7 @@ const authRoutes = {
     resetPassword: `${API_BASE_URL}/api/v1/auth/password/reset/`,
     e2eeRegisterKeys: `${API_BASE_URL}/api/v1/auth/e2ee/keys/`,
     e2eeFetchBundle: (userId: string) => `${API_BASE_URL}/api/v1/auth/e2ee/keys/${userId}/`,
-    checkContact: `${API_BASE_URL}/user/check-contacts/`,
+    checkContact: `${API_BASE_URL}/api/v1/users/check-contacts/`,
   },
   user: {
     profile: `${API_BASE_URL}/user-info/`,
@@ -56,7 +56,7 @@ const authRoutes = {
     create: `${API_BASE_URL}/api/v1/subscriptions/`,
   },
   contacts: {
-    check: `${API_BASE_URL}/user/check-contacts/`,
+    check: `${API_BASE_URL}/api/v1/users/check-contacts/`,
   },
 };
 

@@ -102,6 +102,7 @@ async function cacheStickerFromRemote(sticker: IncomingStickerPayload) {
 type BackendMessage = {
   id: string;
   conversationId: string;
+  roomId?: string;
   senderId: string;
   senderName?: string | null;
 
@@ -160,7 +161,7 @@ function mapBackendToChatMessage(
 
   return {
     id: raw.id,
-    clientId: raw.clientId ?? undefined,
+    clientId: raw.clientId ?? raw.id,
     seq: typeof raw.seq === 'number' ? raw.seq : undefined,
 
     conversationId: raw.conversationId,

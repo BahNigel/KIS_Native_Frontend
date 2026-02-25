@@ -174,7 +174,7 @@ export function useBulkMessageActions({
             },
             {
               text: 'Delete for everyone',
-              style: 'destructive',
+              style: 'destructive' as const,
               onPress: () => handleDeleteForEveryone(),
             },
           ]
@@ -210,7 +210,7 @@ export function useBulkMessageActions({
           exitSelectionMode();
         },
       },
-      { text: 'Cancel', style: 'cancel' },
+      { text: 'Cancel', style: 'cancel' as const },
     ];
 
     Alert.alert('More', 'Choose an action for selected messages', actions);

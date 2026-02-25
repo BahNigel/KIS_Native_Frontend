@@ -3,8 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import apiService from '../../services/apiService';
 import { CacheTypes } from '../cacheKeys';
 import { setCache } from '../cache';
-
-type HeadersInit = Record<string, string>;
+import type { ApiResult, HeadersInit } from '../types';
 
 const sanitizeFileData = (obj: any): any => {
   if (Array.isArray(obj)) return obj.map(sanitizeFileData);
@@ -27,7 +26,7 @@ export const patchRequest = async (
     successMessage?: string;
     errorMessage?: string;
   } = {}
-) => {
+): Promise<ApiResult> => {
   try {
     const token = await AsyncStorage.getItem('access_token');
     const deviceId = await AsyncStorage.getItem('device_id');

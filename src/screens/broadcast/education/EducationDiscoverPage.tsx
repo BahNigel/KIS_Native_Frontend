@@ -86,7 +86,7 @@ const LessonCard = ({
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
         <Text style={{ color: palette.subtext, fontWeight: '900' }}>{formatStartsAt(lesson.starts_at)}</Text>
         <Text style={{ color: palette.subtext, fontWeight: '900' }}>
-          {formatCurrency(lesson.price_cents, lesson.currency)}
+          {formatCurrency(lesson.price_cents, lesson.currency ?? undefined)}
         </Text>
       </View>
 
@@ -497,14 +497,14 @@ export default function EducationDiscoverPage({ searchTerm = '', searchContext =
 
       <BibleCourseDetailSheet
         visible={detailVisible}
-        course={selectedCourse}
+        course={selectedCourse as any}
         onClose={() => {
           setDetailVisible(false);
           setSelectedCourse(null);
         }}
         onCourseUpdate={(updated) => {
-          updateCourse(updated);
-          setSelectedCourse(updated);
+          updateCourse(updated as any);
+          setSelectedCourse(updated as any);
         }}
       />
     </ScrollView>

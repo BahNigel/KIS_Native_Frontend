@@ -19,7 +19,7 @@ import {
   kisRadius,
   KISPalette,
 } from '@/theme/constants';
-import { AttachmentFilePayload } from '../AttachmentSheet';
+import type { FilesType } from '../AttachmentSheet';
 
 export type PreviewKind = 'file' | 'audio';
 
@@ -27,7 +27,7 @@ type AttachmentPreviewPageProps = {
   visible: boolean;
   palette: KISPalette;
   kind: PreviewKind | null;
-  items: AttachmentFilePayload[];
+  items: FilesType[];
   onCancel: () => void;
   onSend: (
     caption: string,
@@ -38,7 +38,7 @@ type AttachmentPreviewPageProps = {
   ) => Promise<boolean> | boolean;
 };
 
-const isPdfFile = (item: AttachmentFilePayload) => {
+const isPdfFile = (item: FilesType) => {
   const type = item.type || '';
   const lowerName = item.name?.toLowerCase?.() ?? '';
   if (type === 'application/pdf') return true;
@@ -47,7 +47,7 @@ const isPdfFile = (item: AttachmentFilePayload) => {
 };
 
 const getFileIconAndColor = (
-  item: AttachmentFilePayload,
+  item: FilesType,
 ): { icon: React.ComponentProps<typeof KISIcon>['name']; colorKey: 'primary' | 'secondary' | 'info' | 'success' | 'warning' } => {
   const name = item.name?.toLowerCase?.() ?? '';
   const type = item.type || '';
@@ -96,7 +96,7 @@ export const AttachmentPreviewPage: React.FC<AttachmentPreviewPageProps> = ({
 }) => {
   const cardRadius = kisRadius.xl ?? 20;
   const [captionText, setCaptionText] = useState('');
-  const [localItems, setLocalItems] = useState<AttachmentFilePayload[]>([]);
+  const [localItems, setLocalItems] = useState<FilesType[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<Record<string, number>>({});
   const [uploadStatus, setUploadStatus] = useState<Record<string, 'uploading' | 'done' | 'failed'>>({});
@@ -207,7 +207,7 @@ export const AttachmentPreviewPage: React.FC<AttachmentPreviewPageProps> = ({
     setPlayingId(null);
   };
 
-  const playAudio = async (item: AttachmentFilePayload) => {
+  const playAudio = async (item: FilesType) => {
     if (!item.uri) return;
 
     if (playingId === item.uri) {

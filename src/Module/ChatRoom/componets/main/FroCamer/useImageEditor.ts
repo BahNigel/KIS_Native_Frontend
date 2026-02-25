@@ -380,7 +380,8 @@ export const useImageEditor = ({
 
   // ---- CAPTURE EDITED IMAGE ----
   const buildEditedAsset = async () => {
-    if (!viewShotRef.current || !viewShotRef.current.capture) {
+    const capture = (viewShotRef.current as any)?.capture;
+    if (typeof capture !== 'function') {
       return asset;
     }
 
@@ -391,7 +392,7 @@ export const useImageEditor = ({
       if (cropRect) {
         setIsCapturing(true);
         await new Promise((resolve) => setTimeout(resolve, 50));
-        uri = await viewShotRef.current.capture({
+        uri = await capture({
           format: 'jpg',
           quality: 0.9,
           width: cropRect.width,
@@ -399,7 +400,7 @@ export const useImageEditor = ({
         });
         setIsCapturing(false);
       } else {
-        uri = await viewShotRef.current.capture({
+        uri = await capture({
           format: 'jpg',
           quality: 0.9,
           width: width || undefined,
