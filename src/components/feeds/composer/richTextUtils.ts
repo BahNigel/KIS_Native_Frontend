@@ -1,5 +1,5 @@
 // src/components/feeds/composer/richTextUtils.ts
-import type { BlockMeta, MarkKey, RichComposerState, Span } from './types';
+import type { MarkKey, RichComposerState, Span } from './types';
 
 // -----------------------------------------------------
 // Helpers: text diff to keep spans stable when typing

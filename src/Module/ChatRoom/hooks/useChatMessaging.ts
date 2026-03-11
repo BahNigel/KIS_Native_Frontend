@@ -4,7 +4,6 @@ import {
   useCallback,
   useEffect,
   useRef,
-  useState,
 } from 'react';
 import type { MutableRefObject } from 'react';
 import { AppState, DeviceEventEmitter } from 'react-native';
@@ -52,7 +51,7 @@ export function useChatMessaging({
   chat,
   storageRoomId,
   currentUserId,
-  currentUserName,
+  currentUserName: _currentUserName,
   conversationId,
 }: UseChatMessagingParams) {
   /* ---------------------------------------------------------------------
@@ -67,7 +66,6 @@ export function useChatMessaging({
 
   const sendOverNetworkImplRef =
     useRef<SendOverNetworkFn | null>(null);
-  const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const historySyncRef = useRef<number>(0);
   const flushInFlightRef = useRef(false);
   const historyLoadRef = useRef(false);
@@ -666,8 +664,6 @@ export function useChatMessaging({
       chat,
       conversationId,
       storageRoomId,
-      currentUserId,
-      currentUserName,
     ],
   );
 

@@ -6,7 +6,6 @@ import type {
   InsightKpi,
   InsightPayload,
   InsightSeries,
-  InsightSeriesPoint,
   InsightTopItem,
   ProductInsightItem,
   TimeRange,

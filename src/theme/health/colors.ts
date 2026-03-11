@@ -10,6 +10,8 @@ export type HealthThemeColors = {
   subtext: string;
   accentPrimary: string;
   accentSecondary: string;
+  primary: string;
+  textSecondary: string;
   divider: string;
   shadow: string;
 };
@@ -26,6 +28,8 @@ const darkPalette: HealthThemeColors = {
   subtext: '#B7B6C7',
   accentPrimary: '#FF8A33',
   accentSecondary: '#8E3BFF',
+  primary: '#FF8A33',
+  textSecondary: '#B7B6C7',
   divider: '#3E2A5F',
   shadow: 'rgba(0, 0, 0, 0.85)',
 };
@@ -42,6 +46,8 @@ const lightPalette: HealthThemeColors = {
   subtext: '#475569',
   accentPrimary: '#FF8A33',
   accentSecondary: '#8E3BFF',
+  primary: '#FF8A33',
+  textSecondary: '#475569',
   divider: '#D1D5DB',
   shadow: 'rgba(15, 23, 42, 0.08)',
 };

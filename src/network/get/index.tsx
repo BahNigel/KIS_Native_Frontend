@@ -4,6 +4,7 @@ import apiService from '../../services/apiService';
 import { setCache } from '../cache';
 import { CacheTypes } from '../cacheKeys';
 import type { ApiResult, HeadersInit } from '../types';
+import { getAccessToken } from '@/security/authStorage';
 
 export type GetResponse<T = any> = ApiResult<T>;
 
@@ -57,7 +58,7 @@ export const getRequest = async (
     // if (!(await isOnline())) throw new Error('No internet connection.');
 
     // const token = await resolveBearerToken();
-    const token = await AsyncStorage.getItem('access_token');
+    const token = await getAccessToken();
     const deviceId = await AsyncStorage.getItem('device_id');
     const baseHeaders: HeadersInit = {};
     if (token) baseHeaders.Authorization = `Bearer ${token}`;

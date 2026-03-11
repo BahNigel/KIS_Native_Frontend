@@ -1,5 +1,13 @@
 import React, { useCallback, useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  DeviceEventEmitter,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { useKISTheme } from '@/theme/useTheme';
 import { useNavigation } from '@react-navigation/native';
 import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
@@ -43,6 +51,7 @@ export default function BroadcastScreen() {
   const [activeMainTab, setActiveMainTab] = useState<BroadcastMainTabId>('feeds');
   const [searchTerm, setSearchTerm] = useState('');
   const [filterVisible, setFilterVisible] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [selectedFilters, setSelectedFilters] = useState<Record<BroadcastMainTabId, string>>(() =>
     (Object.keys(FILTER_OPTIONS) as BroadcastMainTabId[]).reduce((acc, key) => {
       acc[key] = FILTER_OPTIONS[key][0];
@@ -62,6 +71,18 @@ export default function BroadcastScreen() {
     navigation.navigate('Profile', { broadcastProfileKey: profileKey });
   }, [activeMainTab, navigation]);
 
+  const handlePullToRefresh = useCallback(async () => {
+    if (refreshing) return;
+    setRefreshing(true);
+    try {
+      DeviceEventEmitter.emit('broadcast.refresh');
+      // Keep the indicator visible briefly while listeners re-fetch feed data.
+      await new Promise((resolve) => setTimeout(resolve, activeMainTab === 'feeds' ? 900 : 600));
+    } finally {
+      setRefreshing(false);
+    }
+  }, [activeMainTab, refreshing]);
+
   return (
     <View style={{ flex: 1, backgroundColor: palette.bg }}>
       <ScrollView
@@ -69,6 +90,14 @@ export default function BroadcastScreen() {
         stickyHeaderIndices={[0]}
         keyboardShouldPersistTaps="handled"
         style={{ backgroundColor: palette.bg }}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handlePullToRefresh}
+            tintColor={palette.primaryStrong}
+            colors={[palette.primaryStrong]}
+          />
+        }
       >
         <View style={styles.headerContainer}>
           <View style={styles.headerSection}>

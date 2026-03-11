@@ -125,10 +125,11 @@ export const AttachmentPreviewPage: React.FC<AttachmentPreviewPageProps> = ({
   }, [visible, items]);
 
   useEffect(() => {
+    const audioPlayer = audioPlayerRef.current;
     return () => {
       try {
-        audioPlayerRef.current.stopPlayer();
-        audioPlayerRef.current.removePlayBackListener();
+        audioPlayer.stopPlayer();
+        audioPlayer.removePlayBackListener();
       } catch {}
     };
   }, []);

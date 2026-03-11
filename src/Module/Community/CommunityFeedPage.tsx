@@ -8,14 +8,12 @@ import {
   Image,
   Share,
   Alert,
-  Modal,
 } from 'react-native';
 import { useKISTheme } from '@/theme/useTheme';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import ROUTES from '@/network';
 import { getRequest } from '@/network/get';
 import { postRequest } from '@/network/post';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getAccessToken } from '@/security/authStorage';
 import { KISIcon } from '@/constants/kisIcons';
 import ImagePlaceholder from '@/components/common/ImagePlaceholder';
 import Skeleton from '@/components/common/Skeleton';
@@ -58,7 +56,6 @@ export default function CommunityFeedPage({
   onBack,
 }: CommunityFeedPageProps) {
   const { palette } = useKISTheme();
-  const insets = useSafeAreaInsets();
   const [loading, setLoading] = useState(true);
   const [posts, setPosts] = useState<Post[]>([]);
   const [composerVisible, setComposerVisible] = useState(false);
@@ -183,7 +180,7 @@ export default function CommunityFeedPage({
   };
 
   const uploadShareAsset = async (uri: string) => {
-    const token = await AsyncStorage.getItem('access_token');
+    const token = await getAccessToken();
     if (!token) return null;
     const attachment = await uploadFileToBackend({
       file: {

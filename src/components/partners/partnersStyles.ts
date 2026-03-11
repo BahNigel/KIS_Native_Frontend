@@ -1,7 +1,5 @@
 // src/screens/tabs/partnersStyles.ts
 import { StyleSheet } from 'react-native';
-import { LEFT_RAIL_WIDTH } from '@/components/partners/partnersTypes';
-import { KIS_COLORS } from '@/theme/constants';
 
 const styles = StyleSheet.create({
   root: {

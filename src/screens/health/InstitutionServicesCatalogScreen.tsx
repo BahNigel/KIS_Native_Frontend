@@ -26,13 +26,27 @@ import type {
   ServiceDefinition,
 } from '@/features/health-dashboard/models';
 import { HEALTH_DASHBOARD_DEFAULT_SERVICES } from '@/features/health-dashboard/defaults';
-import { fetchHealthProfileState, updateHealthInstitutions } from '@/services/healthProfileService';
+import { fetchHealthProfileState } from '@/services/healthProfileService';
+import {
+  ensureInstitutionDashboardExists,
+  fetchInstitutionServices,
+  updateInstitutionServices,
+} from '@/services/healthDashboardService';
 import { startHealthServiceSession } from '@/services/healthOpsAppointmentService';
 import { nanoid } from 'nanoid/non-secure';
 import { getRequest } from '@/network/get';
 import { postRequest } from '@/network/post';
 import { deleteRequest } from '@/network/delete';
 import ROUTES from '@/network';
+import EngineModal from './HealthEnginesDashboads/EngineModal';
+
+
+type EngineData = {
+  id: string;
+  name: string;
+  description: string;
+  system_flag: boolean;
+};
 
 type Props = NativeStackScreenProps<RootStackParamList, 'HealthInstitutionServicesCatalog'>;
 type MediumRow = {
@@ -110,12 +124,46 @@ const normalizeInstitutionType = (value: string | undefined): HealthDashboardIns
     : 'clinic';
 };
 
+const extractServiceRows = (payload: any, preferredKeys: string[]): any[] => {
+  const queue: any[] = [payload];
+  const visited = new Set<any>();
+
+  while (queue.length > 0) {
+    const current = queue.shift();
+    if (!current) continue;
+    if (Array.isArray(current)) return current;
+    if (typeof current !== 'object') continue;
+    if (visited.has(current)) continue;
+    visited.add(current);
+
+    for (const key of preferredKeys) {
+      const candidate = current?.[key];
+      if (Array.isArray(candidate)) return candidate;
+      if (candidate && typeof candidate === 'object') {
+        queue.push(candidate);
+      }
+    }
+
+    const nestedKeys = ['data', 'payload', 'result', 'response'];
+    nestedKeys.forEach((key) => {
+      const nested = current?.[key];
+      if (nested && typeof nested === 'object') {
+        queue.push(nested);
+      }
+    });
+  }
+
+  return [];
+};
+
 const normalizeServiceRow = (raw: any, index: number): ServiceDefinition | null => {
   if (!raw || typeof raw !== 'object') return null;
   const id = String(raw.id ?? raw.service_id ?? raw.key ?? `service_${index + 1}`).trim();
   const name = String(raw.name ?? raw.title ?? raw.label ?? '').trim();
   if (!name) return null;
   const description = String(raw.description ?? raw.summary ?? '').trim();
+  const mediumIdsSource = raw.mediumIds ?? raw.medium_ids;
+  const mediumNamesSource = raw.mediumNames ?? raw.medium_names;
   return {
     id,
     name,
@@ -126,6 +174,52 @@ const normalizeServiceRow = (raw: any, index: number): ServiceDefinition | null 
       : Number.isFinite(Number(raw.base_price_cents))
       ? Number(raw.base_price_cents)
       : undefined,
+    mediumIds: Array.isArray(mediumIdsSource) ? mediumIdsSource.map((item: any) => String(item || '').trim()).filter(Boolean) : [],
+    mediumNames: Array.isArray(mediumNamesSource) ? mediumNamesSource.map((item: any) => String(item || '').trim()).filter(Boolean) : [],
+  };
+};
+
+const normalizeHealthOpsServiceRow = (raw: any, index: number): ServiceDefinition | null => {
+  if (!raw || typeof raw !== 'object') return null;
+  const source =
+    raw?.service && typeof raw.service === 'object'
+      ? { ...raw, ...raw.service }
+      : raw;
+  const id = String(
+    source.id ??
+      source.service_id ??
+      source.serviceId ??
+      source.key ??
+      source.slug ??
+      `service_${index + 1}`,
+  ).trim();
+  const name = String(source.name ?? source.title ?? source.label ?? '').trim();
+  if (!id || !name) return null;
+  const description = String(source.description ?? source.summary ?? '').trim();
+  const baseCostMicro = Number(
+    source.base_cost_micro ??
+      source.baseCostMicro ??
+      source.amount_micro ??
+      source.amountMicro,
+  );
+  const mediumIdsSource =
+    source.medium_ids ??
+    source.mediumIds ??
+    source.engine_ids ??
+    source.engineIds;
+  const mediumNamesSource =
+    source.medium_names ??
+    source.mediumNames ??
+    source.engine_names ??
+    source.engineNames;
+  return {
+    id,
+    name,
+    description,
+    active: source.is_active !== false && source.active !== false,
+    basePriceCents: Number.isFinite(baseCostMicro) ? Math.max(0, Math.round(baseCostMicro / 10)) : undefined,
+    mediumIds: Array.isArray(mediumIdsSource) ? mediumIdsSource.map((item: any) => String(item || '').trim()).filter(Boolean) : [],
+    mediumNames: Array.isArray(mediumNamesSource) ? mediumNamesSource.map((item: any) => String(item || '').trim()).filter(Boolean) : [],
   };
 };
 
@@ -147,7 +241,9 @@ const resolveInstitutionServices = (institution: any): ServiceDefinition[] => {
 };
 
 const money = (amountCents?: number) =>
-  Number.isFinite(Number(amountCents)) ? `$${(Number(amountCents) / 100).toLocaleString()}` : null;
+  Number.isFinite(Number(amountCents))
+    ? `${(Number(amountCents) / 10000).toFixed(3).replace(/\.?0+$/, '')} KISC`
+    : null;
 
 const toKisc = (micro?: number) => {
   if (!Number.isFinite(Number(micro))) return '0.000';
@@ -190,6 +286,33 @@ const ENGINE_ICON_BY_NAME: Record<string, 'calendar' | 'video' | 'chat' | 'file'
   'notification & reminder engine': 'bell',
 };
 
+const ENGINE_NAME_TO_FLOW_KEY: Record<string, string> = {
+  'appointment engine': 'appointment',
+  'video consultation engine': 'video',
+  'secure messaging / chat engine': 'messaging',
+  'e-prescription engine': 'pharmacy',
+  'lab order engine': 'clinical',
+  'imaging order engine': 'clinical',
+  'admission & bed management engine': 'admission',
+  'surgery scheduling engine': 'admission',
+  'emergency dispatch engine': 'emergency',
+  'pharmacy & fulfillment engine': 'pharmacy',
+  'payment & billing engine': 'billing',
+  'ehr / health records engine': 'clinical',
+  'home logistics engine': 'home_logistics',
+  'wellness program engine': 'wellness',
+  'notification & reminder engine': 'reminder',
+};
+
+const resolveEngineFlowKeysFromMediumNames = (mediumNames: string[]): string[] =>
+  Array.from(
+    new Set(
+      mediumNames
+        .map((name) => ENGINE_NAME_TO_FLOW_KEY[normalizeEngineName(name)])
+        .filter((value): value is string => !!value),
+    ),
+  );
+
 export default function InstitutionServicesCatalogScreen({ navigation, route }: Props) {
   const { institutionId, institutionName: routeName, institutionType: routeType } = route.params;
   const scheme = useColorScheme();
@@ -204,8 +327,6 @@ export default function InstitutionServicesCatalogScreen({ navigation, route }: 
     normalizeInstitutionType(routeType),
   );
   const [services, setServices] = useState<ServiceDefinition[]>([]);
-  const [institutions, setInstitutions] = useState<any[]>([]);
-  const [institutionIndex, setInstitutionIndex] = useState(-1);
   const [saving, setSaving] = useState(false);
   const [newServiceName, setNewServiceName] = useState('');
   const [newServiceDescription, setNewServiceDescription] = useState('');
@@ -219,6 +340,7 @@ export default function InstitutionServicesCatalogScreen({ navigation, route }: 
   const [engineExecutions, setEngineExecutions] = useState<EngineExecutionRow[]>([]);
   const [viewerRole, setViewerRole] = useState<ViewerRole>('unassigned');
   const [previewCards, setPreviewCards] = useState<PreviewCardRow[]>([]);
+  const [selectedEngine, setSelectedEngine] = useState<EngineData | null>(null);
 
   const loadServices = useCallback(async () => {
     setLoading(true);
@@ -228,15 +350,60 @@ export default function InstitutionServicesCatalogScreen({ navigation, route }: 
         ? profileState.profile.institutions
         : [];
       const institution = institutionList.find((item: any) => String(item?.id) === String(institutionId));
-      const index = institutionList.findIndex((item: any) => String(item?.id) === String(institutionId));
       const resolvedType = normalizeInstitutionType(institution?.type ?? routeType);
       const customServices = resolveInstitutionServices(institution);
       const fallbackServices = HEALTH_DASHBOARD_DEFAULT_SERVICES[resolvedType];
-      setInstitutions(institutionList);
-      setInstitutionIndex(index);
+      await ensureInstitutionDashboardExists(institutionId, resolvedType);
+      const [dashboardServicesRes, dashboardServicesRawRes, healthOpsServicesRes] = await Promise.all([
+        fetchInstitutionServices(institutionId),
+        getRequest(ROUTES.healthDashboard.services(institutionId), {
+          errorMessage: 'Unable to load institution services.',
+        }),
+        getRequest(ROUTES.healthOps.institutionServices(institutionId), {
+          errorMessage: 'Unable to load institution services.',
+        }),
+      ]);
+      const dashboardServiceRows = [
+        ...extractServiceRows(dashboardServicesRes, ['services', 'results', 'items']),
+        ...extractServiceRows(dashboardServicesRawRes, ['services', 'results', 'items']),
+      ];
+      const dashboardServices = dashboardServiceRows
+        .map((row: any, index: number) => normalizeServiceRow(row, index))
+        .filter(Boolean) as ServiceDefinition[];
+      const healthOpsServiceRows = extractServiceRows(healthOpsServicesRes, ['results', 'services', 'items']);
+      const healthOpsServices = healthOpsServiceRows
+        .map((row: any, index: number) => normalizeHealthOpsServiceRow(row, index))
+        .filter(Boolean) as ServiceDefinition[];
+
+      const mergedMap = new Map<string, ServiceDefinition>();
+      [...fallbackServices, ...customServices, ...dashboardServices, ...healthOpsServices].forEach((service) => {
+        const serviceId = String(service?.id || '').trim();
+        if (!serviceId) return;
+        const existing = mergedMap.get(serviceId);
+        mergedMap.set(serviceId, {
+          ...existing,
+          ...service,
+          id: serviceId,
+          name: String(service?.name || existing?.name || '').trim() || existing?.name || 'Health Service',
+          description: String(service?.description || existing?.description || '').trim(),
+          mediumIds: Array.from(
+            new Set([
+              ...((existing?.mediumIds || []).map((item) => String(item || '').trim()).filter(Boolean)),
+              ...((service?.mediumIds || []).map((item) => String(item || '').trim()).filter(Boolean)),
+            ]),
+          ),
+          mediumNames: Array.from(
+            new Set([
+              ...((existing?.mediumNames || []).map((item) => String(item || '').trim()).filter(Boolean)),
+              ...((service?.mediumNames || []).map((item) => String(item || '').trim()).filter(Boolean)),
+            ]),
+          ),
+        });
+      });
+
       setInstitutionName(institution?.name || routeName || 'Institution');
       setInstitutionType(resolvedType);
-      setServices(customServices.length > 0 ? customServices : fallbackServices);
+      setServices(Array.from(mergedMap.values()));
     } catch (error: any) {
       Alert.alert('Services page', error?.message || 'Unable to load institution services.');
       const fallbackType = normalizeInstitutionType(routeType);
@@ -381,25 +548,36 @@ export default function InstitutionServicesCatalogScreen({ navigation, route }: 
 
   const persistServices = useCallback(
     async (nextServices: ServiceDefinition[]) => {
-      if (institutionIndex < 0) throw new Error('Institution not found.');
-      const nextInstitutions = [...institutions];
-      const institution = nextInstitutions[institutionIndex];
-      nextInstitutions[institutionIndex] = {
-        ...(institution || {}),
-        services: nextServices,
-        dashboard: {
-          ...(institution?.dashboard || {}),
-          services: nextServices,
-        },
+      const payload = {
+        services: nextServices.map((service) => ({
+          id: String(service.id || '').trim(),
+          name: String(service.name || '').trim(),
+          description: String(service.description || '').trim(),
+          active: service.active !== false,
+          basePriceCents:
+            Number.isFinite(Number(service.basePriceCents)) && Number(service.basePriceCents) >= 0
+              ? Number(service.basePriceCents)
+              : undefined,
+          mediumIds: Array.isArray(service.mediumIds)
+            ? service.mediumIds.map((id) => String(id || '').trim()).filter(Boolean)
+            : [],
+          mediumNames: Array.isArray(service.mediumNames)
+            ? service.mediumNames.map((name) => String(name || '').trim()).filter(Boolean)
+            : [],
+        })),
       };
-      const res = await updateHealthInstitutions(nextInstitutions);
+      const res = await updateInstitutionServices(institutionId, payload);
       if (!res?.success) {
         throw new Error(res?.message || 'Unable to update services.');
       }
-      setInstitutions(nextInstitutions);
-      setServices(nextServices);
+      const normalized = Array.isArray(res?.data?.services)
+        ? res.data.services
+            .map((row: any, index: number) => normalizeServiceRow(row, index))
+            .filter(Boolean) as ServiceDefinition[]
+        : [];
+      setServices(normalized.length > 0 ? normalized : nextServices);
     },
-    [institutionIndex, institutions],
+    [institutionId],
   );
 
   const toggleServiceActive = useCallback(
@@ -745,7 +923,7 @@ export default function InstitutionServicesCatalogScreen({ navigation, route }: 
             const availableMicro = Number(start?.data?.available_micro || 0);
             if (requiredMicro > 0 || availableMicro > 0) {
               Alert.alert(
-                'Insufficient KIS balance',
+                'Insufficient KISC balance',
                 `You need ${toKisc(requiredMicro)} KISC but you only have ${toKisc(availableMicro)} KISC.`,
               );
             } else {
@@ -767,8 +945,7 @@ export default function InstitutionServicesCatalogScreen({ navigation, route }: 
         const appointmentBookingId = String(start?.data?.booking?.id || '').trim();
         const sessionSource = String(start?.source || '').trim().toLowerCase() === 'health_ops' ? 'health_ops' : 'broadcasts';
         const sessionId = workflowSessionId || legacySessionId;
-
-        console.log('sessionSource 1', sessionSource, 'sessionId', sessionId, 'workflowSessionId', workflowSessionId, 'appointmentBookingId', appointmentBookingId);
+        const configuredEngineFlowKeys = resolveEngineFlowKeysFromMediumNames(resolveServiceMediumNames(service));
 
         navigation.navigate('HealthServiceSession', {
           institutionId,
@@ -782,6 +959,7 @@ export default function InstitutionServicesCatalogScreen({ navigation, route }: 
           serviceId: service.id,
           serviceName: service.name,
           serviceDescription: service.description || candidate.serviceDescription,
+          configuredEngineFlowKeys,
           dateKey: candidate.date,
           timeValue: candidate.time,
           statusLabel: candidate.statusLabel,
@@ -792,7 +970,7 @@ export default function InstitutionServicesCatalogScreen({ navigation, route }: 
         Alert.alert('Owner preview', error?.message || 'Unable to start owner preview.');
       }
     },
-    [institutionId, institutionName, institutionType, isOwnerViewer, navigation, previewCards],
+    [institutionId, institutionName, institutionType, isOwnerViewer, navigation, previewCards, resolveServiceMediumNames],
   );
 
   if (loading) {
@@ -987,21 +1165,47 @@ export default function InstitutionServicesCatalogScreen({ navigation, route }: 
                     borderColor: palette.divider,
                     backgroundColor: palette.surface,
                     padding: spacing.sm,
+                    marginBottom: spacing.md, // optional spacing between items
                   }}
                 >
-                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <Text style={{ ...typography.h3, color: palette.text, flex: 1 }}>{medium.name}</Text>
-                    <Text style={{ ...typography.label, color: palette.accentPrimary }}>
-                      FIXED
+                  <View
+                    style={{
+                      flexDirection: 'row',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                    }}
+                  >
+                    <Text style={{ ...typography.h3, color: palette.text, flex: 1 }}>
+                      {medium.name}
                     </Text>
+                    <KISButton
+                      onPress={() => setSelectedEngine(medium)}
+                      title="Manage"
+                      variant="outline"
+                    />
                   </View>
+
                   {medium.description ? (
-                    <Text style={{ ...typography.body, color: palette.subtext, marginTop: spacing.xs }}>
+                    <Text
+                      style={{
+                        ...typography.body,
+                        color: palette.subtext,
+                        marginTop: spacing.xs,
+                      }}
+                    >
                       {medium.description}
                     </Text>
                   ) : null}
                 </View>
               ))}
+              {selectedEngine && (
+                <EngineModal
+                  visible={!!selectedEngine}
+                  data={selectedEngine}
+                  institutionId={institutionId}
+                  onClose={() => setSelectedEngine(null)}
+                />
+              )}
               {mediums.length === 0 ? (
                 <Text style={{ ...typography.body, color: palette.subtext }}>
                   No engines available.

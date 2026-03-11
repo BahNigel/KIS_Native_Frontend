@@ -16,7 +16,7 @@ export const getTypographyStyle = (
   preset: TypographyPreset,
   color?: string,
 ): TextStyle => {
-  const base = TYPOGRAPHY_PRESETS[preset];
+  const base = TYPOGRAPHY_PRESETS[preset] ?? TYPOGRAPHY_PRESETS.body;
   const style: TextStyle = {
     fontFamily: base.fontFamily,
     fontSize: base.fontSize,

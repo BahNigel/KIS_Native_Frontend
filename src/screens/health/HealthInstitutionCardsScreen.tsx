@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -23,14 +23,23 @@ import { resolveBackendAssetUrl } from '@/network';
 import {
   fetchHealthProfileState,
 } from '@/services/healthProfileService';
-import { fetchInstitutionAvailability } from '@/services/healthDashboardService';
+import {
+  fetchInstitutionAvailability,
+  fetchInstitutionProfileEditor,
+  fetchInstitutionLandingPage,
+} from '@/services/healthDashboardService';
 import { startHealthServiceSession } from '@/services/healthOpsAppointmentService';
 import { HEALTH_DASHBOARD_DEFAULT_SERVICES } from '@/features/health-dashboard/defaults';
 import {
   HEALTH_DASHBOARD_INSTITUTION_TYPES,
   type HealthDashboardInstitutionType,
 } from '@/features/health-dashboard/models';
-import { resolveBookingEngines } from '@/features/health-dashboard/bookingEngines';
+import {
+  normalizeBookingEngineKey,
+  resolveBookingEnginesFromKeys,
+  type BookingEngineDescriptor,
+} from '@/features/health-dashboard/bookingEngines';
+import { fetchServiceEngineMappings } from '@/services/healthOpsWorkflowService';
 import {
   getHealthThemeBorders,
   getHealthThemeColors,
@@ -48,6 +57,8 @@ type ServiceDefinition = {
   description: string;
   active: boolean;
   basePriceCents?: number;
+  mediumNames?: string[];
+  availableEngines?: string[];
 };
 
 type ServiceRatingEntry = {
@@ -65,6 +76,8 @@ type HealthCardRow = {
   id: string;
   dateKey: string;
   timeValue: string;
+  timeOptions: string[];
+  accessMode: 'slots' | 'all_day';
   statusKey: string;
   statusLabel: string;
   statusColor: string;
@@ -73,6 +86,7 @@ type HealthCardRow = {
 };
 
 type CardFilterKey = 'today' | 'upcoming' | 'past';
+type CardTemporalBucket = CardFilterKey;
 
 const STATUS_META: Record<string, { label: string; color: string }> = {
   available: { label: 'Available', color: '#10B981' },
@@ -81,6 +95,122 @@ const STATUS_META: Record<string, { label: string; color: string }> = {
   on_call: { label: 'On call', color: '#3B82F6' },
   holiday: { label: 'Holiday', color: '#8B5CF6' },
   blocked: { label: 'Blocked', color: '#6B7280' },
+};
+
+const BOOKING_ENGINE_TO_FLOW_KEY: Record<string, string> = {
+  appointment: 'appointment',
+  video: 'video',
+  lab: 'clinical',
+  prescription: 'pharmacy',
+  payment: 'billing',
+  surgery: 'admission',
+  admission: 'admission',
+  emergency: 'emergency',
+  wellness: 'wellness',
+  logistics: 'home_logistics',
+};
+
+const resolveConfiguredEngineFlowKeys = (engines: BookingEngineDescriptor[]): string[] =>
+  Array.from(
+    new Set(
+      engines
+        .map((engine) => BOOKING_ENGINE_TO_FLOW_KEY[String(engine?.key || '').trim().toLowerCase()])
+        .filter((value): value is string => !!value),
+    ),
+  );
+
+const normalizeStringList = (value: unknown): string[] => {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => String(item || '').trim())
+    .filter(Boolean);
+};
+
+const extractServiceEngineTokensFromRaw = (raw: any): string[] => {
+  if (!raw || typeof raw !== 'object') return [];
+  const tokens: string[] = [
+    ...normalizeStringList(raw?.availableEngines),
+    ...normalizeStringList(raw?.available_engines),
+    ...normalizeStringList(raw?.engineNames),
+    ...normalizeStringList(raw?.engine_names),
+    ...normalizeStringList(raw?.mediumNames),
+    ...normalizeStringList(raw?.medium_names),
+  ];
+  if (Array.isArray(raw?.medium_links)) {
+    raw.medium_links.forEach((link: any) => {
+      const mediumName = String(link?.medium?.name || link?.name || '').trim();
+      if (mediumName) tokens.push(mediumName);
+    });
+  }
+  if (Array.isArray(raw?.mediumLinks)) {
+    raw.mediumLinks.forEach((link: any) => {
+      const mediumName = String(link?.medium?.name || link?.name || '').trim();
+      if (mediumName) tokens.push(mediumName);
+    });
+  }
+  return Array.from(new Set(tokens));
+};
+
+const resolveServiceEngineDescriptors = (service: ServiceDefinition): BookingEngineDescriptor[] => {
+  const tokens = [
+    ...normalizeStringList(service?.availableEngines),
+    ...normalizeStringList(service?.mediumNames),
+  ];
+  if (!tokens.length) return [];
+  return resolveBookingEnginesFromKeys(tokens);
+};
+
+const resolveServiceConfiguredFlowKeys = (service: ServiceDefinition): string[] => {
+  const tokens = [
+    ...normalizeStringList(service?.availableEngines),
+    ...normalizeStringList(service?.mediumNames),
+  ];
+  if (!tokens.length) return [];
+  const flowKeys: string[] = [];
+  tokens.forEach((token) => {
+    const engineKey = normalizeBookingEngineKey(token);
+    const flowKey = engineKey ? BOOKING_ENGINE_TO_FLOW_KEY[engineKey] : '';
+    if (flowKey && !flowKeys.includes(flowKey)) {
+      flowKeys.push(flowKey);
+    }
+  });
+  return flowKeys;
+};
+
+const isTimeValue = (value: unknown): value is string => /^\d{2}:\d{2}$/.test(String(value || ''));
+const toNormalizedMode = (value: unknown) =>
+  String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, '_');
+const isAllDayValue = (value: unknown) => {
+  const normalized = toNormalizedMode(value);
+  return normalized === 'all_day' || normalized === 'allday' || normalized === 'full_day';
+};
+
+const normalizeTimeList = (value: unknown): string[] => {
+  const isTimeText = (entry: string) => /^\d{2}:\d{2}$/.test(entry);
+  if (Array.isArray(value)) {
+    return Array.from(
+      new Set(
+        value
+          .map((entry) => String(entry || '').trim())
+          .filter((entry) => isTimeText(entry)),
+      ),
+    ).sort();
+  }
+  const raw = String(value || '').trim();
+  if (!raw) return [];
+  if (isAllDayValue(raw)) return [];
+  if (isTimeText(raw)) return [raw];
+  return Array.from(
+    new Set(
+      raw
+        .split(',')
+        .map((entry: string) => entry.trim())
+        .filter((entry: string) => isTimeText(entry)),
+    ),
+  ).sort();
 };
 
 const normalizeRole = (value: unknown): MemberRole => {
@@ -106,12 +236,29 @@ const normalizeService = (raw: any, index: number): ServiceDefinition | null => 
   const description = String(raw.description ?? raw.summary ?? '').trim();
   const centsRaw = raw.basePriceCents ?? raw.base_price_cents;
   const cents = Number.isFinite(Number(centsRaw)) ? Number(centsRaw) : undefined;
+  const mediumNames = Array.from(
+    new Set([
+      ...normalizeStringList(raw?.mediumNames),
+      ...normalizeStringList(raw?.medium_names),
+      ...extractServiceEngineTokensFromRaw({ medium_links: raw?.medium_links, mediumLinks: raw?.mediumLinks }),
+    ]),
+  );
+  const availableEngines = Array.from(
+    new Set([
+      ...normalizeStringList(raw?.availableEngines),
+      ...normalizeStringList(raw?.available_engines),
+      ...normalizeStringList(raw?.engineNames),
+      ...normalizeStringList(raw?.engine_names),
+    ]),
+  );
   return {
     id,
     name,
     description,
     active: raw.active !== false,
     basePriceCents: typeof cents === 'number' && cents >= 0 ? cents : undefined,
+    mediumNames,
+    availableEngines,
   };
 };
 
@@ -158,6 +305,64 @@ const readTimes = (raw: any): Record<string, string> => {
   return source as Record<string, string>;
 };
 
+const readTimeLists = (raw: any): Record<string, string[]> => {
+  const source =
+    raw?.calendar_time_lists ??
+    raw?.calendarTimeLists ??
+    raw?.day_time_lists ??
+    raw?.dayTimeLists ??
+    {};
+  const legacy = readTimes(raw);
+  const map: Record<string, string[]> = {};
+  if (source && typeof source === 'object' && !Array.isArray(source)) {
+    Object.entries(source).forEach(([dateKey, value]) => {
+      const times = normalizeTimeList(value);
+      if (!times.length) return;
+      map[dateKey] = times;
+    });
+  }
+  Object.entries(legacy).forEach(([dateKey, value]) => {
+    if (map[dateKey]?.length) return;
+    const times = normalizeTimeList(value);
+    if (!times.length) return;
+    map[dateKey] = times;
+  });
+  return map;
+};
+
+const readTimeModes = (raw: any): Record<string, 'slots' | 'all_day'> => {
+  const source =
+    raw?.calendar_time_modes ??
+    raw?.calendarTimeModes ??
+    raw?.day_time_modes ??
+    raw?.dayTimeModes ??
+    {};
+  const allDayDates = Array.isArray(raw?.all_day_dates)
+    ? raw.all_day_dates
+    : Array.isArray(raw?.allDayDates)
+    ? raw.allDayDates
+    : [];
+  const legacyTimes = readTimes(raw);
+  const map: Record<string, 'slots' | 'all_day'> = {};
+  if (source && typeof source === 'object' && !Array.isArray(source)) {
+    Object.entries(source).forEach(([dateKey, value]) => {
+      map[dateKey] = isAllDayValue(value) ? 'all_day' : 'slots';
+    });
+  }
+  allDayDates.forEach((dateKey: any) => {
+    const normalized = String(dateKey || '').trim();
+    if (!normalized) return;
+    map[normalized] = 'all_day';
+  });
+  Object.entries(legacyTimes).forEach(([dateKey, value]) => {
+    if (map[dateKey]) return;
+    if (isAllDayValue(value)) {
+      map[dateKey] = 'all_day';
+    }
+  });
+  return map;
+};
+
 const readServiceIds = (raw: any): Record<string, string[]> => {
   const source =
     raw?.calendar_service_ids ??
@@ -174,6 +379,140 @@ const readServiceIds = (raw: any): Record<string, string[]> => {
   return map;
 };
 
+const prettifyServiceId = (value: string) =>
+  String(value || '')
+    .trim()
+    .replace(/[_-]+/g, ' ')
+    .split(' ')
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ')
+    .trim();
+
+const parseDateOnly = (value: string): Date | null => {
+  const [y, m, d] = String(value || '').split('-').map((part) => Number(part));
+  if (!y || !m || !d) return null;
+  const parsed = new Date(y, m - 1, d, 0, 0, 0, 0);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed;
+};
+
+const parseDateTime = (dateKey: string, timeValue: string): Date | null => {
+  if (!isTimeValue(timeValue)) return null;
+  const base = parseDateOnly(dateKey);
+  if (!base) return null;
+  const [hh, mm] = timeValue.split(':').map((part) => Number(part));
+  if (!Number.isFinite(hh) || !Number.isFinite(mm)) return null;
+  const parsed = new Date(base.getFullYear(), base.getMonth(), base.getDate(), hh, mm, 0, 0);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed;
+};
+
+const getCardTimeOptions = (card: Pick<HealthCardRow, 'accessMode' | 'timeOptions' | 'timeValue'>): string[] => {
+  if (card.accessMode === 'all_day') return [];
+  if (Array.isArray(card.timeOptions) && card.timeOptions.length > 0) {
+    return normalizeTimeList(card.timeOptions);
+  }
+  return normalizeTimeList(card.timeValue);
+};
+
+const getCardSortTimestamp = (card: Pick<HealthCardRow, 'dateKey' | 'accessMode' | 'timeOptions' | 'timeValue'>) => {
+  const date = parseDateOnly(card.dateKey);
+  if (!date) return Number.MAX_SAFE_INTEGER;
+  if (card.accessMode === 'all_day') return date.getTime();
+  const firstSlot = getCardTimeOptions(card)[0];
+  const slotDate = firstSlot ? parseDateTime(card.dateKey, firstSlot) : null;
+  return slotDate ? slotDate.getTime() : date.getTime();
+};
+
+const getCardLatestSlotDateTime = (
+  card: Pick<HealthCardRow, 'dateKey' | 'accessMode' | 'timeOptions' | 'timeValue'>,
+): Date | null => {
+  if (card.accessMode === 'all_day') return null;
+  const slots = getCardTimeOptions(card);
+  if (!slots.length) return null;
+  const slotDates = slots
+    .map((slot) => parseDateTime(card.dateKey, slot))
+    .filter((value): value is Date => !!value);
+  if (!slotDates.length) return null;
+  return slotDates.reduce((latest, value) => (value > latest ? value : latest), slotDates[0]);
+};
+
+const classifyCardTemporalBucket = (
+  card: Pick<HealthCardRow, 'dateKey' | 'accessMode' | 'timeOptions' | 'timeValue'>,
+  now: Date,
+): CardTemporalBucket | null => {
+  const day = parseDateOnly(card.dateKey);
+  if (!day) return null;
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const tomorrowStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+
+  if (day < todayStart) return 'past';
+  if (day >= tomorrowStart) return 'upcoming';
+  if (card.accessMode === 'all_day') return 'today';
+
+  const latestSlotDateTime = getCardLatestSlotDateTime(card);
+  if (!latestSlotDateTime) return 'today';
+  return latestSlotDateTime >= now ? 'today' : 'past';
+};
+
+const extractRows = (payload: any, preferredKeys: string[]): any[] => {
+  const queue: any[] = [payload];
+  const visited = new Set<any>();
+  while (queue.length > 0) {
+    const current = queue.shift();
+    if (!current) continue;
+    if (Array.isArray(current)) return current;
+    if (typeof current !== 'object') continue;
+    if (visited.has(current)) continue;
+    visited.add(current);
+
+    for (const key of preferredKeys) {
+      const candidate = current?.[key];
+      if (Array.isArray(candidate)) return candidate;
+      if (candidate && typeof candidate === 'object') {
+        queue.push(candidate);
+      }
+    }
+
+    const nested = [current?.data, current?.payload, current?.result, current?.response];
+    nested.forEach((entry) => {
+      if (entry && typeof entry === 'object') queue.push(entry);
+    });
+  }
+  return [];
+};
+
+const extractConfiguredEngineKeys = (payload: any): string[] => {
+  const rows = extractRows(payload, ['results', 'items', 'mappings', 'engines']);
+  if (!rows.length) return [];
+  const keys = new Set<string>();
+  rows.forEach((row) => {
+    if (!row || typeof row !== 'object') return;
+    const candidates = [
+      row?.engine_key,
+      row?.engineKey,
+      row?.engine_code,
+      row?.engineCode,
+      row?.engine_name,
+      row?.engineName,
+      row?.key,
+      row?.slug,
+      row?.name,
+      row?.code,
+      row?.engine?.key,
+      row?.engine?.slug,
+      row?.engine?.name,
+      row?.engine?.code,
+    ];
+    candidates.forEach((value) => {
+      const normalized = String(value || '').trim();
+      if (normalized) keys.add(normalized);
+    });
+  });
+  return Array.from(keys);
+};
+
 const toCardIdVariants = (value: unknown): string[] => {
   const raw = String(value || '').trim();
   if (!raw) return [];
@@ -185,6 +524,32 @@ const toCardIdVariants = (value: unknown): string[] => {
     variants.add(`${dateKey}-${serviceId}-${index}`);
   }
   return Array.from(variants);
+};
+
+const extractCardIdentityKey = (value: unknown): string => {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  const colonMatch = raw.match(/^(\d{4}-\d{2}-\d{2}):(.+):(\d+)$/);
+  if (colonMatch) {
+    const [, dateKey, serviceId] = colonMatch;
+    return `${dateKey}:${serviceId}`;
+  }
+  const dashMatch = raw.match(/^(\d{4}-\d{2}-\d{2})-(.+)-(\d+)$/);
+  if (dashMatch) {
+    const [, dateKey, serviceId] = dashMatch;
+    return `${dateKey}:${serviceId}`;
+  }
+  return '';
+};
+
+const cardIdsMatchForSession = (left: unknown, right: unknown): boolean => {
+  const leftVariants = new Set(toCardIdVariants(left));
+  const rightVariants = toCardIdVariants(right);
+  if (rightVariants.some((value) => leftVariants.has(value))) return true;
+  const leftIdentity = extractCardIdentityKey(left);
+  const rightIdentity = extractCardIdentityKey(right);
+  if (leftIdentity && rightIdentity && leftIdentity === rightIdentity) return true;
+  return false;
 };
 
 const addBroadcastedCardId = (target: Set<string>, value: unknown) => {
@@ -239,6 +604,8 @@ const buildCards = (institution: any, availabilityOverride?: Record<string, unkn
       : resolveAvailability(institution);
   const statuses = readStatuses(availability);
   const times = readTimes(availability);
+  const timeLists = readTimeLists(availability);
+  const timeModes = readTimeModes(availability);
   const dateServiceIds = readServiceIds(availability);
   const services = resolveInstitutionServices(institution).filter((service) => service.active !== false);
   const serviceById = new Map(services.map((service) => [String(service.id), service]));
@@ -248,14 +615,31 @@ const buildCards = (institution: any, availabilityOverride?: Record<string, unkn
   Object.entries(dateServiceIds).forEach(([dateKey, ids]) => {
     const statusKey = String(statuses[dateKey] || 'available');
     const status = STATUS_META[statusKey] || STATUS_META.available;
+    const accessMode: 'slots' | 'all_day' = timeModes[dateKey] === 'all_day' ? 'all_day' : 'slots';
+    const timeOptions = accessMode === 'slots'
+      ? normalizeTimeList(timeLists[dateKey] || times[dateKey])
+      : [];
+    const timeValue = accessMode === 'all_day' ? 'All day' : timeOptions.join(', ');
     ids.forEach((serviceId, serviceIndex) => {
-      const service = serviceById.get(String(serviceId));
-      if (!service) return;
+      const normalizedServiceId = String(serviceId || '').trim();
+      if (!normalizedServiceId) return;
+      let service = serviceById.get(normalizedServiceId);
+      if (!service) {
+        service = {
+          id: normalizedServiceId,
+          name: prettifyServiceId(normalizedServiceId) || 'Health Service',
+          description: '',
+          active: true,
+        };
+        serviceById.set(normalizedServiceId, service);
+      }
       const cardId = `${dateKey}:${service.id}:${serviceIndex}`;
       rows.push({
         id: cardId,
         dateKey,
-        timeValue: String(times[dateKey] || ''),
+        timeValue,
+        timeOptions,
+        accessMode,
         statusKey,
         statusLabel: status.label,
         statusColor: status.color,
@@ -266,12 +650,152 @@ const buildCards = (institution: any, availabilityOverride?: Record<string, unkn
   });
 
   rows.sort((a, b) => {
-    const aDate = `${a.dateKey} ${a.timeValue || '00:00'}`;
-    const bDate = `${b.dateKey} ${b.timeValue || '00:00'}`;
-    return aDate.localeCompare(bDate);
+    const delta = getCardSortTimestamp(a) - getCardSortTimestamp(b);
+    if (delta !== 0) return delta;
+    return String(a.service.name || '').localeCompare(String(b.service.name || ''));
   });
 
   return rows;
+};
+
+const enrichCardsWithAvailability = (
+  cards: HealthCardRow[],
+  availability: Record<string, unknown> | null | undefined,
+): HealthCardRow[] => {
+  if (!availability || typeof availability !== 'object') return cards;
+  const times = readTimes(availability);
+  const timeLists = readTimeLists(availability);
+  const timeModes = readTimeModes(availability);
+  return cards.map((card) => {
+    const dateKey = String(card.dateKey || '').trim();
+    if (!dateKey) return card;
+    const modeFromAvailability = timeModes[dateKey];
+    const accessMode: 'slots' | 'all_day' =
+      modeFromAvailability === 'all_day'
+        ? 'all_day'
+        : card.accessMode;
+    const options = accessMode === 'slots'
+      ? normalizeTimeList(
+          timeLists[dateKey]?.length
+            ? timeLists[dateKey]
+            : card.timeOptions?.length
+            ? card.timeOptions
+            : times[dateKey] || card.timeValue,
+        )
+      : [];
+    return {
+      ...card,
+      accessMode,
+      timeOptions: options,
+      timeValue: accessMode === 'all_day' ? 'All day' : options.join(', '),
+    };
+  });
+};
+
+const toCardScheduleKey = (card: Pick<HealthCardRow, 'dateKey' | 'service'>) =>
+  `${String(card?.dateKey || '').trim()}:${String(card?.service?.id || '').trim()}`;
+
+const mergeCardRows = (
+  primary: HealthCardRow[],
+  secondary: HealthCardRow[],
+): HealthCardRow[] => {
+  const map = new Map<string, HealthCardRow>();
+
+  const upsert = (row: HealthCardRow, source: 'primary' | 'secondary', index: number) => {
+    const dateKey = String(row?.dateKey || '').trim();
+    const serviceId = String(row?.service?.id || '').trim();
+    if (!dateKey || !serviceId) return;
+    const key = `${dateKey}:${serviceId}`;
+    const accessMode: 'slots' | 'all_day' = row.accessMode === 'all_day' ? 'all_day' : 'slots';
+    const timeOptions = accessMode === 'slots' ? getCardTimeOptions(row) : [];
+    const normalizedRow: HealthCardRow = {
+      ...row,
+      id: String(row?.id || `${key}:${index}`).trim() || `${key}:${index}`,
+      dateKey,
+      accessMode,
+      timeOptions,
+      timeValue: accessMode === 'all_day' ? 'All day' : timeOptions.join(', '),
+      service: {
+        id: serviceId,
+        name: String(row?.service?.name || '').trim() || prettifyServiceId(serviceId) || 'Health Service',
+        description: String(row?.service?.description || '').trim(),
+        active: row?.service?.active !== false,
+        basePriceCents: Number.isFinite(Number(row?.service?.basePriceCents))
+          ? Number(row?.service?.basePriceCents)
+          : undefined,
+        mediumNames: normalizeStringList(row?.service?.mediumNames),
+        availableEngines: normalizeStringList(row?.service?.availableEngines),
+      },
+    };
+
+    const existing = map.get(key);
+    if (!existing) {
+      map.set(key, normalizedRow);
+      return;
+    }
+
+    const mergedAccessMode: 'slots' | 'all_day' =
+      existing.accessMode === 'all_day' || normalizedRow.accessMode === 'all_day'
+        ? 'all_day'
+        : 'slots';
+    const mergedTimes =
+      mergedAccessMode === 'all_day'
+        ? []
+        : normalizeTimeList([
+            ...(existing.timeOptions || []),
+            ...(normalizedRow.timeOptions || []),
+            existing.timeValue,
+            normalizedRow.timeValue,
+          ]);
+    const shouldUseSecondaryService =
+      source === 'secondary' &&
+      (String(existing.service?.name || '').trim() === '' ||
+        String(existing.service?.name || '').trim() === 'Health Service' ||
+        String(existing.service?.name || '').trim() === prettifyServiceId(existing.service.id));
+    const existingBasePrice = Number(existing.service?.basePriceCents);
+    const nextBasePrice = Number(normalizedRow.service?.basePriceCents);
+    const mergedBasePrice = Number.isFinite(existingBasePrice)
+      ? existingBasePrice
+      : Number.isFinite(nextBasePrice)
+      ? nextBasePrice
+      : undefined;
+    const mergedMediumNames = Array.from(
+      new Set([
+        ...normalizeStringList(existing.service?.mediumNames),
+        ...normalizeStringList(normalizedRow.service?.mediumNames),
+      ]),
+    );
+    const mergedAvailableEngines = Array.from(
+      new Set([
+        ...normalizeStringList(existing.service?.availableEngines),
+        ...normalizeStringList(normalizedRow.service?.availableEngines),
+      ]),
+    );
+
+    map.set(key, {
+      ...existing,
+      ...(source === 'secondary' && normalizedRow.id ? { id: normalizedRow.id } : {}),
+      service: {
+        ...(shouldUseSecondaryService ? normalizedRow.service : existing.service),
+        basePriceCents: mergedBasePrice,
+        mediumNames: mergedMediumNames,
+        availableEngines: mergedAvailableEngines,
+      },
+      isBroadcasted: !!existing.isBroadcasted || !!normalizedRow.isBroadcasted,
+      accessMode: mergedAccessMode,
+      timeOptions: mergedTimes,
+      timeValue: mergedAccessMode === 'all_day' ? 'All day' : mergedTimes.join(', '),
+    });
+  };
+
+  primary.forEach((card, index) => upsert(card, 'primary', index));
+  secondary.forEach((card, index) => upsert(card, 'secondary', index + primary.length));
+
+  return Array.from(map.values()).sort((a, b) => {
+    const delta = getCardSortTimestamp(a) - getCardSortTimestamp(b);
+    if (delta !== 0) return delta;
+    return String(a.service.name || '').localeCompare(String(b.service.name || ''));
+  });
 };
 
 const toDateLabel = (isoDate: string) => {
@@ -280,28 +804,29 @@ const toDateLabel = (isoDate: string) => {
   return new Date(y, m - 1, d).toDateString();
 };
 
-const parseCardDateTime = (dateKey: string, timeValue: string): Date | null => {
-  const [y, m, d] = String(dateKey || '').split('-').map((part) => Number(part));
-  if (!y || !m || !d) return null;
-  if (timeValue) {
-    const [hh, mm] = String(timeValue).split(':').map((part) => Number(part));
-    if (Number.isFinite(hh) && Number.isFinite(mm)) {
-      const parsed = new Date(y, m - 1, d, hh, mm, 0, 0);
-      if (!Number.isNaN(parsed.getTime())) return parsed;
-    }
-  }
-  const parsed = new Date(y, m - 1, d, 0, 0, 0, 0);
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
-};
-
 const toMoney = (cents?: number) => {
   if (!Number.isFinite(Number(cents))) return 'Not set';
-  return `$${(Number(cents) / 100).toLocaleString()}`;
+  const kisc = Number(cents) / 10000;
+  return `${kisc.toFixed(3).replace(/\.?0+$/, '')} KISC`;
 };
 
 const toKisc = (micro?: number) => {
   if (!Number.isFinite(Number(micro))) return '0.000';
   return (Number(micro) / 100000).toFixed(3);
+};
+
+const getCardPrimaryTime = (card: Pick<HealthCardRow, 'accessMode' | 'timeOptions' | 'timeValue'>) => {
+  if (card.accessMode === 'all_day') return '';
+  const options = getCardTimeOptions(card);
+  return options[0] || '';
+};
+
+const getCardScheduleLabel = (card: Pick<HealthCardRow, 'accessMode' | 'timeOptions' | 'timeValue'>) => {
+  if (card.accessMode === 'all_day') return 'All day access';
+  const options = getCardTimeOptions(card);
+  if (!options.length) return '';
+  if (options.length === 1) return options[0];
+  return `${options.length} slots`;
 };
 
 const resolveLandingDraft = (institution: any) => {
@@ -314,12 +839,16 @@ const resolveLandingDraft = (institution: any) => {
   return {};
 };
 
-const hasLandingPage = (draft: any) => {
-  if (!draft || typeof draft !== 'object') return false;
-  if (Array.isArray(draft.sections) && draft.sections.length > 0) return true;
-  if (typeof draft.about === 'string' && draft.about.trim().length > 0) return true;
-  if (Array.isArray(draft.gallery) && draft.gallery.length > 0) return true;
-  if (typeof draft?.hero?.title === 'string' && draft.hero.title.trim().length > 0) return true;
+const resolveLandingPublished = (...values: unknown[]) => {
+  for (const value of values) {
+    if (typeof value === 'boolean') return value;
+    if (typeof value === 'number' && Number.isFinite(value)) return value !== 0;
+    if (typeof value === 'string') {
+      const normalized = value.trim().toLowerCase();
+      if (['true', '1', 'yes', 'published', 'active'].includes(normalized)) return true;
+      if (['false', '0', 'no', 'unpublished', 'inactive'].includes(normalized)) return false;
+    }
+  }
   return false;
 };
 
@@ -388,10 +917,18 @@ export default function HealthInstitutionCardsScreen({ navigation, route }: Prop
   const [backendCards, setBackendCards] = useState<HealthCardRow[]>([]);
   const [backendCardsLoaded, setBackendCardsLoaded] = useState(false);
   const [availabilityOverride, setAvailabilityOverride] = useState<Record<string, unknown> | null>(null);
+  const availabilitySnapshotRef = useRef<Record<string, unknown> | null>(null);
   const [viewerRole, setViewerRole] = useState<MemberRole>('unassigned');
   const [viewerCanManage, setViewerCanManage] = useState(false);
   const [viewerIsMember, setViewerIsMember] = useState(false);
   const [cardFilter, setCardFilter] = useState<CardFilterKey>('today');
+  const [timePickerCard, setTimePickerCard] = useState<HealthCardRow | null>(null);
+  const [selectedBookingTime, setSelectedBookingTime] = useState('');
+  const [landingPageDraft, setLandingPageDraft] = useState<any>({});
+  const [landingPagePublished, setLandingPagePublished] = useState(false);
+  const [landingPageResolved, setLandingPageResolved] = useState(false);
+  const [configuredServiceEngines, setConfiguredServiceEngines] = useState<Record<string, BookingEngineDescriptor[]>>({});
+  const serviceEngineCacheRef = useRef<Record<string, BookingEngineDescriptor[]>>({});
 
   const institutionIndex = useMemo(
     () => institutions.findIndex((item: any) => String(item?.id) === String(institutionId)),
@@ -411,39 +948,59 @@ export default function HealthInstitutionCardsScreen({ navigation, route }: Prop
     [broadcastedCardIds],
   );
 
-  const landingDraft = useMemo(() => resolveLandingDraft(institution), [institution]);
-  const landingExists = useMemo(() => hasLandingPage(landingDraft), [landingDraft]);
+  const localLandingDraft = useMemo(() => resolveLandingDraft(institution), [institution]);
+  const effectiveLandingDraft = useMemo(() => {
+    if (
+      landingPageDraft &&
+      typeof landingPageDraft === 'object' &&
+      Object.keys(landingPageDraft).length > 0
+    ) {
+      return landingPageDraft;
+    }
+    return localLandingDraft;
+  }, [landingPageDraft, localLandingDraft]);
+  const inferredLandingPublished = useMemo(
+    () =>
+      resolveLandingPublished(
+        localLandingDraft?.isPublished,
+        localLandingDraft?.is_published,
+        institution?.landing_is_published,
+        institution?.landingIsPublished,
+        institution?.landing_page_is_published,
+        institution?.landingPageIsPublished,
+      ),
+    [institution, localLandingDraft],
+  );
+  const landingPublished = landingPageResolved ? landingPagePublished : inferredLandingPublished;
 
   const logoUrl = useMemo(() => {
     const raw =
-      landingDraft?.landingLogoUrl ??
+      effectiveLandingDraft?.landingLogoUrl ??
       institution?.landingLogoUrl ??
       institution?.profile_editor?.landingLogoUrl ??
       institution?.profileEditor?.landingLogoUrl ??
       '';
     if (!raw) return '';
     return resolveBackendAssetUrl(raw) || raw;
-  }, [institution, landingDraft]);
+  }, [effectiveLandingDraft, institution]);
 
   const cards = useMemo(() => {
-    if (backendCardsLoaded) return backendCards;
-    return buildCards(institution, availabilityOverride);
+    const localCards = buildCards(institution, availabilityOverride);
+    if (!backendCardsLoaded) return localCards;
+    const localScheduleKeys = new Set(localCards.map((card) => toCardScheduleKey(card)));
+    const backendForMerge =
+      localCards.length > 0
+        ? backendCards.filter((card) => localScheduleKeys.has(toCardScheduleKey(card)))
+        : backendCards;
+    const mergedCards = mergeCardRows(localCards, backendForMerge);
+    return mergedCards;
   }, [availabilityOverride, backendCards, backendCardsLoaded, institution]);
   const filteredCards = useMemo(() => {
     const now = new Date();
-    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const tomorrowStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
-
     return cards.filter((card) => {
-      const dateTime = parseCardDateTime(card.dateKey, card.timeValue);
-      if (!dateTime) return false;
-      if (cardFilter === 'today') {
-        return dateTime >= todayStart && dateTime < tomorrowStart;
-      }
-      if (cardFilter === 'upcoming') {
-        return dateTime >= tomorrowStart;
-      }
-      return dateTime < todayStart;
+      const bucket = classifyCardTemporalBucket(card, now);
+      if (!bucket) return false;
+      return bucket === cardFilter;
     });
   }, [cardFilter, cards]);
 
@@ -463,7 +1020,7 @@ export default function HealthInstitutionCardsScreen({ navigation, route }: Prop
   }, [ratings]);
 
   const fetchCardsFromBackend = useCallback(
-    async () => {
+    async (availabilitySnapshot?: Record<string, unknown> | null) => {
       const url = ROUTES.broadcasts.healthCards(institutionId);
       const response = await getRequest(url, { forceNetwork: true });
       if (!response?.success) {
@@ -476,7 +1033,7 @@ export default function HealthInstitutionCardsScreen({ navigation, route }: Prop
       const membership = payload?.membership ?? {};
       const apiCards = Array.isArray(payload?.cards) ? payload.cards : [];
       const apiBroadcastedCardIds = collectBroadcastedCardIds(payload);
-      const nextCards: HealthCardRow[] = apiCards.map((item: any, index: number) => {
+      const rawCards: HealthCardRow[] = apiCards.map((item: any, index: number) => {
         const service =
           normalizeService(item?.service, index) || {
             id: String(item?.service?.id || `service_${index + 1}`),
@@ -486,15 +1043,34 @@ export default function HealthInstitutionCardsScreen({ navigation, route }: Prop
             basePriceCents: Number.isFinite(Number(item?.service?.basePriceCents))
               ? Number(item.service.basePriceCents)
               : undefined,
+            mediumNames: [
+              ...normalizeStringList(item?.service?.mediumNames),
+              ...normalizeStringList(item?.service?.medium_names),
+            ],
+            availableEngines: [
+              ...normalizeStringList(item?.service?.availableEngines),
+              ...normalizeStringList(item?.service?.available_engines),
+            ],
           };
         const dateKey = String(item?.date || item?.dateKey || '');
         const cardId = String(item?.id || `${dateKey}:${service.id}:${index}`);
         const explicitBroadcasted = !!(item?.isBroadcasted || item?.is_broadcasted || item?.broadcasted);
         const inferredBroadcasted = isCardIdBroadcasted(cardId, apiBroadcastedCardIds);
+        const accessModeRaw = item?.access_mode ?? item?.accessMode;
+        const rawTimeValue = item?.time ?? item?.timeValue;
+        const accessMode: 'slots' | 'all_day' =
+          isAllDayValue(accessModeRaw) || isAllDayValue(rawTimeValue) || !!item?.all_day || !!item?.allDay
+            ? 'all_day'
+            : 'slots';
+        const timeOptions = accessMode === 'slots'
+          ? normalizeTimeList(item?.time_options ?? item?.timeOptions ?? item?.time ?? item?.timeValue)
+          : [];
         return {
           id: cardId,
           dateKey,
-          timeValue: String(item?.time || item?.timeValue || ''),
+          timeValue: accessMode === 'all_day' ? 'All day' : timeOptions.join(', '),
+          timeOptions,
+          accessMode,
           statusKey: String(item?.statusKey || 'available'),
           statusLabel: String(item?.statusLabel || STATUS_META[String(item?.statusKey || 'available')]?.label || 'Available'),
           statusColor: String(item?.statusColor || STATUS_META[String(item?.statusKey || 'available')]?.color || '#10B981'),
@@ -503,7 +1079,52 @@ export default function HealthInstitutionCardsScreen({ navigation, route }: Prop
         };
       });
 
-      setBackendCards(nextCards);
+      const dedupedMap = new Map<string, HealthCardRow>();
+      rawCards.forEach((row, index) => {
+        const dedupeKey = `${row.dateKey}:${row.service.id}`;
+        const existing = dedupedMap.get(dedupeKey);
+        if (!existing) {
+          dedupedMap.set(dedupeKey, {
+            ...row,
+            id: row.id || `${row.dateKey}:${row.service.id}:${index}`,
+            timeOptions: row.accessMode === 'all_day' ? [] : normalizeTimeList(row.timeOptions),
+            timeValue: row.accessMode === 'all_day' ? 'All day' : normalizeTimeList(row.timeOptions).join(', '),
+          });
+          return;
+        }
+
+        const mergedAccessMode: 'slots' | 'all_day' =
+          existing.accessMode === 'all_day' || row.accessMode === 'all_day'
+            ? 'all_day'
+            : 'slots';
+        const mergedTimes = mergedAccessMode === 'all_day'
+          ? []
+          : normalizeTimeList([
+              ...(existing.timeOptions || []),
+              ...(row.timeOptions || []),
+              existing.timeValue,
+              row.timeValue,
+            ]);
+
+        dedupedMap.set(dedupeKey, {
+          ...existing,
+          isBroadcasted: !!existing.isBroadcasted || !!row.isBroadcasted,
+          accessMode: mergedAccessMode,
+          timeOptions: mergedTimes,
+          timeValue: mergedAccessMode === 'all_day' ? 'All day' : mergedTimes.join(', '),
+        });
+      });
+      const nextCards = Array.from(dedupedMap.values());
+      const enrichedCards = enrichCardsWithAvailability(
+        nextCards,
+        availabilitySnapshot ?? availabilitySnapshotRef.current,
+      ).sort((a, b) => {
+        const delta = getCardSortTimestamp(a) - getCardSortTimestamp(b);
+        if (delta !== 0) return delta;
+        return String(a.service.name || '').localeCompare(String(b.service.name || ''));
+      });
+
+      setBackendCards(enrichedCards);
       setBackendCardsLoaded(true);
       setCurrentUserId(String(viewer?.user_id || viewer?.userId || ''));
       setViewerRole(normalizeRole(viewer?.role));
@@ -528,7 +1149,47 @@ export default function HealthInstitutionCardsScreen({ navigation, route }: Prop
       setMembershipOpen(membership.open);
       setMembershipDiscountPercent(membership.discountPercent);
       setRatings(normalizeRatings(currentInstitution?.service_ratings ?? currentInstitution?.serviceRatings));
+      const localDraft = resolveLandingDraft(currentInstitution);
+      setLandingPageDraft(localDraft);
+      setLandingPagePublished(
+        resolveLandingPublished(
+          localDraft?.isPublished,
+          localDraft?.is_published,
+          currentInstitution?.landing_is_published,
+          currentInstitution?.landingIsPublished,
+          currentInstitution?.landing_page_is_published,
+          currentInstitution?.landingPageIsPublished,
+        ),
+      );
+      setLandingPageResolved(false);
       try {
+        const profileRes = await fetchInstitutionProfileEditor(institutionId);
+        const profilePayload = profileRes?.data ?? profileRes ?? {};
+        const profileDraft = profilePayload?.profile_editor ?? profilePayload?.draft ?? profilePayload;
+        if (
+          profileRes?.success &&
+          profileDraft &&
+          typeof profileDraft === 'object' &&
+          !Array.isArray(profileDraft) &&
+          Object.keys(profileDraft).length > 0
+        ) {
+          setLandingPageDraft(profileDraft);
+        }
+      } catch {
+        // keep local draft fallback
+      }
+      try {
+        const landingRes = await fetchInstitutionLandingPage(institutionId);
+        if (landingRes?.success && landingRes?.data) {
+          setLandingPagePublished(!!landingRes.data.isPublished);
+        }
+      } catch {
+        // keep local draft fallback
+      } finally {
+        setLandingPageResolved(true);
+      }
+      try {
+        let availabilitySnapshot: Record<string, unknown> | null = null;
         const availabilityRes = await fetchInstitutionAvailability(institutionId);
         const availabilityPayload =
           availabilityRes?.data?.availability ??
@@ -540,14 +1201,20 @@ export default function HealthInstitutionCardsScreen({ navigation, route }: Prop
           !Array.isArray(availabilityPayload) &&
           Object.keys(availabilityPayload).length > 0
         ) {
-          setAvailabilityOverride(availabilityPayload as Record<string, unknown>);
+          availabilitySnapshot = availabilityPayload as Record<string, unknown>;
+          availabilitySnapshotRef.current = availabilitySnapshot;
+          setAvailabilityOverride(availabilitySnapshot);
         } else {
+          availabilitySnapshot = null;
+          availabilitySnapshotRef.current = null;
           setAvailabilityOverride(null);
         }
+        await fetchCardsFromBackend(availabilitySnapshot);
       } catch {
+        availabilitySnapshotRef.current = null;
         setAvailabilityOverride(null);
+        await fetchCardsFromBackend(null);
       }
-      await fetchCardsFromBackend();
     } catch (error: any) {
       Alert.alert('Health cards', error?.message || 'Unable to load health cards.');
     } finally {
@@ -560,24 +1227,65 @@ export default function HealthInstitutionCardsScreen({ navigation, route }: Prop
   }, [loadState]);
 
   useEffect(() => {
-    if (cardFilter !== 'today' || cards.length === 0) return;
-    const now = new Date();
-    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const tomorrowStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+    const serviceIds = Array.from(
+      new Set(
+        cards
+          .map((card) => String(card?.service?.id || '').trim())
+          .filter(Boolean),
+      ),
+    );
+    if (!serviceIds.length) {
+      serviceEngineCacheRef.current = {};
+      setConfiguredServiceEngines({});
+      return;
+    }
 
-    const hasToday = cards.some((card) => {
-      const dateTime = parseCardDateTime(card.dateKey, card.timeValue);
-      return !!dateTime && dateTime >= todayStart && dateTime < tomorrowStart;
-    });
-    if (hasToday) return;
+    let cancelled = false;
+    const sync = async () => {
+      const cached = { ...serviceEngineCacheRef.current };
+      Object.keys(cached).forEach((serviceId) => {
+        if (!serviceIds.includes(serviceId)) {
+          delete cached[serviceId];
+        }
+      });
 
-    const hasUpcoming = cards.some((card) => {
-      const dateTime = parseCardDateTime(card.dateKey, card.timeValue);
-      return !!dateTime && dateTime >= tomorrowStart;
-    });
+      const missing = serviceIds.filter((serviceId) => !cached[serviceId]);
+      if (missing.length > 0) {
+        const results = await Promise.all(
+          missing.map(async (serviceId): Promise<[string, BookingEngineDescriptor[]]> => {
+            try {
+              const response = await fetchServiceEngineMappings(serviceId);
+              if (!response?.success) return [serviceId, []];
+              const keys = extractConfiguredEngineKeys(response?.data ?? response);
+              const descriptors = resolveBookingEnginesFromKeys(keys);
+              return [serviceId, descriptors];
+            } catch {
+              return [serviceId, []];
+            }
+          }),
+        );
+        results.forEach(([serviceId, descriptors]) => {
+          // Cache empty results too so unsupported endpoints don't get retried on every refresh/render.
+          cached[serviceId] = descriptors;
+        });
+      }
 
-    setCardFilter(hasUpcoming ? 'upcoming' : 'past');
-  }, [cardFilter, cards]);
+      if (cancelled) return;
+      const next: Record<string, BookingEngineDescriptor[]> = {};
+      serviceIds.forEach((serviceId) => {
+        if (cached[serviceId]?.length) {
+          next[serviceId] = cached[serviceId];
+        }
+      });
+      serviceEngineCacheRef.current = cached;
+      setConfiguredServiceEngines(next);
+    };
+
+    sync().catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [cards]);
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -676,77 +1384,152 @@ export default function HealthInstitutionCardsScreen({ navigation, route }: Prop
     [currentUserId, fetchCardsFromBackend, institutionId],
   );
 
+  const startBookingForCard = useCallback(
+    async (card: HealthCardRow, selectedTime?: string) => {
+      const bookingTime = card.accessMode === 'all_day'
+        ? ''
+        : String(selectedTime || getCardPrimaryTime(card)).trim();
+      const serviceId = String(card.service.id || '').trim();
+      const mappedServiceEngines = configuredServiceEngines[serviceId] || [];
+      const explicitFlowKeys = resolveServiceConfiguredFlowKeys(card.service);
+      const inferredEnginesForFallback = resolveServiceEngineDescriptors(card.service);
+      const configuredEngineFlowKeys =
+        mappedServiceEngines.length > 0
+          ? resolveConfiguredEngineFlowKeys(mappedServiceEngines)
+          : explicitFlowKeys.length > 0
+            ? explicitFlowKeys
+            : resolveConfiguredEngineFlowKeys(inferredEnginesForFallback);
+      const start = await startHealthServiceSession({
+        institutionId,
+        cardId: card.id,
+        serviceId,
+        date: card.dateKey,
+        time: bookingTime,
+      });
+      if (!start?.success) {
+        if (Number(start?.status) === 402) {
+          const requiredMicro = Number(start?.data?.required_micro || 0);
+          const availableMicro = Number(start?.data?.available_micro || 0);
+          if (requiredMicro > 0 || availableMicro > 0) {
+            Alert.alert(
+              'Insufficient KISC balance',
+              `You need ${toKisc(requiredMicro)} KISC but you only have ${toKisc(availableMicro)} KISC.`,
+            );
+          } else {
+            Alert.alert('Insufficient KISC balance', 'Your KIS Coin balance is too low for this service.');
+          }
+          return;
+        }
+        throw new Error(start?.message || 'Unable to start this session.');
+      }
+
+      const sessions = Array.isArray(start?.data?.service_sessions) ? start.data.service_sessions : [];
+      const startedSession = sessions.find(
+        (item: any) =>
+          cardIdsMatchForSession(item?.card_id || item?.cardId, card.id) &&
+          String(item?.status || '') === 'started',
+      ) || sessions.find(
+        (item: any) =>
+          String(item?.service_id || item?.serviceId || '').trim() === String(card.service.id || '').trim() &&
+          String(item?.status || '') === 'started',
+      );
+      const legacySessionId = String(startedSession?.id || '');
+      const workflowSessionId = String(start?.data?.session?.id || '').trim();
+      const appointmentBookingId = String(start?.data?.booking?.id || '').trim();
+      const sessionSource = String(start?.source || '').trim().toLowerCase() === 'health_ops' ? 'health_ops' : 'broadcasts';
+      const sessionId = workflowSessionId || legacySessionId;
+
+      const memberPriceCents = Number.isFinite(Number(card.service.basePriceCents))
+        ? Math.round((Number(card.service.basePriceCents) * (100 - membershipDiscountPercent)) / 100)
+        : undefined;
+      navigation.navigate('HealthServiceSession', {
+        institutionId,
+        institutionType: route.params.institutionType,
+        institutionName: institution?.name || institutionName,
+        cardId: card.id,
+        sessionId: sessionId || undefined,
+        workflowSessionId: workflowSessionId || undefined,
+        appointmentBookingId: appointmentBookingId || undefined,
+        sessionSource,
+        serviceId,
+        serviceName: card.service.name,
+        serviceDescription: card.service.description,
+        configuredEngineFlowKeys,
+        dateKey: card.dateKey,
+        timeValue: bookingTime || undefined,
+        statusLabel: card.statusLabel,
+        basePriceCents: card.service.basePriceCents,
+        memberPriceCents,
+      });
+    },
+    [
+      configuredServiceEngines,
+      institution?.name,
+      institutionId,
+      institutionName,
+      membershipDiscountPercent,
+      navigation,
+      route.params.institutionType,
+    ],
+  );
+
   const handleBookNow = useCallback(
-    async (card: HealthCardRow) => {
+    (card: HealthCardRow) => {
       if (!card?.id) {
         Alert.alert('Book now', 'Card information is unavailable.');
         return;
       }
-      try {
-        const start = await startHealthServiceSession({
-          institutionId,
-          cardId: card.id,
-          serviceId: card.service.id,
-          date: card.dateKey,
-          time: card.timeValue,
-        });
-        if (!start?.success) {
-          if (Number(start?.status) === 402) {
-            const requiredMicro = Number(start?.data?.required_micro || 0);
-            const availableMicro = Number(start?.data?.available_micro || 0);
-            if (requiredMicro > 0 || availableMicro > 0) {
-              Alert.alert(
-                'Insufficient KIS balance',
-                `You need ${toKisc(requiredMicro)} KISC but you only have ${toKisc(availableMicro)} KISC.`,
-              );
-            } else {
-              Alert.alert('Insufficient KIS balance', 'Your KIS Coin balance is too low for this service.');
-            }
-            return;
-          }
-          throw new Error(start?.message || 'Unable to start this session.');
+      if (card.accessMode === 'slots') {
+        const options = getCardTimeOptions(card);
+        if (options.length > 1) {
+          setTimePickerCard(card);
+          setSelectedBookingTime(options[0]);
+          return;
         }
-
-        const sessions = Array.isArray(start?.data?.service_sessions) ? start.data.service_sessions : [];
-        const startedSession = sessions.find(
-          (item: any) =>
-            String(item?.card_id || item?.cardId || '') === String(card.id) &&
-            String(item?.status || '') === 'started',
-        );
-        const legacySessionId = String(startedSession?.id || '');
-        const workflowSessionId = String(start?.data?.session?.id || '').trim();
-        const appointmentBookingId = String(start?.data?.booking?.id || '').trim();
-        const sessionSource = String(start?.source || '').trim().toLowerCase() === 'health_ops' ? 'health_ops' : 'broadcasts';
-        const sessionId = workflowSessionId || legacySessionId;
-
-        console.log('sessionSource 2', sessionSource, 'sessionId', sessionId, 'workflowSessionId', workflowSessionId, 'appointmentBookingId', appointmentBookingId, 'start response', start);
-        const memberPriceCents = Number.isFinite(Number(card.service.basePriceCents))
-          ? Math.round((Number(card.service.basePriceCents) * (100 - membershipDiscountPercent)) / 100)
-          : undefined;
-        navigation.navigate('HealthServiceSession', {
-          institutionId,
-          institutionType: route.params.institutionType,
-          institutionName: institution?.name || institutionName,
-          cardId: card.id,
-          sessionId: sessionId || undefined,
-          workflowSessionId: workflowSessionId || undefined,
-          appointmentBookingId: appointmentBookingId || undefined,
-          sessionSource,
-          serviceId: card.service.id,
-          serviceName: card.service.name,
-          serviceDescription: card.service.description,
-          dateKey: card.dateKey,
-          timeValue: card.timeValue,
-          statusLabel: card.statusLabel,
-          basePriceCents: card.service.basePriceCents,
-          memberPriceCents,
+        startBookingForCard(card, options[0]).catch((error: any) => {
+          Alert.alert('Book now', error?.message || 'Unable to start this session.');
         });
-      } catch (error: any) {
-        Alert.alert('Book now', error?.message || 'Unable to start this session.');
+        return;
       }
+      startBookingForCard(card, '').catch((error: any) => {
+        Alert.alert('Book now', error?.message || 'Unable to start this session.');
+      });
     },
-    [institution?.name, institutionId, institutionName, membershipDiscountPercent, navigation, route.params.institutionType],
+    [startBookingForCard],
   );
+
+  const confirmSelectedBookingTime = useCallback(() => {
+    if (!timePickerCard) return;
+    const chosenTime = String(selectedBookingTime || '').trim();
+    if (!chosenTime) {
+      Alert.alert('Book now', 'Select a time slot to continue.');
+      return;
+    }
+    const targetCard = timePickerCard;
+    setTimePickerCard(null);
+    startBookingForCard(targetCard, chosenTime).catch((error: any) => {
+      Alert.alert('Book now', error?.message || 'Unable to start this session.');
+    });
+  }, [selectedBookingTime, startBookingForCard, timePickerCard]);
+
+  const handleOpenLandingPreview = useCallback(() => {
+    if (!landingPublished) return;
+    navigation.navigate('InstitutionLandingPreview', {
+      institutionId: String(institution?.id || institutionId),
+      institutionName: institution?.name || institutionName,
+      institutionType: route.params.institutionType,
+      draft: effectiveLandingDraft,
+    });
+  }, [
+    effectiveLandingDraft,
+    institution?.id,
+    institution?.name,
+    institutionId,
+    institutionName,
+    landingPublished,
+    navigation,
+    route.params.institutionType,
+  ]);
 
   const toggleBroadcastCard = useCallback(
     async (card: HealthCardRow) => {
@@ -768,7 +1551,7 @@ export default function HealthInstitutionCardsScreen({ navigation, route }: Prop
           cardId: card.id,
           serviceId: card.service.id,
           date: card.dateKey,
-          time: card.timeValue,
+          time: getCardPrimaryTime(card),
           enabled: true,
         });
         if (!response?.success) {
@@ -810,7 +1593,27 @@ export default function HealthInstitutionCardsScreen({ navigation, route }: Prop
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
             <View style={{ flex: 1, paddingRight: spacing.sm }}>
               <Text style={{ ...typography.h1, color: palette.text }}>Health Cards</Text>
-              <Text style={{ ...typography.body, color: palette.subtext, marginTop: spacing.xs }}>{institutionName}</Text>
+              {landingPublished ? (
+                <TouchableOpacity onPress={handleOpenLandingPreview} accessibilityRole="button">
+                  <Text
+                    style={{
+                      ...typography.body,
+                      color: palette.accentPrimary,
+                      marginTop: spacing.xs,
+                      textDecorationLine: 'underline',
+                    }}
+                  >
+                    {institutionName}
+                  </Text>
+                  <Text style={{ ...typography.caption, color: palette.accentPrimary }}>
+                    Published institution page: tap to open
+                  </Text>
+                </TouchableOpacity>
+              ) : (
+                <Text style={{ ...typography.body, color: palette.subtext, marginTop: spacing.xs }}>
+                  {institutionName}
+                </Text>
+              )}
             </View>
             <TouchableOpacity
               onPress={() => navigation.goBack()}
@@ -904,18 +1707,15 @@ export default function HealthInstitutionCardsScreen({ navigation, route }: Prop
               const memberPriceCents = Number.isFinite(Number(card.service.basePriceCents))
                 ? Math.round((Number(card.service.basePriceCents) * (100 - membershipDiscountPercent)) / 100)
                 : undefined;
-              const bookingEngines = resolveBookingEngines(
-                card.service,
-                String(institution?.type || route.params.institutionType || ''),
-              );
+              const bookingEngines =
+                configuredServiceEngines[String(card.service.id)] ||
+                resolveServiceEngineDescriptors(card.service);
 
               return (
                 <View
                   key={card.id}
                   style={{
                     borderRadius: spacing.lg,
-                    borderWidth: 1,
-                    borderColor: palette.divider,
                     backgroundColor: palette.card,
                     overflow: 'hidden',
                     ...borders.card,
@@ -929,6 +1729,14 @@ export default function HealthInstitutionCardsScreen({ navigation, route }: Prop
                         <KISIcon name="heart" size={28} color={palette.accentPrimary} />
                       </View>
                     )}
+                    {landingPublished ? (
+                      <TouchableOpacity
+                        onPress={handleOpenLandingPreview}
+                        accessibilityRole="button"
+                        accessibilityLabel="Open institution landing page"
+                        style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0 }}
+                      />
+                    ) : null}
 
                     {membershipOpen && !isCurrentUserMember ? (
                       <View style={{ position: 'absolute', left: spacing.sm, top: spacing.sm }}>
@@ -942,31 +1750,32 @@ export default function HealthInstitutionCardsScreen({ navigation, route }: Prop
                         />
                       </View>
                     ) : null}
-
-                    {landingExists ? (
-                      <View style={{ position: 'absolute', right: spacing.sm, top: spacing.sm }}>
-                        <KISButton
-                          title="View"
-                          size="xs"
-                          variant="outline"
-                          onPress={() =>
-                            navigation.navigate('InstitutionLandingPreview', {
-                              institutionId: String(institution?.id || institutionId),
-                              institutionName: institution?.name || institutionName,
-                              institutionType: route.params.institutionType,
-                              draft: landingDraft,
-                            })
-                          }
-                        />
-                      </View>
-                    ) : null}
                   </View>
 
                   <View style={{ padding: spacing.md }}>
                     <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <Text style={{ ...typography.h3, color: palette.text, flex: 1, paddingRight: spacing.sm }}>
-                        {card.service.name}
-                      </Text>
+                      <View style={{ flex: 1, paddingRight: spacing.sm }}>
+                        {landingPublished ? (
+                          <TouchableOpacity onPress={handleOpenLandingPreview} accessibilityRole="button">
+                            <Text
+                              style={{
+                                ...typography.h3,
+                                color: palette.accentPrimary,
+                                textDecorationLine: 'underline',
+                              }}
+                            >
+                              {card.service.name}
+                            </Text>
+                            <Text style={{ ...typography.caption, color: palette.accentPrimary, marginTop: 2 }}>
+                              Tap title to open institution page
+                            </Text>
+                          </TouchableOpacity>
+                        ) : (
+                          <Text style={{ ...typography.h3, color: palette.text }}>
+                            {card.service.name}
+                          </Text>
+                        )}
+                      </View>
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.xs }}>
                         {cardBroadcasted ? (
                           <View
@@ -991,7 +1800,8 @@ export default function HealthInstitutionCardsScreen({ navigation, route }: Prop
                     </Text>
 
                     <Text style={{ ...typography.caption, color: palette.subtext, marginTop: spacing.xs }}>
-                      {toDateLabel(card.dateKey)}{card.timeValue ? ` · ${card.timeValue}` : ''}
+                      {toDateLabel(card.dateKey)}
+                      {getCardScheduleLabel(card) ? ` · ${getCardScheduleLabel(card)}` : ''}
                     </Text>
 
                     <View style={{ marginTop: spacing.xs }}>
@@ -1083,9 +1893,7 @@ export default function HealthInstitutionCardsScreen({ navigation, route }: Prop
                       <KISButton
                         title="Book Now"
                         size="sm"
-                        onPress={() => {
-                          handleBookNow(card).catch(() => undefined);
-                        }}
+                        onPress={() => handleBookNow(card)}
                       />
                     </View>
 
@@ -1145,6 +1953,73 @@ export default function HealthInstitutionCardsScreen({ navigation, route }: Prop
             </View>
           ) : null}
         </ScrollView>
+
+        {timePickerCard ? (
+          <View
+            style={{
+              position: 'absolute',
+              top: 0,
+              right: 0,
+              bottom: 0,
+              left: 0,
+              justifyContent: 'flex-end',
+            }}
+          >
+            <TouchableOpacity
+              activeOpacity={1}
+              onPress={() => setTimePickerCard(null)}
+              style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: '#00000066' }}
+            />
+            <View
+              style={{
+                borderTopLeftRadius: spacing.lg,
+                borderTopRightRadius: spacing.lg,
+                backgroundColor: palette.card,
+                padding: spacing.md,
+                gap: spacing.sm,
+                ...borders.card,
+              }}
+            >
+              <Text style={{ ...typography.h3, color: palette.text }}>Choose booking time</Text>
+              <Text style={{ ...typography.caption, color: palette.subtext }}>
+                {timePickerCard.service.name} • {toDateLabel(timePickerCard.dateKey)}
+              </Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs }}>
+                {getCardTimeOptions(timePickerCard).map((time) => {
+                  const selected = selectedBookingTime === time;
+                  return (
+                    <TouchableOpacity
+                      key={`pick-${timePickerCard.id}-${time}`}
+                      onPress={() => setSelectedBookingTime(time)}
+                      style={{
+                        borderRadius: 999,
+                        borderWidth: 1,
+                        borderColor: selected ? palette.accentPrimary : palette.divider,
+                        backgroundColor: selected ? `${palette.accentPrimary}22` : palette.surface,
+                        paddingHorizontal: spacing.sm,
+                        paddingVertical: spacing.xs,
+                      }}
+                    >
+                      <Text style={{ ...typography.caption, color: palette.text }}>{time}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+              <View style={{ flexDirection: 'row', gap: spacing.xs }}>
+                <View style={{ flex: 1 }}>
+                  <KISButton title="Cancel" variant="outline" onPress={() => setTimePickerCard(null)} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <KISButton
+                    title="Continue"
+                    onPress={confirmSelectedBookingTime}
+                    disabled={!selectedBookingTime}
+                  />
+                </View>
+              </View>
+            </View>
+          </View>
+        ) : null}
       </LinearGradient>
     </SafeAreaView>
   );

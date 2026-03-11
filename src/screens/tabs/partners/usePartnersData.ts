@@ -175,7 +175,7 @@ export const usePartnersData = () => {
       initial[c.id] = true;
     });
     setExpandedCommunities(initial);
-  }, [selectedPartnerId, communitiesForPartner.length]);
+  }, [selectedPartnerId, communitiesForPartner]);
 
   const toggleCommunity = (communityId: string) => {
     setExpandedCommunities((prev) => ({

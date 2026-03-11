@@ -1,10 +1,9 @@
 import React, { useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useKISTheme } from '@/theme/useTheme';
 
 import FeedsMainListSection from '@/screens/broadcast/feeds/sections/FeedsMainListSection';
 import TrendingClipsSection from '@/screens/broadcast/feeds/sections/TrendingClipsSection';
-import PromoEducationCard from '@/screens/broadcast/feeds/components/PromoEducationCard';
 
 import useFeedsData from '@/screens/broadcast/feeds/hooks/useFeedsData';
 
@@ -31,6 +30,7 @@ export default function FeedsDiscoverPage({
     trendingFeeds,
     loading,
     loadingMore,
+    refreshing,
     refreshAll,
     loadMore,
     toggleSubscribe,
@@ -85,6 +85,14 @@ export default function FeedsDiscoverPage({
   return (
     <ScrollView
       contentContainerStyle={{ paddingBottom: 120 }}
+      refreshControl={
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={refreshAll}
+          tintColor={palette.primaryStrong}
+          colors={[palette.primaryStrong]}
+        />
+      }
       onScroll={({ nativeEvent }) => {
         const { layoutMeasurement, contentOffset, contentSize } = nativeEvent;
         const pad = 220;

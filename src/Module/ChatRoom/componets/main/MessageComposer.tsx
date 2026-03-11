@@ -7,9 +7,7 @@ import {
   Image,
 } from 'react-native';
 
-import AudioRecorderPlayer, {
-  PlayBackType,
-} from 'react-native-audio-recorder-player';
+import AudioRecorderPlayer from 'react-native-audio-recorder-player';
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Sticker, STICKER_STORAGE_KEY } from './FroSticker/StickerEditor';
@@ -160,14 +158,9 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
   onCreateEvent,
 }) => {
   /* ----------------------------- VOICE STATE ----------------------------- */
-  const [recordUri, setRecordUri] = useState<string | null>(null);
-  const [recordMs, setRecordMs] = useState(0);
   const [isRecording, setIsRecording] = useState(false);
 
-  const [previewVisible, setPreviewVisible] = useState(false);
-  const [isPlayingPreview, setIsPlayingPreview] = useState(false);
-  const [previewProgress, setPreviewProgress] = useState(0);
-  const playListenerActiveRef = useRef(false);
+  const previewVisible = false;
 
   /* ----------------------------- ATTACHMENT SHEET ------------------------- */
   const [attachmentMenuVisible, setAttachmentMenuVisible] =
@@ -276,38 +269,6 @@ export const MessageComposer: React.FC<MessageComposerProps> = ({
       } catch {}
     };
   }, []);
-
-  /* ----------------------------- PLAYBACK CONTROL ------------------------- */
-  const stopPreviewPlayback = async () => {
-    try {
-      await audioRecorderPlayer.stopPlayer();
-      audioRecorderPlayer.removePlayBackListener();
-    } catch {}
-    setIsPlayingPreview(false);
-    setPreviewProgress(0);
-  };
-
-  const startPreviewPlayback = async () => {
-    if (!recordUri) return;
-    try {
-      setIsPlayingPreview(true);
-      await audioRecorderPlayer.startPlayer(recordUri);
-      playListenerActiveRef.current = true;
-
-      const estimatedDur = recordMs || 1;
-
-      audioRecorderPlayer.addPlayBackListener((e: PlayBackType) => {
-        const pos = e.currentPosition ?? 0;
-        const dur = e.duration ?? estimatedDur;
-        setPreviewProgress(Math.min(1, pos / dur));
-
-        if (pos >= dur) stopPreviewPlayback();
-        return;
-      });
-    } catch {
-      stopPreviewPlayback();
-    }
-  };
 
   /* ----------------------------- SEND GUARD (DEDUP) ----------------------- */
 

@@ -26,6 +26,7 @@ import { getRequest } from '@/network/get';
 import apiService from '@/services/apiService';
 import { uploadFileToBackend } from './uploadFileToBackend';
 import Skeleton from '@/components/common/Skeleton';
+import { getAccessToken } from '@/security/authStorage';
 
 type ChatInfoPageProps = {
   chat: Chat;
@@ -213,16 +214,6 @@ export const ChatInfoPage: React.FC<ChatInfoPageProps> = ({
   const isAdmin =
     role === 'owner' || role === 'admin' || role === 'moderator';
 
-  const initials = useMemo(() => {
-    const title = chat.name || 'Chat';
-    return title
-      .split(' ')
-      .map((p) => p[0])
-      .join('')
-      .slice(0, 2)
-      .toUpperCase();
-  }, [chat.name]);
-
   const handleChangeAvatar = async () => {
     if (!isGroup || !isAdmin) return;
     if (saving) return;
@@ -244,7 +235,7 @@ export const ChatInfoPage: React.FC<ChatInfoPageProps> = ({
       return;
     }
 
-    const token = await AsyncStorage.getItem('access_token');
+    const token = await getAccessToken();
     const deviceId = await AsyncStorage.getItem('device_id');
     if (!token) {
       Alert.alert('Not signed in', 'Please log in again.');
@@ -326,7 +317,7 @@ export const ChatInfoPage: React.FC<ChatInfoPageProps> = ({
     return () => {
       active = false;
     };
-  }, [isGroup, contactUserId]);
+  }, [isGroup, contactUserId, chat, onChatUpdated]);
 
   const contactUser = publicProfile?.user ?? null;
   const fallbackContactName =

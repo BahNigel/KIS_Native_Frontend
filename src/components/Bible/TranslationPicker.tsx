@@ -1,5 +1,5 @@
 import React from 'react';
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, TouchableOpacity } from 'react-native';
 import { useKISTheme } from '@/theme/useTheme';
 import type { BibleTranslation } from '@/screens/tabs/bible/useBibleData';
 

@@ -132,6 +132,68 @@ const normalizeInstitutionType = (value: unknown) => {
   return raw;
 };
 
+const normalizeEngineToken = (value: unknown) =>
+  String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[_\s]+/g, '-')
+    .replace(/[^a-z0-9-]/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '');
+
+export const normalizeBookingEngineKey = (value: unknown): BookingEngineKey | null => {
+  const normalized = normalizeEngineToken(value);
+  if (!normalized) return null;
+  if (ENGINE_ORDER.includes(normalized as BookingEngineKey)) {
+    return normalized as BookingEngineKey;
+  }
+
+  const aliasMap: Record<string, BookingEngineKey> = {
+    'appointment-engine': 'appointment',
+    'video-consultation-engine': 'video',
+    'secure-messaging-chat-engine': 'appointment',
+    'e-prescription-engine': 'prescription',
+    'lab-order-engine': 'lab',
+    'imaging-order-engine': 'lab',
+    'admission-bed-management-engine': 'admission',
+    'surgery-scheduling-engine': 'surgery',
+    'emergency-dispatch-engine': 'emergency',
+    'pharmacy-fulfillment-engine': 'prescription',
+    'payment-billing-engine': 'payment',
+    'ehr-health-records-engine': 'appointment',
+    'home-logistics-engine': 'logistics',
+    'wellness-program-engine': 'wellness',
+    'notification-reminder-engine': 'appointment',
+  };
+  if (aliasMap[normalized]) return aliasMap[normalized];
+
+  if (normalized.includes('video')) return 'video';
+  if (normalized.includes('billing') || normalized.includes('payment') || normalized.includes('wallet')) return 'payment';
+  if (normalized.includes('lab') || normalized.includes('imaging') || normalized.includes('diagnostic')) return 'lab';
+  if (normalized.includes('prescription') || normalized.includes('pharmacy') || normalized.includes('medication')) return 'prescription';
+  if (normalized.includes('admission') || normalized.includes('bed') || normalized.includes('ward')) return 'admission';
+  if (normalized.includes('emergency') || normalized.includes('dispatch') || normalized.includes('triage')) return 'emergency';
+  if (normalized.includes('wellness') || normalized.includes('habit') || normalized.includes('fitness')) return 'wellness';
+  if (normalized.includes('logistics') || normalized.includes('delivery') || normalized.includes('pickup')) return 'logistics';
+  if (normalized.includes('surgery') || normalized.includes('operative')) return 'surgery';
+  if (normalized.includes('appointment') || normalized.includes('consult') || normalized.includes('schedule')) return 'appointment';
+  return null;
+};
+
+export const resolveBookingEnginesFromKeys = (
+  keys: Array<string | BookingEngineKey>,
+): BookingEngineDescriptor[] => {
+  const detected = new Set<BookingEngineKey>();
+  keys.forEach((value) => {
+    const normalized = normalizeBookingEngineKey(value);
+    if (normalized) detected.add(normalized);
+  });
+  return ENGINE_ORDER.filter((key) => detected.has(key)).map((key) => ({
+    key,
+    ...ENGINE_META[key],
+  }));
+};
+
 const normalizeStringList = (value: unknown): string[] => {
   if (!Array.isArray(value)) return [];
   return value
@@ -166,8 +228,8 @@ const extractDeclaredEngines = (service: any): BookingEngineKey[] => {
   ];
   const out: BookingEngineKey[] = [];
   values.forEach((value) => {
-    const normalized = value.toLowerCase() as BookingEngineKey;
-    if (!ENGINE_ORDER.includes(normalized) || out.includes(normalized)) return;
+    const normalized = normalizeBookingEngineKey(value);
+    if (!normalized || out.includes(normalized)) return;
     out.push(normalized);
   });
   return out;

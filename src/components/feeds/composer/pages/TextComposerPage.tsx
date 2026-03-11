@@ -173,7 +173,7 @@ export function TextComposerPage({
     }
     if (v === null || v === undefined || v === '') return undefined;
     return String(v);
-  }, [rich.spans, rich.text.length, selection]);
+  }, [rich.spans, rich.text.length]);
 
   const activeHighlight = useMemo(() => {
     const sel = selectionRef.current;
@@ -189,7 +189,7 @@ export function TextComposerPage({
     }
     if (v === null || v === undefined || v === '') return undefined;
     return String(v);
-  }, [rich.spans, rich.text.length, selection]);
+  }, [rich.spans, rich.text.length]);
 
   // If fontSize is being applied via spans (optional), you can detect it too:
   const activeSpanFontSize = useMemo(() => {
@@ -207,7 +207,7 @@ export function TextComposerPage({
     if (v === null || v === undefined) return undefined;
     const n = Number(v);
     return Number.isFinite(n) ? n : undefined;
-  }, [rich.spans, rich.text.length, selection]);
+  }, [rich.spans, rich.text.length]);
 
   // ✅ Toggle colors: click same color to remove; pick another anytime
   const onPickTextColor = useCallback(

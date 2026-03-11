@@ -33,11 +33,22 @@ const resolveHealthProfile = (responseData: any) => {
     profiles?.health ??
     profiles?.health_profile ??
     profiles?.healthProfile ??
+    responseData?.profile ??
+    responseData?.result?.profile ??
+    responseData?.result?.health ??
+    responseData?.result?.health_profile ??
+    responseData?.result?.healthProfile ??
     responseData?.health ??
     responseData?.health_profile ??
     responseData?.healthProfile ??
     null
   );
+};
+
+const normalizeHealthProfileForCache = (profile: any) => {
+  if (!profile || typeof profile !== 'object') return null;
+  const institutions = resolveInstitutions(profile);
+  return { ...profile, institutions };
 };
 
 const resolveInstitutions = (profile: any): any[] => {
@@ -139,13 +150,12 @@ export const fetchHealthProfileState = async (options?: { forceNetwork?: boolean
       exists: resolveHasOwnerProfile(cached),
     };
   }
-  const profile = resolveHealthProfile(res?.data);
-  const institutions = resolveInstitutions(profile);
-  const normalized = profile ? { ...profile, institutions } : null;
+  const normalized = normalizeHealthProfileForCache(resolveHealthProfile(res?.data));
+  const institutions = Array.isArray(normalized?.institutions) ? normalized.institutions : [];
   logHealthProfile('fetchHealthProfileState:request-success', {
-    hasProfile: !!profile,
+    hasProfile: !!normalized,
     institutions: institutions.length,
-    profileKeys: profile && typeof profile === 'object' ? Object.keys(profile).slice(0, 20) : [],
+    profileKeys: normalized && typeof normalized === 'object' ? Object.keys(normalized).slice(0, 20) : [],
   });
   if (normalized) {
     await writeCachedHealthProfile(normalized);
@@ -183,12 +193,17 @@ export const createHealthProfile = async (institutions: any[], profileName = 'He
     },
   });
   if (res?.success) {
+    const normalized = normalizeHealthProfileForCache(resolveHealthProfile(res?.data));
     logHealthProfile('createHealthProfile:success');
-    await writeCachedHealthProfile({
-      profile_type: 'health_profile',
-      payload: { profile_name: profileName, institutions },
-      institutions,
-    });
+    if (normalized) {
+      await writeCachedHealthProfile(normalized);
+    } else {
+      await writeCachedHealthProfile({
+        profile_type: 'health_profile',
+        payload: { profile_name: profileName, institutions },
+        institutions,
+      });
+    }
     return res;
   }
   if (Number(res?.status) === 429) {
@@ -225,20 +240,28 @@ export const updateHealthInstitutions = async (institutions: any[]) => {
       Date.now() + (delayMs && delayMs > 0 ? delayMs : 2 * 60 * 1000);
   }
   if (res?.success) {
+    const normalized = normalizeHealthProfileForCache(resolveHealthProfile(res?.data));
     logHealthProfile('updateHealthInstitutions:success');
     const cached = await readCachedHealthProfile();
-    await writeCachedHealthProfile({
-      ...(cached ?? { profile_type: 'health_profile' }),
-      institutions,
-      payload: {
-        ...(cached?.payload ?? {}),
+    if (normalized) {
+      await writeCachedHealthProfile({
+        ...(cached ?? {}),
+        ...normalized,
+      });
+    } else {
+      await writeCachedHealthProfile({
+        ...(cached ?? { profile_type: 'health_profile' }),
         institutions,
-      },
-      updates: {
-        ...(cached?.updates ?? {}),
-        institutions,
-      },
-    });
+        payload: {
+          ...(cached?.payload ?? {}),
+          institutions,
+        },
+        updates: {
+          ...(cached?.updates ?? {}),
+          institutions,
+        },
+      });
+    }
   }
   if (!res?.success) {
     logHealthProfile('updateHealthInstitutions:failed-caching-locally', {

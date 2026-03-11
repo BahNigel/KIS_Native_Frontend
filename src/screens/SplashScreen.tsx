@@ -234,9 +234,6 @@ export default function SplashScreen({
     ],
   };
 
-  const RING_SIZE = 220;
-  const ELECTRON_SIZE = 10;
-
   const ringColor =
     tone === 'dark' ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.10)';
   const electronColor = palette.primary ?? '#6EA8FE';

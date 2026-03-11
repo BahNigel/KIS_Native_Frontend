@@ -76,6 +76,12 @@ export const TEXT_PRESETS = {
     fontWeight: FONT_WEIGHTS.regular,
     lineHeight: 16,
   },
+  caption: {
+    fontFamily: FONT_FAMILIES.body,
+    fontSize: KIS_TOKENS.typography.tiny,
+    fontWeight: FONT_WEIGHTS.regular,
+    lineHeight: 16,
+  },
   tiny: {
     fontFamily: FONT_FAMILIES.body,
     fontSize: KIS_TOKENS.typography.tiny,

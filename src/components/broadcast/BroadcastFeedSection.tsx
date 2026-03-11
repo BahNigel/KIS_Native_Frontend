@@ -27,11 +27,17 @@ import { logFeedEvent } from '@/network/personalization';
 
 import BroadcastFeedCard, { type BroadcastFeedItem } from './BroadcastFeedCard';
 export type { BroadcastFeedItem } from './BroadcastFeedCard';
+import BroadcastAuthorProfileSheet from '@/components/broadcast/BroadcastAuthorProfileSheet';
+import {
+  isUserBroadcastSource,
+} from '@/components/broadcast/authorProfileUtils';
+import useAuthorProfilePreview from '@/components/broadcast/useAuthorProfilePreview';
 import FeedPostActionsSheet, { type FeedPostAction } from '@/components/feeds/FeedPostActionsSheet';
 import Skeleton from '@/components/common/Skeleton';
 import ShareRenderer, { type SharePayload } from '@/components/feeds/ShareRenderer';
 import { uploadFileToBackend } from '@/Module/ChatRoom/uploadFileToBackend';
 import MarketStudioSection from './MarketStudioSection';
+import { getAccessToken } from '@/security/authStorage';
 
 /* ───────────────────────────────────────────── */
 /* Section Layout (Feeds / Market / Lessons)     */
@@ -68,32 +74,106 @@ type Props = {
   onSubscribeToSource?: (item: BroadcastFeedItem) => Promise<boolean> | void;
 };
 
-/* ───────────────────────────────────────────── */
-/* Action Menu                                   */
-/* ───────────────────────────────────────────── */
+const SHORT_VIDEO_THRESHOLD_SECONDS = 3 * 60;
 
-const EXTRA_FEATURES = [
-  'Live broadcasts (Go Live + LIVE filter)',
-  'For You / Following discovery',
-  'Saved broadcasts',
-  'Follow broadcaster',
-  'Pin broadcast locally',
-  'Trending sort',
-  'Draft broadcasts',
-  'Schedule reminders for broadcasts/lessons',
-  'Premium/protected broadcasts',
-  'Lesson join CTA + lesson-only feed',
-  'Market-only feed + product drops',
-  'Broadcast sharing as KIS card image',
-  'Share analytics logging',
-  'Viewer count + live viewers',
-  'Mute broadcaster',
-  'Hide broadcast',
-  'Report moderation flag',
-  'Offline preference persistence',
-  'Autoplay control',
-  'Swipe video queue (shorts-style)',
-] as const;
+const normalizeAttachmentUrl = (attachment: any) => {
+  if (!attachment) return null;
+  if (typeof attachment === 'string') return resolveBackendAssetUrl(attachment);
+  const raw =
+    attachment.url ??
+    attachment.uri ??
+    attachment.file_url ??
+    attachment.fileUrl ??
+    attachment.path ??
+    null;
+  return resolveBackendAssetUrl(raw);
+};
+
+const resolveVideoAttachment = (item: BroadcastFeedItem) => {
+  const attachments = Array.isArray(item.attachments) ? item.attachments : [];
+  for (const attachment of attachments) {
+    const url = normalizeAttachmentUrl(attachment);
+    if (!url) continue;
+
+    const kind = String(
+      attachment?.kind ??
+        attachment?.mimeType ??
+        attachment?.mime ??
+        attachment?.type ??
+        '',
+    ).toLowerCase();
+
+    const isVideo =
+      kind.includes('video') ||
+      kind === 'short_video' ||
+      kind === 'long_video' ||
+      kind.includes('mp4');
+    if (!isVideo) continue;
+
+    const thumb =
+      resolveBackendAssetUrl(
+        attachment?.thumbUrl ??
+          attachment?.thumb_url ??
+          attachment?.thumbnail ??
+          attachment?.thumb ??
+          attachment?.preview_url ??
+          attachment?.previewUrl ??
+          null,
+      ) ?? null;
+
+    return {
+      id: String(attachment?.id ?? `${item.id}-att0`),
+      url,
+      thumbUrl: thumb,
+      attachment,
+    };
+  }
+  return null;
+};
+
+const extractDurationSeconds = (attachment: any) => {
+  if (!attachment) return undefined;
+  if (typeof attachment.duration_seconds === 'number') return attachment.duration_seconds;
+  if (typeof attachment.duration === 'number') return attachment.duration;
+  if (typeof attachment.durationSeconds === 'number') return attachment.durationSeconds;
+  if (typeof attachment.duration_ms === 'number') return Math.round(attachment.duration_ms / 1000);
+  if (typeof attachment.durationMs === 'number') return Math.round(attachment.durationMs / 1000);
+  if (typeof attachment.durationMilliseconds === 'number')
+    return Math.round(attachment.durationMilliseconds / 1000);
+  return undefined;
+};
+
+const deriveVideoCategory = (attachment: any, durationSeconds?: number) => {
+  if (!attachment) return undefined;
+  const normalized = (attachment.kind ?? attachment.mimeType ?? attachment.type ?? '')
+    .toString()
+    .toLowerCase();
+
+  if (normalized.includes('short')) return 'shorts';
+  if (durationSeconds !== undefined) {
+    return durationSeconds < SHORT_VIDEO_THRESHOLD_SECONDS ? 'shorts' : 'videos';
+  }
+  if (normalized.includes('video')) return 'videos';
+  return undefined;
+};
+
+const enrichWithVideoMetadata = (item: BroadcastFeedItem) => {
+  const videoAttachment = resolveVideoAttachment(item);
+  if (!videoAttachment) return item;
+  const durationSeconds = extractDurationSeconds(videoAttachment.attachment);
+  const videoCategory =
+    deriveVideoCategory(videoAttachment.attachment, durationSeconds) ??
+    item.video_category;
+
+  return {
+    ...item,
+    video_category: videoCategory,
+    video_duration_seconds: durationSeconds ?? item.video_duration_seconds,
+  };
+};
+
+const hasVideoAttachment = (item: BroadcastFeedItem) =>
+  Boolean(resolveVideoAttachment(item));
 
 /* ───────────────────────────────────────────── */
 /* Component                                     */
@@ -114,6 +194,14 @@ export default function BroadcastFeedSection({
   const { palette } = useKISTheme();
   const navigation = useNavigation();
   const mediaHeaders = useMediaHeaders();
+  const {
+    visible: authorProfileVisible,
+    loading: authorProfileLoading,
+    error: authorProfileError,
+    profile: authorProfile,
+    openAuthorProfile,
+    closeAuthorProfile,
+  } = useAuthorProfilePreview();
 
   /* ─────────────────────────
    * Main section & UX prefs
@@ -267,7 +355,7 @@ export default function BroadcastFeedSection({
 
   // Saved broadcasts (local) — can later sync server-side
   const SAVED_KEY = 'kis.broadcast.saved.v1';
-  const [savedIds, setSavedIds] = useState<Record<string, boolean>>({});
+  const [_savedIds, setSavedIds] = useState<Record<string, boolean>>({});
   const loadSaved = useCallback(async () => {
     try {
       const raw = await AsyncStorage.getItem(SAVED_KEY);
@@ -303,100 +391,6 @@ export default function BroadcastFeedSection({
   /* ─────────────────────────
    * Attachment helpers
    * ───────────────────────── */
-
-  const normalizeAttachmentUrl = (attachment: any) => {
-    if (!attachment) return null;
-    if (typeof attachment === 'string') return resolveBackendAssetUrl(attachment);
-    const raw =
-      attachment.url ??
-      attachment.uri ??
-      attachment.file_url ??
-      attachment.fileUrl ??
-      attachment.path ??
-      null;
-    return resolveBackendAssetUrl(raw);
-  };
-
-  const resolveVideoAttachment = (item: BroadcastFeedItem) => {
-    const attachments = Array.isArray(item.attachments) ? item.attachments : [];
-    for (const attachment of attachments) {
-      const url = normalizeAttachmentUrl(attachment);
-      if (!url) continue;
-
-      const kind = String(
-        attachment?.kind ??
-          attachment?.mimeType ??
-          attachment?.mime ??
-          attachment?.type ??
-          '',
-      ).toLowerCase();
-
-      const isVideo = kind.includes('video') || kind === 'short_video' || kind === 'long_video' || kind.includes('mp4');
-      if (isVideo) {
-        const thumb =
-          resolveBackendAssetUrl(
-            attachment?.thumbUrl ??
-              attachment?.thumb_url ??
-              attachment?.thumbnail ??
-              attachment?.thumb ??
-              attachment?.preview_url ??
-              attachment?.previewUrl ??
-              null,
-          ) ?? null;
-
-        return {
-          id: String(attachment?.id ?? `${item.id}-att0`),
-          url,
-          thumbUrl: thumb,
-          attachment,
-        };
-      }
-    }
-    return null;
-  };
-
-  const SHORT_VIDEO_THRESHOLD_SECONDS = 3 * 60;
-
-  const extractDurationSeconds = (attachment: any) => {
-    if (!attachment) return undefined;
-    if (typeof attachment.duration_seconds === 'number') return attachment.duration_seconds;
-    if (typeof attachment.duration === 'number') return attachment.duration;
-    if (typeof attachment.durationSeconds === 'number') return attachment.durationSeconds;
-    if (typeof attachment.duration_ms === 'number') return Math.round(attachment.duration_ms / 1000);
-    if (typeof attachment.durationMs === 'number') return Math.round(attachment.durationMs / 1000);
-    if (typeof attachment.durationMilliseconds === 'number')
-      return Math.round(attachment.durationMilliseconds / 1000);
-    return undefined;
-  };
-
-  const deriveVideoCategory = (attachment: any, durationSeconds?: number) => {
-    if (!attachment) return undefined;
-    const normalized = (attachment.kind ?? attachment.mimeType ?? attachment.type ?? '')
-      .toString()
-      .toLowerCase();
-
-    if (normalized.includes('short')) return 'shorts';
-    if (durationSeconds !== undefined) {
-      return durationSeconds < SHORT_VIDEO_THRESHOLD_SECONDS ? 'shorts' : 'videos';
-    }
-    if (normalized.includes('video')) return 'videos';
-    return undefined;
-  };
-
-  const enrichWithVideoMetadata = (item: BroadcastFeedItem) => {
-    const videoAttachment = resolveVideoAttachment(item);
-    if (!videoAttachment) return item;
-    const durationSeconds = extractDurationSeconds(videoAttachment.attachment);
-    const videoCategory = deriveVideoCategory(videoAttachment.attachment, durationSeconds) ?? item.video_category;
-
-    return {
-      ...item,
-      video_category: videoCategory,
-      video_duration_seconds: durationSeconds ?? item.video_duration_seconds,
-    };
-  };
-
-  const hasVideoAttachment = (item: BroadcastFeedItem) => Boolean(resolveVideoAttachment(item));
 
   /* ─────────────────────────
    * Stream URL resolution
@@ -723,7 +717,7 @@ export default function BroadcastFeedSection({
   };
 
   const uploadShareAsset = async (uri: string) => {
-    const token = await AsyncStorage.getItem('access_token');
+    const token = await getAccessToken();
     if (!token) return null;
 
     const attachment = await uploadFileToBackend({
@@ -872,7 +866,7 @@ export default function BroadcastFeedSection({
     );
   };
 
-  const handleJoinLesson = async (item: BroadcastFeedItem) => {
+  const handleJoinLesson = async (_item: BroadcastFeedItem) => {
     Alert.alert('Lesson', 'Joining lesson… (hook ready)');
   };
 
@@ -980,7 +974,6 @@ export default function BroadcastFeedSection({
 
   const [menuVisible, setMenuVisible] = useState(false);
   const [menuItem, setMenuItem] = useState<BroadcastFeedItem | null>(null);
-  const [menuActionLoading, setMenuActionLoading] = useState(false);
 
   const openActionMenu = (item: BroadcastFeedItem) => {
     setMenuItem(item);
@@ -990,11 +983,6 @@ export default function BroadcastFeedSection({
   const closeActionMenu = () => {
     setMenuVisible(false);
     setMenuItem(null);
-  };
-
-  const handleGoLive = () => {
-    // Future: navigate to live composer / live studio
-    Alert.alert('Go Live', 'Live Broadcast studio coming next. (entry wired)');
   };
 
   /* ─────────────────────────
@@ -1036,6 +1024,13 @@ export default function BroadcastFeedSection({
             showComments={activeBroadcastCommentId === item.id}
             onToggleComments={() => toggleBroadcastComments(item.id)}
             onSubscribe={() => handleSubscribeToBroadcaster(item)}
+            onOpenAuthorProfile={
+              isUserBroadcastSource(item)
+                ? () => {
+                    void openAuthorProfile(item);
+                  }
+                : undefined
+            }
           />
         ))
       )}
@@ -1278,6 +1273,13 @@ export default function BroadcastFeedSection({
         </View>
       </Modal>
 
+      <BroadcastAuthorProfileSheet
+        visible={authorProfileVisible}
+        loading={authorProfileLoading}
+        error={authorProfileError}
+        profile={authorProfile}
+        onClose={closeAuthorProfile}
+      />
     </View>
   );
 }

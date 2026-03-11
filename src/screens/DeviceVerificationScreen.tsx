@@ -1,5 +1,5 @@
 // src/screens/DeviceVerificationScreen.tsx
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   Alert,
   KeyboardAvoidingView,
@@ -11,13 +11,14 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRoute, useNavigation } from '@react-navigation/native';
+import { useRoute } from '@react-navigation/native';
 import KISButton from '@/constants/KISButton';
 import { postRequest } from '@/network/post';
 import ROUTES from '@/network';
 import { useKISTheme } from '@/theme/useTheme';
 import KISText from '@/components/common/KISText';
 import { KIS_TOKENS } from '@/theme/constants';
+import { useAuth } from '../../App';
 
 type RouteParams = {
   phone?: string | null;   // <-- we expect phone passed from Register
@@ -51,8 +52,8 @@ const makeStyles = (tokens: typeof KIS_TOKENS) =>
   });
 
 export default function DeviceVerificationScreen({ setLoad }: any) {
-  const navigation = useNavigation<any>();
   const route = useRoute<any>();
+  const { setAuth } = useAuth();
   const params: RouteParams = route?.params || {};
 
   const { palette, tokens } = useKISTheme();
@@ -90,9 +91,8 @@ export default function DeviceVerificationScreen({ setLoad }: any) {
       }
 
       Alert.alert('Verified', 'Your account is now activated.');
-      // e.g. navigation.replace('MainTabs');
-      setLoad(true)
-      navigation.navigate('MainTabs')
+      setAuth?.(true);
+      setLoad?.(true);
     } catch (e: any) {
       Alert.alert('Error', e?.message ?? 'Unexpected error.');
     } finally {
@@ -204,18 +204,3 @@ export default function DeviceVerificationScreen({ setLoad }: any) {
     </SafeAreaView>
   );
 }
-
-const styles = StyleSheet.create({
-  flex: { flex: 1, backgroundColor: '#fff' },
-  container: { padding: 20, gap: 20, flexGrow: 1, justifyContent: 'center' },
-  headerBlock: { gap: 6, alignItems: 'center' },
-  title: { fontSize: 28, fontWeight: '700' },
-  subtitle: { fontSize: 14, color: '#555' },
-  field: { gap: 8 },
-  label: { fontSize: 14, color: '#333' },
-  input: {
-    borderWidth: 2, borderColor: '#ddd', borderRadius: 10,
-    paddingHorizontal: 14, paddingVertical: Platform.select({ ios: 12, android: 10 }),
-    fontSize: 16, backgroundColor: '#fff',
-  },
-});

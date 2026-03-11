@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -60,7 +60,7 @@ export default function PartnerOrganizationProfilePanel({
   const [youtube, setYoutube] = useState('');
   const [publicFields, setPublicFields] = useState<Record<string, boolean>>({});
 
-  const fieldDefs: Array<{ key: keyof OrgProfile; label: string }> = [
+  const fieldDefs: Array<{ key: keyof OrgProfile; label: string }> = useMemo(() => ([
     { key: 'display_name', label: 'Display name' },
     { key: 'legal_name', label: 'Legal name' },
     { key: 'tagline', label: 'Tagline' },
@@ -74,7 +74,7 @@ export default function PartnerOrganizationProfilePanel({
     { key: 'founded_year', label: 'Founded year' },
     { key: 'headquarters', label: 'Headquarters' },
     { key: 'logo_url', label: 'Logo URL' },
-  ];
+  ]), []);
 
   const backdropOpacity = panelTranslateX.interpolate({
     inputRange: [0, panelWidth],
@@ -108,7 +108,7 @@ export default function PartnerOrganizationProfilePanel({
     defaults.social_instagram = Boolean(incomingPublic.social_instagram);
     defaults.social_youtube = Boolean(incomingPublic.social_youtube);
     setPublicFields(defaults);
-  }, [partnerId]);
+  }, [fieldDefs, partnerId]);
 
   useEffect(() => {
     if (!isOpen) return;

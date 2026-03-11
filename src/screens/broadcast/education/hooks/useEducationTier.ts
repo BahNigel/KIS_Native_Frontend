@@ -57,7 +57,7 @@ export default function useEducationTier() {
           blockedUntilRef.current = Date.now() + 60 * 1000;
           return;
         }
-        setError(res.message);
+        setError(res.message ?? 'Unable to load profile data.');
       }
     } catch (err: any) {
       setError(err?.message ?? 'Unable to load profile data.');

@@ -80,7 +80,7 @@ export const StickerEditor: React.FC<StickerEditorProps> = ({
   const translateX = useRef(new Animated.Value(screenWidth)).current;
 
   const [imageUri, setImageUri] = useState<string | null>(null);
-  const [originalUri, setOriginalUri] = useState<string | null>(null);
+  const [_originalUri, setOriginalUri] = useState<string | null>(null);
   const [imageBase64, setImageBase64] = useState<string | null>(null);
 
   const [text, setText] = useState('Your text');

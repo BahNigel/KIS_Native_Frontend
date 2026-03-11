@@ -195,20 +195,6 @@ function normalizeSender(
   return { ...msg, senderId, fromMe };
 }
 
-function withStatus(
-  msg: ChatMessage,
-  status: MessageStatus,
-  isLocalOnly?: boolean,
-): ChatMessage {
-  return {
-    ...msg,
-    status,
-    ...(isLocalOnly !== undefined
-      ? { isLocalOnly }
-      : null),
-  };
-}
-
 /* ============================================================================
  * MERGE / DEDUPLICATION
  * ============================================================================
@@ -302,7 +288,7 @@ export function useChatPersistence(
 
   useEffect(() => {
     roomIdRef.current = roomId;
-  }, [roomId]);
+  }, [roomId, currentUserId]);
 
   /* ------------------------------------------------------------------------
    * INITIAL LOAD
@@ -339,7 +325,7 @@ export function useChatPersistence(
     return () => {
       mounted = false;
     };
-  }, [roomId]);
+  }, [roomId, currentUserId]);
 
   /* ------------------------------------------------------------------------
    * PERSIST

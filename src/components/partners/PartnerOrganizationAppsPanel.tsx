@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useCallback, useMemo } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -57,7 +57,7 @@ export default function PartnerOrganizationAppsPanel({
   const { palette } = useKISTheme();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
 
-  const handleLaunchApp = async (app: PartnerOrganizationApp) => {
+  const handleLaunchApp = useCallback(async (app: PartnerOrganizationApp) => {
     if (!app.link) {
       Alert.alert('Organization app', 'This app does not provide a link yet.');
       return;
@@ -71,9 +71,9 @@ export default function PartnerOrganizationAppsPanel({
     } catch (err: any) {
       Alert.alert('Open app', err?.message || 'Unable to open this app yet.');
     }
-  };
+  }, [onLaunchApp]);
 
-  const handleDelete = async (app: PartnerOrganizationApp) => {
+  const handleDelete = useCallback(async (app: PartnerOrganizationApp) => {
     if (!partnerId) {
       Alert.alert('Partner required', 'Select a partner before deleting apps.');
       return;
@@ -103,7 +103,7 @@ export default function PartnerOrganizationAppsPanel({
       ],
       { cancelable: true },
     );
-  };
+  }, [canManageApps, onRefresh, partnerId]);
 
   const handleCreateApp = () => {
     if (!partnerId) {
@@ -117,14 +117,14 @@ export default function PartnerOrganizationAppsPanel({
     navigation.navigate('OrganizationAppForm', { partnerId });
   };
 
-  const handleEditApp = (app: PartnerOrganizationApp) => {
+  const handleEditApp = useCallback((app: PartnerOrganizationApp) => {
     if (!partnerId) {
       Alert.alert('Partner required', 'Select a partner before editing apps.');
       return;
     }
     if (!canManageApps) return;
     navigation.navigate('OrganizationAppForm', { partnerId, app });
-  };
+  }, [canManageApps, navigation, partnerId]);
 
   const panelBody = useMemo(() => {
     if (loading) {

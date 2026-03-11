@@ -126,11 +126,12 @@ const [contactNameByPhone, setContactNameByPhone] = useState<Record<string, stri
 const [conversationMeta, setConversationMeta] = useState<Record<string, ConversationMetaEntry>>({});
 const [communityByConversationId, setCommunityByConversationId] = useState<Record<string, { id: string; name: string }>>({});
 const [communityGroupConversationIds, setCommunityGroupConversationIds] = useState<Set<string>>(new Set());
-const [statusByUserId, setStatusByUserId] = useState<Record<string, { hasStatus: boolean; hasUnseen: boolean }>>({});
+const [statusByUserId, _setStatusByUserId] = useState<Record<string, { hasStatus: boolean; hasUnseen: boolean }>>({});
 const [avatarPreview, setAvatarPreview] = useState<{ uri: string; chat?: Chat; userId?: string | null } | null>(null);
 const [avatarPreviewFull, setAvatarPreviewFull] = useState(false);
 const avatarAnim = useRef(new Animated.Value(0)).current;
 const tabRef = useRef<any>(null);
+const loadCommunitiesRef = useRef<() => void | Promise<void>>(() => {});
 
 const mountedRef = useRef(true);
 const metaRefreshQueue = useRef(new Set<string>());
@@ -206,9 +207,9 @@ const refreshConversations = useCallback(async (force?: boolean) => {
   const convs = await fetchConversationsForCurrentUser([], currentUserId ?? undefined, !!force);
   setConversations(convs);
   if (force) {
-    loadCommunities();
+    await loadCommunitiesRef.current();
   }
-}, [currentUserId, loadCommunities]);
+}, [currentUserId]);
 
 useEffect(() => {
   let active = true;
@@ -332,6 +333,10 @@ const loadCommunities = useCallback(async () => {
 }, [currentUserId]);
 
 useEffect(() => {
+  loadCommunitiesRef.current = loadCommunities;
+}, [loadCommunities]);
+
+useEffect(() => {
   communitiesMountedRef.current = true;
   loadCommunities();
   return () => {
@@ -453,7 +458,7 @@ useEffect(() => {
     const lastAt = payload?.createdAt ?? new Date().toISOString();
     const senderId =
       payload?.senderId != null ? String(payload.senderId) : '';
-    const isFromMe = senderId && senderId === String(currentUserId);
+    const isFromMe = senderId.length > 0 && senderId === String(currentUserId);
     const previewText =
       payload?.text ??
       getMessagePreviewText(payload) ??
@@ -603,7 +608,7 @@ useEffect(() => {
   return () => {
     socket.off('chat.message', onMessage);
   };
-}, [socket, isConnected, currentUserId]);
+}, [socket, isConnected, currentUserId, queueMetaRefresh]);
 
 useEffect(() => {
   const sub = DeviceEventEmitter.addListener('message.status', (payload: any) => {
@@ -1356,7 +1361,7 @@ const handleMuteSelected = () => {
       {/* ------------ Top Tabs (animated tab bar) ------------ */}
       <View style={{ flex: 1, backgroundColor: palette.bg }}>
         <Tab.Navigator
-          ref={tabRef}
+          {...({ ref: tabRef } as any)}
           tabBar={(props) => <AnimatedTopBar {...props} />}
           screenOptions={{ swipeEnabled: true, tabBarScrollEnabled: false }}
         >

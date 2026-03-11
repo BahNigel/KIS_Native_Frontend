@@ -1,10 +1,9 @@
 import React, { useMemo, useState } from 'react';
-import { Alert, FlatList, ScrollView, Text, View } from 'react-native';
+import { Alert, ScrollView, Text, View } from 'react-native';
 import { useKISTheme } from '@/theme/useTheme';
 import KISButton from '@/constants/KISButton';
 import KISTextInput from '@/constants/KISTextInput';
 import useEducationDiscovery from '@/screens/broadcast/education/hooks/useEducationDiscovery';
-import type { EducationCourse } from '@/screens/broadcast/education/api/education.models';
 
 type Props = {
   managementData?: Record<string, any>;
@@ -19,8 +18,8 @@ const STUDENT_SAMPLE = [
 
 export default function EducationCreatorConsole({ managementData, tierLabel }: Props) {
   const { palette } = useKISTheme();
-  const { data, continueLearning } = useEducationDiscovery({ initialSearch: '' });
-  const continueLearningList = continueLearning ?? [];
+  const { data } = useEducationDiscovery({ initialSearch: '' });
+  const continueLearningList = data?.continueLearning ?? [];
   const totalCourses = useMemo(
     () =>
       (data?.sections ?? [])
@@ -31,7 +30,7 @@ export default function EducationCreatorConsole({ managementData, tierLabel }: P
   const managementCourses = managementData?.courses?.length ?? totalCourses;
   const moduleCount = managementData?.modules?.length ?? 0;
   const totalEnrollments = continueLearningList.length * 8;
-  const completed = continueLearningList.filter((item) => item.progressPercent >= 80).length;
+  const completed = continueLearningList.filter((item: any) => Number(item.progressPercent || 0) >= 80).length;
   const completionRate = continueLearningList.length
     ? Math.round((completed / continueLearningList.length) * 100)
     : 0;

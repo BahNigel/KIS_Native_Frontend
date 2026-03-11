@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Alert, DeviceEventEmitter, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useKISTheme } from '@/theme/useTheme';
@@ -21,7 +21,7 @@ export default function PartnerCoursesSection({ partner }: { partner: Partner })
   const [detailVisible, setDetailVisible] = useState(false);
   const isCcPartner = (partner?.name ?? '').toLowerCase().includes('christian community');
 
-  const normalizeCourse = (course: any) => ({
+  const normalizeCourse = useCallback((course: any) => ({
     ...course,
     is_free:
       typeof course.is_free === 'boolean'
@@ -29,9 +29,9 @@ export default function PartnerCoursesSection({ partner }: { partner: Partner })
         : course.price_amount === null ||
           course.price_amount === undefined ||
           String(course.price_amount) === '0',
-  });
+  }), []);
 
-  const loadCourses = async () => {
+  const loadCourses = useCallback(async () => {
     if (!partner?.id) return;
     const partnerRes = await getRequest(`${ROUTES.bible.courses}?partner=${partner.id}&scope=partner`, {
       errorMessage: 'Unable to load partner courses.',
@@ -50,11 +50,11 @@ export default function PartnerCoursesSection({ partner }: { partner: Partner })
     } else {
       setBibleCourses([]);
     }
-  };
+  }, [isCcPartner, normalizeCourse, partner?.id]);
 
   useEffect(() => {
     loadCourses();
-  }, [partner?.id]);
+  }, [loadCourses]);
 
   const openCourse = (course: any) => {
     setSelectedCourse(course);

@@ -279,6 +279,7 @@ export default function HealthcareScreen() {
     period_start: '',
     period_end: '',
     predicted_usage: '',
+    notes: '',
   });
   const [forecastLoading, setForecastLoading] = useState(false);
 
@@ -356,7 +357,7 @@ export default function HealthcareScreen() {
         entries.push({ ...item, timestamp: stamp });
       };
 
-      normalize(encRes).forEach((enc) =>
+      normalize(encRes).forEach((enc: any) =>
         addEntry({
           id: `enc-${enc.id}`,
           type: 'encounter',
@@ -367,7 +368,7 @@ export default function HealthcareScreen() {
         }),
       );
 
-      normalize(medRes).forEach((med) =>
+      normalize(medRes).forEach((med: any) =>
         addEntry({
           id: `med-${med.id}`,
           type: 'medication',
@@ -378,7 +379,7 @@ export default function HealthcareScreen() {
         }),
       );
 
-      normalize(vitalRes).forEach((vital) =>
+      normalize(vitalRes).forEach((vital: any) =>
         addEntry({
           id: `vital-${vital.id}`,
           type: 'vital',
@@ -389,7 +390,7 @@ export default function HealthcareScreen() {
         }),
       );
 
-      normalize(allergyRes).forEach((allergy) =>
+      normalize(allergyRes).forEach((allergy: any) =>
         addEntry({
           id: `allergy-${allergy.id}`,
           type: 'allergy',
@@ -1630,7 +1631,7 @@ export default function HealthcareScreen() {
     };
     const res = await createSupplyForecast(payload);
     if (res.success) {
-      setForecastForm({ category: '', period_start: '', period_end: '', predicted_usage: '' });
+      setForecastForm({ category: '', period_start: '', period_end: '', predicted_usage: '', notes: '' });
       Alert.alert('Forecast', 'Forecast saved.');
       loadSupplyForecasts();
       return;

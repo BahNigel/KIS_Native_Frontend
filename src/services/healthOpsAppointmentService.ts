@@ -22,6 +22,41 @@ type StartSessionArgs = {
 const shouldFallbackToBroadcast = (status?: number) =>
   status === 400 || status === 404 || status === 405;
 
+const unsupportedHealthOpsBookingServiceIds = new Set<string>();
+
+const findBackendCardIdFromCardsResponse = (
+  cardsPayload: any,
+  args: { serviceId?: string; date?: string; time?: string },
+) => {
+  const cards = Array.isArray(cardsPayload?.cards) ? cardsPayload.cards : [];
+  if (!cards.length) return '';
+  const serviceId = String(args.serviceId || '').trim();
+  const date = String(args.date || '').trim();
+  const time = String(args.time || '').trim();
+
+  const byDateServiceTime = cards.find((card: any) => {
+    const rowDate = String(card?.date || card?.dateKey || '').trim();
+    const rowServiceId = String(card?.service?.id || card?.service_id || '').trim();
+    const rowTime = String(card?.time || card?.timeValue || '').trim();
+    if (date && rowDate !== date) return false;
+    if (serviceId && rowServiceId !== serviceId) return false;
+    if (time && rowTime && rowTime !== time) return false;
+    return true;
+  });
+  if (byDateServiceTime?.id) return String(byDateServiceTime.id);
+
+  const byDateService = cards.find((card: any) => {
+    const rowDate = String(card?.date || card?.dateKey || '').trim();
+    const rowServiceId = String(card?.service?.id || card?.service_id || '').trim();
+    if (date && rowDate !== date) return false;
+    if (serviceId && rowServiceId !== serviceId) return false;
+    return true;
+  });
+  if (byDateService?.id) return String(byDateService.id);
+
+  return '';
+};
+
 export const startHealthServiceSession = async ({
   institutionId,
   cardId,
@@ -32,10 +67,12 @@ export const startHealthServiceSession = async ({
 }: StartSessionArgs) => {
   const cleanServiceId = String(serviceId || '').trim();
   const cleanInstitutionId = String(institutionId || '').trim();
+  const cleanCardId = String(cardId || '').trim();
   const slotStart = toSlotStartIso(date, time);
   const isOwnerPreview = !!ownerPreview;
+  const skipHealthOpsAttempt = cleanServiceId && unsupportedHealthOpsBookingServiceIds.has(cleanServiceId);
 
-  if (cleanServiceId && slotStart) {
+  if (cleanServiceId && slotStart && !skipHealthOpsAttempt) {
     const appointmentResponse = await postRequest(
       ROUTES.healthOps.appointmentBook(cleanServiceId),
       {
@@ -43,7 +80,7 @@ export const startHealthServiceSession = async ({
         auto_debit: !isOwnerPreview,
         owner_preview: isOwnerPreview,
         metadata: {
-          cardId: String(cardId || ''),
+          cardId: cleanCardId,
           institutionId: cleanInstitutionId,
           source: 'health_cards',
           owner_preview: isOwnerPreview,
@@ -55,9 +92,10 @@ export const startHealthServiceSession = async ({
     );
 
     if (appointmentResponse?.success) {
+      unsupportedHealthOpsBookingServiceIds.delete(cleanServiceId);
       const workflowSessionId = String(appointmentResponse?.data?.session?.id || '').trim();
       const syntheticSessions = workflowSessionId
-        ? [{ id: workflowSessionId, card_id: String(cardId || ''), cardId: String(cardId || ''), status: 'started' }]
+        ? [{ id: workflowSessionId, card_id: cleanCardId, cardId: cleanCardId, status: 'started' }]
         : [];
       return {
         ...appointmentResponse,
@@ -69,25 +107,62 @@ export const startHealthServiceSession = async ({
       };
     }
 
+    if (Number(appointmentResponse?.status) === 404 || Number(appointmentResponse?.status) === 405) {
+      unsupportedHealthOpsBookingServiceIds.add(cleanServiceId);
+    }
+
     if (!shouldFallbackToBroadcast(Number(appointmentResponse?.status))) {
       return { ...appointmentResponse, source: 'health_ops' };
     }
   }
 
-  const broadcastResponse = await postRequest(
+  const baseBroadcastPayload = {
+    action: 'start_service_session',
+    cardId: cleanCardId,
+    serviceId: cleanServiceId,
+    date,
+    time,
+    ownerPreview: isOwnerPreview,
+  };
+  let broadcastResponse = await postRequest(
     ROUTES.broadcasts.healthCards(cleanInstitutionId),
-    {
-      action: 'start_service_session',
-      cardId: String(cardId || ''),
-      serviceId: cleanServiceId,
-      date,
-      time,
-      ownerPreview: isOwnerPreview,
-    },
+    baseBroadcastPayload,
     {
       errorMessage: 'Unable to start this session.',
     },
   );
+
+  if (
+    !broadcastResponse?.success &&
+    Number(broadcastResponse?.status) === 404 &&
+    cleanInstitutionId &&
+    cleanServiceId &&
+    date
+  ) {
+    const cardsResponse = await getRequest(ROUTES.broadcasts.healthCards(cleanInstitutionId), {
+      forceNetwork: true,
+      errorMessage: 'Unable to resolve health card for booking.',
+    });
+    if (cardsResponse?.success) {
+      const resolvedCardId = findBackendCardIdFromCardsResponse(cardsResponse?.data, {
+        serviceId: cleanServiceId,
+        date,
+        time,
+      });
+      if (resolvedCardId && resolvedCardId !== cleanCardId) {
+        broadcastResponse = await postRequest(
+          ROUTES.broadcasts.healthCards(cleanInstitutionId),
+          {
+            ...baseBroadcastPayload,
+            cardId: resolvedCardId,
+          },
+          {
+            errorMessage: 'Unable to start this session.',
+          },
+        );
+      }
+    }
+  }
 
   const hasHealthOpsPayload =
     !!String(broadcastResponse?.data?.session?.id || '').trim() ||

@@ -257,11 +257,10 @@ export function FeedManagementModal(props: FeedManagementModalProps) {
     setPanelFeedItemSummary,
     panelFeedMediaOptions,
     onUpdateMediaOptions,
-    textPreviewContent,
     onRemoveAttachment,
   } = props;
 
-  const numberOfBroadcastFeeds = feeds.filter((feed: any)=> feed.is_broadcast == true).length
+  const numberOfBroadcastFeeds = feeds.filter((feed: any) => feed.is_broadcast === true).length;
   const attachmentCandidates = useMemo(() => {
     const attachments = [
       ...panelFeedExistingAttachments,
@@ -290,91 +289,183 @@ export function FeedManagementModal(props: FeedManagementModalProps) {
   }, [panelFeedAssets, panelFeedExistingAttachments]);
 
   return (
-    <ScrollView contentContainerStyle={styles.managementPanelBody}>
-      <View>
-        <Text style={[styles.managementPanelTitle, { color: palette.text }]}>{title}</Text>
-        <Text style={[styles.managementPanelSubtitle, { color: palette.subtext }]}>{subtitle}</Text>
-      </View>
-      <View style={styles.managementStatsRow}>
-        <View style={styles.managementStat}>
-          <Text style={[styles.managementStatValue, { color: palette.text }]}>{feeds.length}</Text>
-          <Text style={[styles.managementStatLabel, { color: palette.subtext }]}>Queued items</Text>
-          <Text style={[styles.managementStatValue, { color: palette.text }]}>{numberOfBroadcastFeeds}</Text>
-          <Text style={[styles.managementStatLabel, { color: palette.subtext }]}>Broadcasted items</Text>
-        </View>
-        <View style={styles.managementStat}>
-          <Text style={[styles.managementStatValue, { color: palette.text }]}>{expiresAt}</Text>
-          <Text style={[styles.managementStatLabel, { color: palette.subtext }]}>Expires</Text>
+    <ScrollView contentContainerStyle={[styles.managementPanelBody, modalStyles.panelContent]}>
+      <View
+        style={[
+          modalStyles.heroCard,
+          {
+            borderColor: palette.divider,
+            backgroundColor: palette.card,
+          },
+        ]}
+      >
+        <Text style={[modalStyles.heroTitle, { color: palette.text }]}>{title}</Text>
+        <Text style={[modalStyles.heroSubtitle, { color: palette.subtext }]}>{subtitle}</Text>
+        <View style={modalStyles.heroStatsGrid}>
+          <View style={[modalStyles.heroStatTile, { borderColor: palette.divider, backgroundColor: palette.surface }]}>
+            <Text style={[modalStyles.heroStatValue, { color: palette.text }]}>{feeds.length}</Text>
+            <Text style={[modalStyles.heroStatLabel, { color: palette.subtext }]}>Queued</Text>
+          </View>
+          <View style={[modalStyles.heroStatTile, { borderColor: palette.divider, backgroundColor: palette.surface }]}>
+            <Text style={[modalStyles.heroStatValue, { color: palette.text }]}>{numberOfBroadcastFeeds}</Text>
+            <Text style={[modalStyles.heroStatLabel, { color: palette.subtext }]}>Live</Text>
+          </View>
+          <View style={[modalStyles.heroStatTile, { borderColor: palette.divider, backgroundColor: palette.surface }]}>
+            <Text style={[modalStyles.heroStatValue, { color: palette.text }]}>{expiresAt}</Text>
+            <Text style={[modalStyles.heroStatLabel, { color: palette.subtext }]}>Cycle</Text>
+          </View>
         </View>
       </View>
 
-      <View style={{ gap: 8 }}>
+      <View
+        style={[
+          modalStyles.sectionCard,
+          {
+            borderColor: palette.divider,
+            backgroundColor: palette.card,
+          },
+        ]}
+      >
+        <View style={modalStyles.sectionHeader}>
+          <Text style={[modalStyles.sectionTitle, { color: palette.text }]}>Feed Queue</Text>
+          <Text style={[modalStyles.sectionSubtitle, { color: palette.subtext }]}>
+            Edit, broadcast, or remove queued items.
+          </Text>
+        </View>
         {feeds.length === 0 ? (
-          <Text style={{ color: palette.subtext }}>No items yet. Add one below.</Text>
+          <View
+            style={[
+              modalStyles.emptyStateCard,
+              {
+                borderColor: palette.divider,
+                backgroundColor: palette.surface,
+              },
+            ]}
+          >
+            <Text style={[modalStyles.emptyStateTitle, { color: palette.text }]}>No broadcast items yet</Text>
+            <Text style={[modalStyles.emptyStateText, { color: palette.subtext }]}>
+              Use the composer below to create your first feed item.
+            </Text>
+          </View>
         ) : (
-          feeds.map((feed) => (
-            <View
-              key={feed.id}
-              style={[styles.managementItemCard, { borderColor: palette.divider, backgroundColor: palette.surface }]}
-            >
-              <Text style={[styles.managementItemTitle, { color: palette.text }]}>{feed.title}</Text>
-              <Text style={[styles.managementItemMeta, { color: palette.subtext }]}>
-                {(feed.summary && feed.summary.length > 80 ? `${feed.summary.slice(0, 80)}…` : feed.summary) ||
-                  'No summary'}
-              </Text>
-              {(() => {
-                const attachments = [
-                  ...(Array.isArray(feed.attachments) ? feed.attachments : []),
-                ].filter(Boolean);
-                if (attachments.length === 0) return null;
-                return (
-                  <AttachmentCarousel
-                    attachments={attachments}
-                    feed={feed}
-                    palette={palette}
-                    onRemoveAttachment={onRemoveAttachment}
-                  />
-                );
-              })()}
-              <Text style={[styles.managementItemMeta, { color: palette.subtext }]}>
-                {feed.media_type ? feed.media_type.toUpperCase() : 'Text'} · {feed.created_at
-                  ? new Date(feed.created_at).toLocaleDateString()
-                  : 'Just now'}
-              </Text>
-              <View style={{ flexDirection: 'row', gap: 10, marginTop: 6 }}>
-                <KISButton
-                  title="Edit"
-                  size="xs"
-                  variant="outline"
-                  onPress={() => handleEditFeedItem(feed)}
-                />
-                {!feed.is_broadcast && (
-                  <KISButton
-                    title={panelFeedBroadcastingId === feed.id ? 'Broadcasting…' : 'Broadcast'}
-                    size="xs"
-                    variant="outline"
-                    onPress={() => handleBroadcastFeedItem(feed)}
-                    disabled={panelFeedBroadcastingId === feed.id}
-                  />
-                )}
-                
-                <KISButton
-                  title={panelFeedDeletingId === feed.id ? 'Deleting…' : 'Delete'}
-                  size="xs"
-                  variant="secondary"
-                  onPress={() => handleDeleteFeedItem(feed.id)}
-                  disabled={panelFeedDeletingId === feed.id}
-                />
-              </View>
-            </View>
-          ))
+          <View style={modalStyles.queueList}>
+            {feeds.map((feed) => {
+              const isLive = !!feed.is_broadcast;
+              const createdLabel = feed.created_at
+                ? new Date(feed.created_at).toLocaleDateString()
+                : 'Just now';
+              const mediaLabel = feed.media_type ? String(feed.media_type).toUpperCase() : 'TEXT';
+              const feedSummary =
+                (feed.summary && feed.summary.length > 120 ? `${feed.summary.slice(0, 120)}…` : feed.summary) ||
+                'No summary';
+              const attachments = [...(Array.isArray(feed.attachments) ? feed.attachments : [])].filter(Boolean);
+
+              return (
+                <View
+                  key={feed.id}
+                  style={[
+                    modalStyles.feedCard,
+                    {
+                      borderColor: palette.divider,
+                      backgroundColor: palette.surface,
+                    },
+                  ]}
+                >
+                  <View style={modalStyles.feedCardHeader}>
+                    <Text style={[modalStyles.feedTitle, { color: palette.text }]}>{feed.title}</Text>
+                    <View
+                      style={[
+                        modalStyles.feedStatusPill,
+                        { backgroundColor: isLive ? palette.primarySoft : palette.bar },
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          modalStyles.feedStatusPillText,
+                          { color: isLive ? palette.primaryStrong : palette.subtext },
+                        ]}
+                      >
+                        {isLive ? 'LIVE' : 'QUEUED'}
+                      </Text>
+                    </View>
+                  </View>
+
+                  <Text style={[modalStyles.feedSummary, { color: palette.subtext }]}>{feedSummary}</Text>
+
+                  {attachments.length > 0 ? (
+                    <AttachmentCarousel
+                      attachments={attachments}
+                      feed={feed}
+                      palette={palette}
+                      onRemoveAttachment={onRemoveAttachment}
+                    />
+                  ) : null}
+
+                  <View style={modalStyles.feedMetaRow}>
+                    <Text style={[modalStyles.feedMetaText, { color: palette.subtext }]}>{mediaLabel}</Text>
+                    <Text style={[modalStyles.feedMetaDivider, { color: palette.subtext }]}>•</Text>
+                    <Text style={[modalStyles.feedMetaText, { color: palette.subtext }]}>{createdLabel}</Text>
+                  </View>
+
+                  <View style={modalStyles.feedActionsRow}>
+                    <KISButton title="Edit" size="xs" variant="outline" onPress={() => handleEditFeedItem(feed)} />
+                    {!isLive ? (
+                      <KISButton
+                        title={panelFeedBroadcastingId === feed.id ? 'Broadcasting…' : 'Broadcast'}
+                        size="xs"
+                        variant="outline"
+                        onPress={() => handleBroadcastFeedItem(feed)}
+                        disabled={panelFeedBroadcastingId === feed.id}
+                      />
+                    ) : null}
+                    <KISButton
+                      title={panelFeedDeletingId === feed.id ? 'Deleting…' : 'Delete'}
+                      size="xs"
+                      variant="secondary"
+                      onPress={() => handleDeleteFeedItem(feed.id)}
+                      disabled={panelFeedDeletingId === feed.id}
+                    />
+                  </View>
+                </View>
+              );
+            })}
+          </View>
         )}
       </View>
 
-      <View style={[styles.managementForm, { borderColor: palette.divider, backgroundColor: palette.card }]}>
-        <Text style={[styles.managementFormLabel, { color: palette.text }]}>New broadcast item</Text>
-        <View style={styles.managementAssetRow}>
-          <Text style={{ color: palette.text, fontWeight: '900' }}>Attachments</Text>
+      <View
+        style={[
+          modalStyles.sectionCard,
+          {
+            borderColor: palette.divider,
+            backgroundColor: palette.card,
+          },
+        ]}
+      >
+        <View style={modalStyles.sectionHeader}>
+          <Text style={[modalStyles.sectionTitle, { color: palette.text }]}>
+            {editingFeedItemId ? 'Update Broadcast Item' : 'Compose Broadcast Item'}
+          </Text>
+          <Text style={[modalStyles.sectionSubtitle, { color: palette.subtext }]}>
+            Attach media, style by content type, and save to queue.
+          </Text>
+        </View>
+
+        <View
+          style={[
+            modalStyles.attachmentHeader,
+            {
+              borderColor: palette.divider,
+              backgroundColor: palette.surface,
+            },
+          ]}
+        >
+          <View>
+            <Text style={[modalStyles.attachmentHeaderTitle, { color: palette.text }]}>Attachments</Text>
+            <Text style={[modalStyles.attachmentHeaderSubtitle, { color: palette.subtext }]}>
+              Existing: {panelFeedExistingAttachments.length} • New: {panelFeedAssets.length}
+            </Text>
+          </View>
           <KISButton
             title={`Attach media${panelFeedAssets.length ? ` (${panelFeedAssets.length})` : ''}`}
             variant="outline"
@@ -382,65 +473,61 @@ export function FeedManagementModal(props: FeedManagementModalProps) {
             size="sm"
           />
         </View>
-        {panelFeedExistingAttachments.length > 0 && (
-          <View style={{ gap: 6 }}>
-            <Text style={{ color: palette.subtext, fontSize: 12 }}>Existing attachments</Text>
+
+        {panelFeedExistingAttachments.length > 0 ? (
+          <View style={modalStyles.attachmentGroup}>
+            <Text style={[modalStyles.attachmentGroupTitle, { color: palette.subtext }]}>Existing attachments</Text>
             {panelFeedExistingAttachments.map((att, index) => (
               <View
                 key={`${att?.url ?? att?.name ?? 'attachment'}-${index}`}
                 style={[
-                  styles.managementAssetItem,
+                  modalStyles.attachmentRow,
                   { borderColor: palette.divider, backgroundColor: palette.surface },
                 ]}
               >
-                <Text style={{ color: palette.text, fontWeight: '700' }}>
-                  {att?.name ?? att?.url ?? `Attachment ${index + 1}`}
-                </Text>
-                <Text style={{ color: palette.subtext, fontSize: 12 }}>
-                  {(att?.media_type ?? att?.mime_type ?? 'file').toUpperCase()}
-                </Text>
-                <Pressable
-                  onPress={() =>
-                    setPanelFeedExistingAttachments((prev) => prev.filter((_, idx) => idx !== index))
-                  }
-                >
-                  <Text style={{ color: palette.danger, fontSize: 12 }}>Remove</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={[modalStyles.attachmentName, { color: palette.text }]}>
+                    {att?.name ?? att?.url ?? `Attachment ${index + 1}`}
+                  </Text>
+                  <Text style={[modalStyles.attachmentType, { color: palette.subtext }]}>
+                    {(att?.media_type ?? att?.mime_type ?? 'file').toUpperCase()}
+                  </Text>
+                </View>
+                <Pressable onPress={() => setPanelFeedExistingAttachments((prev) => prev.filter((_, idx) => idx !== index))}>
+                  <Text style={[modalStyles.attachmentRemoveText, { color: palette.danger }]}>Remove</Text>
                 </Pressable>
               </View>
             ))}
           </View>
-        )}
-        {panelFeedAssets.length > 0 && (
-          <View style={{ gap: 6 }}>
-            <Text style={{ color: palette.subtext, fontSize: 12 }}>New attachments</Text>
+        ) : null}
+
+        {panelFeedAssets.length > 0 ? (
+          <View style={modalStyles.attachmentGroup}>
+            <Text style={[modalStyles.attachmentGroupTitle, { color: palette.subtext }]}>New attachments</Text>
             {panelFeedAssets.map((asset, index) => (
               <View
                 key={`${asset.uri}-${index}`}
                 style={[
-                  styles.managementAssetItem,
-                  {
-                    borderColor: palette.divider,
-                    backgroundColor: palette.surface,
-                    flexDirection: 'row',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                  },
+                  modalStyles.attachmentRow,
+                  { borderColor: palette.divider, backgroundColor: palette.surface },
                 ]}
               >
-                <View>
-                  <Text style={{ color: palette.text, fontWeight: '700' }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={[modalStyles.attachmentName, { color: palette.text }]}>
                     {asset.fileName || `Attachment ${index + 1}`}
                   </Text>
-                  <Text style={{ color: palette.subtext, fontSize: 12 }}>{asset.type ?? 'file'}</Text>
+                  <Text style={[modalStyles.attachmentType, { color: palette.subtext }]}>{asset.type ?? 'file'}</Text>
                 </View>
                 <Pressable onPress={() => removeTemporaryFeedAsset(index)}>
-                  <Text style={{ color: palette.danger, fontSize: 12 }}>Remove</Text>
+                  <Text style={[modalStyles.attachmentRemoveText, { color: palette.danger }]}>Remove</Text>
                 </Pressable>
               </View>
             ))}
           </View>
-        )}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ gap: 8 }}>
+        ) : null}
+
+        <Text style={[modalStyles.mediaTypeLabel, { color: palette.subtext }]}>Content type</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={modalStyles.mediaTypeScroll}>
           {FEED_MEDIA_TYPES.map((type) => {
             const selected = panelFeedMediaType === type;
             return (
@@ -448,25 +535,21 @@ export function FeedManagementModal(props: FeedManagementModalProps) {
                 key={type}
                 onPress={() => setPanelFeedMediaType(type)}
                 style={[
-                  styles.managementTypePill,
+                  modalStyles.mediaTypePill,
                   {
                     backgroundColor: selected ? palette.primarySoft : palette.surface,
                     borderColor: selected ? palette.primary : palette.divider,
                   },
                 ]}
               >
-                <Text
-                  style={{
-                    color: selected ? palette.primaryStrong : palette.subtext,
-                    fontWeight: '900',
-                  }}
-                >
+                <Text style={{ color: selected ? palette.primaryStrong : palette.subtext, fontWeight: '800' }}>
                   {type}
                 </Text>
               </Pressable>
             );
           })}
         </ScrollView>
+
         <KISTextInput label="Title" value={panelFeedItemTitle} onChangeText={setPanelFeedItemTitle} />
         <KISTextInput
           label="Summary / notes"
@@ -475,6 +558,7 @@ export function FeedManagementModal(props: FeedManagementModalProps) {
           multiline
           style={{ minHeight: 80 }}
         />
+
         <TypeSpecificForm
           mediaType={panelFeedMediaType}
           options={panelFeedMediaOptions}
@@ -483,26 +567,23 @@ export function FeedManagementModal(props: FeedManagementModalProps) {
           attachmentCandidates={attachmentCandidates}
           textPreviewContent={panelFeedItemSummary}
         />
-        <KISButton
-          title={
-            panelFeedAdding
-              ? 'Saving…'
-              : editingFeedItemId
-                ? 'Update broadcast item'
-                : 'Add broadcast item'
-          }
-          style={{ marginTop: 50 }}
-          onPress={handleSubmitFeedItem}
-          disabled={panelFeedAdding}
-        />
-        {editingFeedItemId && (
+
+        <View style={modalStyles.formActions}>
           <KISButton
-            title="Cancel edit"
-            variant="secondary"
-            onPress={handleCancelFeedEdit}
+            title={panelFeedAdding ? 'Saving…' : editingFeedItemId ? 'Update broadcast item' : 'Add broadcast item'}
+            onPress={handleSubmitFeedItem}
             disabled={panelFeedAdding}
           />
-        )}
+          {editingFeedItemId ? (
+            <KISButton
+              title="Cancel edit"
+              variant="secondary"
+              onPress={handleCancelFeedEdit}
+              disabled={panelFeedAdding}
+            />
+          ) : null}
+        </View>
+
         {editingFeedItemId ? (
           <Text style={[styles.managementFormHint, { color: palette.primaryStrong }]}>
             Editing an existing broadcast item.
@@ -860,6 +941,197 @@ const ColorDot: React.FC<{ color: string; active: boolean; onPress: () => void; 
 );
 
 const modalStyles = StyleSheet.create({
+  panelContent: {
+    gap: 14,
+  },
+  heroCard: {
+    borderWidth: 1,
+    borderRadius: 20,
+    padding: 16,
+    gap: 12,
+  },
+  heroTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+  },
+  heroSubtitle: {
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  heroStatsGrid: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  heroStatTile: {
+    flex: 1,
+    minHeight: 74,
+    borderWidth: 1,
+    borderRadius: 14,
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+    justifyContent: 'center',
+  },
+  heroStatValue: {
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  heroStatLabel: {
+    marginTop: 2,
+    fontSize: 11,
+    letterSpacing: 0.2,
+    textTransform: 'uppercase',
+  },
+  sectionCard: {
+    borderWidth: 1,
+    borderRadius: 20,
+    padding: 14,
+    gap: 12,
+  },
+  sectionHeader: {
+    gap: 3,
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  sectionSubtitle: {
+    fontSize: 12,
+    lineHeight: 16,
+  },
+  emptyStateCard: {
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 14,
+    gap: 4,
+  },
+  emptyStateTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  emptyStateText: {
+    fontSize: 12,
+    lineHeight: 16,
+  },
+  queueList: {
+    gap: 10,
+  },
+  feedCard: {
+    borderWidth: 1,
+    borderRadius: 16,
+    padding: 12,
+    gap: 8,
+  },
+  feedCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 8,
+  },
+  feedTitle: {
+    flex: 1,
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  feedStatusPill: {
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  feedStatusPillText: {
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  feedSummary: {
+    fontSize: 12,
+    lineHeight: 17,
+  },
+  feedMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  feedMetaText: {
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  feedMetaDivider: {
+    fontSize: 11,
+  },
+  feedActionsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 2,
+  },
+  attachmentHeader: {
+    borderWidth: 1,
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 8,
+  },
+  attachmentHeaderTitle: {
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  attachmentHeaderSubtitle: {
+    marginTop: 2,
+    fontSize: 11,
+  },
+  attachmentGroup: {
+    gap: 6,
+  },
+  attachmentGroupTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  attachmentRow: {
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  attachmentName: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  attachmentType: {
+    marginTop: 1,
+    fontSize: 11,
+  },
+  attachmentRemoveText: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  mediaTypeLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
+  },
+  mediaTypeScroll: {
+    marginTop: 2,
+  },
+  mediaTypePill: {
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    marginRight: 8,
+  },
+  formActions: {
+    marginTop: 10,
+    gap: 8,
+  },
   carouselWrapper: {
     marginVertical: 10,
   },

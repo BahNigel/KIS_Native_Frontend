@@ -47,7 +47,7 @@ export default function FeedsListScreen() {
           throw new Error(response?.message ?? 'Reaction failed');
         }
         DeviceEventEmitter.emit(REACTION_EVENT, { id: broadcastId, delta: 1 });
-      } catch (error: any) {
+      } catch {
         updateItem(broadcastId, (item) => ({
           ...item,
           engagement: {
@@ -61,7 +61,7 @@ export default function FeedsListScreen() {
   );
 
   const renderItem = useCallback(
-    ({ item }) => (
+    ({ item }: { item: any }) => (
       <FeedItemCard
         item={item}
         onPress={() => navigation.navigate('BroadcastDetail', { id: item.id, item })}

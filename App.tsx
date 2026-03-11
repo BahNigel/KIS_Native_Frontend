@@ -3,6 +3,7 @@ import React, {
   useEffect,
   useMemo,
   useState,
+  useCallback,
   createContext,
   useContext,
 } from 'react';
@@ -12,8 +13,18 @@ import {
   DarkTheme,
 } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { Platform, useColorScheme } from 'react-native';
+import {
+  ActivityIndicator,
+  AppState,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  useColorScheme,
+  View,
+} from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { RESULTS, openSettings, type PermissionStatus } from 'react-native-permissions';
 
 import SplashScreen from './src/screens/SplashScreen';
 import WelcomeScreen from './src/screens/WelcomeScreen';
@@ -22,7 +33,6 @@ import RegisterScreen from './src/screens/RegisterScreen';
 import DeviceVerificationScreen from './src/screens/DeviceVerificationScreen';
 import { MainTabs } from '@/navigation/AppNavigator';
 import type { RootStackParamList } from '@/navigation/types';
-import ProfileInsightsScreen from './src/screens/insights/ProfileInsightsScreen';
 import PartnerInsightsScreen from './src/screens/insights/PartnerInsightsScreen';
 import AdminToolsScreen from './src/screens/insights/AdminToolsScreen';
 import AdminDashboardScreen from './src/screens/insights/AdminDashboardScreen';
@@ -50,14 +60,32 @@ import { getRequest } from '@/network/get';
 import ROUTES, { NEST_API_BASE_URL } from '@/network';
 import { postRequest } from '@/network/post';
 import { SocketProvider } from '@/SocketProvider';
+import { GlobalProfilePreviewProvider } from '@/components/profile/GlobalProfilePreviewProvider';
 import { initPushHandlers } from './src/push/notifications';
+import {
+  DEFAULT_CALLING_CODE,
+  DEFAULT_COUNTRY_ISO,
+  LocationCountryError,
+  resolveLocationCountry,
+} from '@/services/locationCountryService';
 
 type AuthCtx = {
   isAuth: boolean;
   setAuth: (b: boolean) => void;
   setPhone?: (p: string | null) => void;
+  locationReady?: boolean;
+  countryISO?: string;
+  callingCode?: string;
+  refreshLocation?: (requestPermission?: boolean) => Promise<boolean>;
 };
-const AuthContext = createContext<AuthCtx>({ isAuth: false, setAuth: () => {} });
+const AuthContext = createContext<AuthCtx>({
+  isAuth: false,
+  setAuth: () => {},
+  locationReady: false,
+  countryISO: DEFAULT_COUNTRY_ISO,
+  callingCode: DEFAULT_CALLING_CODE,
+  refreshLocation: async () => false,
+});
 export const useAuth = () => useContext(AuthContext);
 
 const RootStack = createNativeStackNavigator<RootStackParamList>();
@@ -71,6 +99,37 @@ export default function App() {
   const [isAuth, setAuth] = useState(false);
   const [load, setLoad] = useState(false);
   const [_phone, setPhone] = useState<string | null>(null);
+  const [locationReady, setLocationReady] = useState(false);
+  const [locationChecking, setLocationChecking] = useState(true);
+  const [locationCountryISO, setLocationCountryISO] = useState(DEFAULT_COUNTRY_ISO);
+  const [locationCallingCode, setLocationCallingCode] = useState(DEFAULT_CALLING_CODE);
+  const [locationStatus, setLocationStatus] = useState<PermissionStatus | null>(null);
+  const [locationError, setLocationError] = useState('Location access is required to use KIS.');
+
+  const syncLocationCountry = useCallback(async (requestPermission: boolean = false) => {
+    setLocationChecking(true);
+    try {
+      const resolved = await resolveLocationCountry(requestPermission);
+      setLocationStatus(resolved.permissionStatus);
+      setLocationCountryISO(resolved.countryISO);
+      setLocationCallingCode(resolved.callingCode);
+      setLocationReady(true);
+      setLocationError('');
+      return true;
+    } catch (error: any) {
+      if (error instanceof LocationCountryError) {
+        setLocationStatus(error.permissionStatus || null);
+        setLocationError(error.message || 'Location access is required to use KIS.');
+      } else {
+        setLocationStatus(null);
+        setLocationError('Location access is required to use KIS.');
+      }
+      setLocationReady(false);
+      return false;
+    } finally {
+      setLocationChecking(false);
+    }
+  }, []);
 
   const checkAuth = async () => {
     try {
@@ -130,13 +189,31 @@ export default function App() {
     (async () => {
       // ⏳ Force splash screen for minimum 5 seconds
       await Promise.all([
+        syncLocationCountry(true),
         checkAuth(),
         new Promise((resolve) => setTimeout(resolve, 3000)),
       ]);
 
       setBooting(false);
     })();
-  }, [load]);
+  }, [load, syncLocationCountry]);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') {
+        syncLocationCountry(false);
+      }
+    });
+    return () => subscription.remove();
+  }, [syncLocationCountry]);
+
+  useEffect(() => {
+    if (!locationReady) return;
+    const intervalId = setInterval(() => {
+      syncLocationCountry(false);
+    }, 60000);
+    return () => clearInterval(intervalId);
+  }, [locationReady, syncLocationCountry]);
 
   useEffect(() => {
     console.log('isAuth ->', isAuth);
@@ -188,148 +265,243 @@ export default function App() {
   }, [isAuth]);
 
   const ctx = useMemo(
-    () => ({ isAuth, setAuth, setPhone }),
-    [isAuth],
+    () => ({
+      isAuth,
+      setAuth,
+      setPhone,
+      locationReady,
+      countryISO: locationCountryISO,
+      callingCode: locationCallingCode,
+      refreshLocation: syncLocationCountry,
+    }),
+    [isAuth, locationReady, locationCountryISO, locationCallingCode, syncLocationCountry],
   );
 
   if (booting) {
     return <SplashScreen />;
   }
 
+  if (!locationReady) {
+    return (
+      <View style={locationStyles.root}>
+        <Text style={locationStyles.title}>Location Required</Text>
+        <Text style={locationStyles.message}>
+          {locationError || 'Location access is required to use KIS.'}
+        </Text>
+
+        {locationChecking ? <ActivityIndicator size="small" /> : null}
+
+        <Pressable
+          style={locationStyles.primaryButton}
+          onPress={async () => {
+            if (locationStatus === RESULTS.BLOCKED) {
+              await openSettings().catch(() => undefined);
+              return;
+            }
+            await syncLocationCountry(true);
+          }}
+        >
+          <Text style={locationStyles.primaryText}>
+            {locationStatus === RESULTS.BLOCKED ? 'Open Settings' : 'Enable Location'}
+          </Text>
+        </Pressable>
+
+        <Pressable
+          style={locationStyles.secondaryButton}
+          onPress={async () => {
+            await syncLocationCountry(false);
+          }}
+        >
+          <Text style={locationStyles.secondaryText}>Retry</Text>
+        </Pressable>
+      </View>
+    );
+  }
+
   return (
     <AuthContext.Provider value={ctx}>
       <SocketProvider>
         <NavigationContainer theme={scheme === 'dark' ? DarkTheme : DefaultTheme}>
-          <RootStack.Navigator screenOptions={{ headerShown: false }}>
-            {isAuth ? (
-              <>
-                <RootStack.Screen name="MainTabs" component={MainTabs} />
-                <RootStack.Screen
-                  name="ProfileInsights"
-                  component={ProfileInsightsScreen}
-                  options={{ presentation: 'modal' }}
-                />
-                <RootStack.Screen
-                  name="PartnerInsights"
-                  component={PartnerInsightsScreen}
-                  options={{ presentation: 'modal' }}
-                />
-                <RootStack.Screen
-                  name="OrganizationApp"
-                  component={OrganizationAppScreen}
-                  options={{ presentation: 'modal' }}
-                />
-                <RootStack.Screen
-                  name="OrganizationAppForm"
-                  component={OrganizationAppFormScreen}
-                  options={{ presentation: 'modal' }}
-                />
-                <RootStack.Screen
-                  name="AdminTools"
-                  component={AdminToolsScreen}
-                  options={{ presentation: 'modal' }}
-                />
-                <RootStack.Screen
-                  name="AnalyticsDashboard"
-                  component={AnalyticsDashboardScreen}
-                  options={{ presentation: 'modal' }}
-                />
-                <RootStack.Screen
-                  name="EventsDashboard"
-                  component={EventsDashboardScreen}
-                  options={{ presentation: 'modal' }}
-                />
-                <RootStack.Screen
-                  name="ContentDashboard"
-                  component={ContentDashboardScreen}
-                  options={{ presentation: 'modal' }}
-                />
-                <RootStack.Screen
-                  name="SurveysDashboard"
-                  component={SurveysDashboardScreen}
-                  options={{ presentation: 'modal' }}
-                />
-                <RootStack.Screen
-                  name="MediaDashboard"
-                  component={MediaDashboardScreen}
-                  options={{ presentation: 'modal' }}
-                />
-                <RootStack.Screen
-                  name="BridgeDashboard"
-                  component={BridgeDashboardScreen}
-                  options={{ presentation: 'modal' }}
-                />
-                <RootStack.Screen
-                  name="TiersDashboard"
-                  component={TiersDashboardScreen}
-                  options={{ presentation: 'modal' }}
-                />
-                <RootStack.Screen
-                  name="NotificationsDashboard"
-                  component={NotificationsDashboardScreen}
-                  options={{ presentation: 'modal' }}
-                />
-                <RootStack.Screen
-                  name="HealthInstitutionDetail"
-                  component={HealthInstitutionDetailScreen}
-                />
-                <RootStack.Screen
-                  name="HealthInstitutionManagement"
-                  component={HealthInstitutionManagementScreen}
-                />
-                <RootStack.Screen
-                  name="InstitutionProfileEditor"
-                  component={InstitutionProfileEditorScreen}
-                />
-                <RootStack.Screen
-                  name="ProfileLandingEditor"
-                  component={ProfileLandingEditorScreen}
-                />
-                <RootStack.Screen
-                  name="AvailabilityManagement"
-                  component={AvailabilityManagementScreen}
-                />
-                <RootStack.Screen
-                  name="HealthInstitutionMembers"
-                  component={HealthInstitutionMembersScreen}
-                />
-                <RootStack.Screen
-                  name="HealthInstitutionServicesCatalog"
-                  component={InstitutionServicesCatalogScreen}
-                />
-                <RootStack.Screen
-                  name="HealthInstitutionCards"
-                  component={HealthInstitutionCardsScreen}
-                />
-                <RootStack.Screen
-                  name="HealthServiceSession"
-                  component={HealthServiceSessionScreen}
-                />
-                <RootStack.Screen
-                  name="InstitutionLandingPreview"
-                  component={InstitutionLandingPreviewScreen}
-                />
-                <RootStack.Screen
-                  name="AdminDashboard"
-                  component={AdminDashboardScreen}
-                  options={{ presentation: 'modal' }}
-                />
-              </>
-            ) : (
-              <>
-                <RootStack.Screen name="Welcome" component={WelcomeScreen} />
-                <RootStack.Screen name="Login" component={LoginScreen} />
-                <RootStack.Screen name="Register" component={RegisterScreen} />
-                <RootStack.Screen name="DeviceVerification">
-                  {(props) => (
-                    <DeviceVerificationScreen {...props} setLoad={setLoad} />
-                  )}
-                </RootStack.Screen>
-              </>
-            )}
-          </RootStack.Navigator>
+          <GlobalProfilePreviewProvider>
+            <RootStack.Navigator screenOptions={{ headerShown: false }}>
+              {isAuth ? (
+                <>
+                  <RootStack.Screen name="MainTabs" component={MainTabs} />
+                  <RootStack.Screen
+                    name="PartnerInsights"
+                    component={PartnerInsightsScreen}
+                    options={{ presentation: 'modal' }}
+                  />
+                  <RootStack.Screen
+                    name="OrganizationApp"
+                    component={OrganizationAppScreen}
+                    options={{ presentation: 'modal' }}
+                  />
+                  <RootStack.Screen
+                    name="OrganizationAppForm"
+                    component={OrganizationAppFormScreen}
+                    options={{ presentation: 'modal' }}
+                  />
+                  <RootStack.Screen
+                    name="AdminTools"
+                    component={AdminToolsScreen}
+                    options={{ presentation: 'modal' }}
+                  />
+                  <RootStack.Screen
+                    name="AnalyticsDashboard"
+                    component={AnalyticsDashboardScreen}
+                    options={{ presentation: 'modal' }}
+                  />
+                  <RootStack.Screen
+                    name="EventsDashboard"
+                    component={EventsDashboardScreen}
+                    options={{ presentation: 'modal' }}
+                  />
+                  <RootStack.Screen
+                    name="ContentDashboard"
+                    component={ContentDashboardScreen}
+                    options={{ presentation: 'modal' }}
+                  />
+                  <RootStack.Screen
+                    name="SurveysDashboard"
+                    component={SurveysDashboardScreen}
+                    options={{ presentation: 'modal' }}
+                  />
+                  <RootStack.Screen
+                    name="MediaDashboard"
+                    component={MediaDashboardScreen}
+                    options={{ presentation: 'modal' }}
+                  />
+                  <RootStack.Screen
+                    name="BridgeDashboard"
+                    component={BridgeDashboardScreen}
+                    options={{ presentation: 'modal' }}
+                  />
+                  <RootStack.Screen
+                    name="TiersDashboard"
+                    component={TiersDashboardScreen}
+                    options={{ presentation: 'modal' }}
+                  />
+                  <RootStack.Screen
+                    name="NotificationsDashboard"
+                    component={NotificationsDashboardScreen}
+                    options={{ presentation: 'modal' }}
+                  />
+                  <RootStack.Screen
+                    name="HealthInstitutionDetail"
+                    component={HealthInstitutionDetailScreen}
+                  />
+                  <RootStack.Screen
+                    name="HealthInstitutionManagement"
+                    component={HealthInstitutionManagementScreen}
+                  />
+                  <RootStack.Screen
+                    name="InstitutionProfileEditor"
+                    component={InstitutionProfileEditorScreen}
+                  />
+                  <RootStack.Screen
+                    name="ProfileLandingEditor"
+                    component={ProfileLandingEditorScreen}
+                  />
+                  <RootStack.Screen
+                    name="AvailabilityManagement"
+                    component={AvailabilityManagementScreen}
+                  />
+                  <RootStack.Screen
+                    name="HealthInstitutionMembers"
+                    component={HealthInstitutionMembersScreen}
+                  />
+                  <RootStack.Screen
+                    name="HealthInstitutionServicesCatalog"
+                    component={InstitutionServicesCatalogScreen}
+                  />
+                  <RootStack.Screen
+                    name="HealthInstitutionCards"
+                    component={HealthInstitutionCardsScreen}
+                  />
+                  <RootStack.Screen
+                    name="HealthServiceSession"
+                    component={HealthServiceSessionScreen}
+                  />
+                  <RootStack.Screen
+                    name="InstitutionLandingPreview"
+                    component={InstitutionLandingPreviewScreen}
+                  />
+                  <RootStack.Screen
+                    name="AdminDashboard"
+                    component={AdminDashboardScreen}
+                    options={{ presentation: 'modal' }}
+                  />
+                </>
+              ) : (
+                <>
+                  <RootStack.Screen name="Welcome" component={WelcomeScreen} />
+                  <RootStack.Screen name="Login" component={LoginScreen} />
+                  <RootStack.Screen name="Register" component={RegisterScreen} />
+                  <RootStack.Screen name="DeviceVerification">
+                    {(props) => (
+                      <DeviceVerificationScreen {...props} setLoad={setLoad} />
+                    )}
+                  </RootStack.Screen>
+                </>
+              )}
+            </RootStack.Navigator>
+          </GlobalProfilePreviewProvider>
         </NavigationContainer>
       </SocketProvider>
     </AuthContext.Provider>
   );
 }
+
+const locationStyles = StyleSheet.create({
+  root: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+    gap: 16,
+    backgroundColor: '#FFFFFF',
+  },
+  title: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#111111',
+    textAlign: 'center',
+  },
+  message: {
+    fontSize: 15,
+    lineHeight: 22,
+    color: '#444444',
+    textAlign: 'center',
+    maxWidth: 420,
+  },
+  primaryButton: {
+    minHeight: 48,
+    minWidth: 180,
+    borderRadius: 10,
+    backgroundColor: '#111111',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+  },
+  primaryText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  secondaryButton: {
+    minHeight: 44,
+    minWidth: 120,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#111111',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+  },
+  secondaryText: {
+    color: '#111111',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+});

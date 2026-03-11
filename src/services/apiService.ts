@@ -33,9 +33,27 @@ const isFormDataLike = (body: any): boolean => {
   );
 };
 
+const assertSecureRequestUrl = (url: string): void => {
+  if (__DEV__) return;
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw new Error('Blocked request: invalid URL');
+  }
+  if (parsed.protocol !== 'https:') {
+    throw new Error('Blocked insecure request in production build');
+  }
+};
+
+const safeFetch = (url: string, init: RequestInit) => {
+  assertSecureRequestUrl(url);
+  return fetch(url, init);
+};
+
 const apiService = {
   get: (url: string, headers?: HeadersInit) =>
-    fetch(url, {
+    safeFetch(url, {
       method: 'GET',
       // GET has no body, so treat as JSON-style headers (no body anyway)
       headers: withHeaders(headers, false),
@@ -44,7 +62,7 @@ const apiService = {
   post: (url: string, body?: any, headers?: HeadersInit) => {
     const isFormData = isFormDataLike(body);
 
-    return fetch(url, {
+    return safeFetch(url, {
       method: 'POST',
       headers: withHeaders(headers, isFormData),
       body: isFormData
@@ -58,7 +76,7 @@ const apiService = {
   put: (url: string, body?: any, headers?: HeadersInit) => {
     const isFormData = isFormDataLike(body);
 
-    return fetch(url, {
+    return safeFetch(url, {
       method: 'PUT',
       headers: withHeaders(headers, isFormData),
       body: isFormData
@@ -72,7 +90,7 @@ const apiService = {
   patch: (url: string, body?: any, headers?: HeadersInit) => {
     const isFormData = isFormDataLike(body);
 
-    return fetch(url, {
+    return safeFetch(url, {
       method: 'PATCH',
       headers: withHeaders(headers, isFormData),
       body: isFormData
@@ -84,7 +102,7 @@ const apiService = {
   },
 
   delete: (url: string, headers?: HeadersInit) =>
-    fetch(url, {
+    safeFetch(url, {
       method: 'DELETE',
       headers: withHeaders(headers, false),
     }),

@@ -14,7 +14,7 @@ export function getFeaturesForType(type: FeatureContext['type']): FeatureAction[
     // ---------------- Inline (core, implemented) ----------------
     { id: 'inline.bold', label: 'Bold', icon: 'bold', category: 'inline', priority: 100,
       enabled: hasSelection, run: (ctx) => ctx.applyMarkToSelection('bold', true),
-      active: (ctx) => false },
+      active: (_ctx) => false },
     { id: 'inline.italic', label: 'Italic', icon: 'italic', category: 'inline', priority: 99,
       enabled: hasSelection, run: (ctx) => ctx.applyMarkToSelection('italic', true) },
     { id: 'inline.underline', label: 'Underline', icon: 'underline', category: 'inline', priority: 98,

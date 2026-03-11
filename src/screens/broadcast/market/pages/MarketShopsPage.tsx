@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useState } from 'react';
 import { Alert, Image, Pressable, ScrollView, Text, View } from 'react-native';
 import { useKISTheme } from '@/theme/useTheme';
 import { launchImageLibrary, Asset } from 'react-native-image-picker';

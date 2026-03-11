@@ -110,7 +110,7 @@ export default function InstitutionLandingPreviewScreen({ navigation, route }: P
   const spacing = HEALTH_THEME_SPACING;
   const typography = HEALTH_THEME_TYPOGRAPHY;
 
-  const draft = route.params?.draft ?? {};
+  const draft = useMemo(() => route.params?.draft ?? {}, [route.params?.draft]);
   const institutionName = route.params?.institutionName ?? draft?.hero?.title ?? 'Institution';
   const scrollRef = useRef<ScrollView | null>(null);
   const [stickyHeaderHeight, setStickyHeaderHeight] = useState(0);

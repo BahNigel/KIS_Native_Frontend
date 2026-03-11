@@ -134,6 +134,7 @@ type Props = {
     links: PartnerProfileLink[];
     loading: boolean;
     error?: string | null;
+    onClose: () => void;
     onToggleLink: (profileKey: PartnerProfileLink['profileKey'], link: boolean) => void;
     onSetRole: (profileKey: PartnerProfileLink['profileKey'], role: PartnerProfileLink['role']) => void;
     onRefresh: () => void;

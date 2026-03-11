@@ -8,7 +8,7 @@ import { styles } from '../profile.styles';
 
 export default function SectionCard({
   title,
-  type,
+  type: _type,
   items,
   onAdd,
   onEdit,

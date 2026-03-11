@@ -4,7 +4,6 @@ import {
   ActivityIndicator,
   View,
   Text,
-  ScrollView,
 } from 'react-native';
 import KISButton from '@/constants/KISButton';
 import KISTextInput from '@/constants/KISTextInput';

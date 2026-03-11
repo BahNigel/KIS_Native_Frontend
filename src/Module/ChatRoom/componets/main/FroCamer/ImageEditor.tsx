@@ -92,12 +92,12 @@ export const ImageEditor: React.FC<ImageEditorProps> = ({
   visible,
   asset,
   index,
-  total,
+  total: _total,
   palette,
   onClose,
   onSaveAsset,
-  onGoPrev,
-  onGoNext,
+  onGoPrev: _onGoPrev,
+  onGoNext: _onGoNext,
   onDoneAll, // (index, editedAsset) => void
 }) => {
   // 🔹 Grab everything from the hook via a single "editor" object

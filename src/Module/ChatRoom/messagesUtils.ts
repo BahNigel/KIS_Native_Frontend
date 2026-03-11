@@ -1,6 +1,5 @@
 import { KIS_TOKENS } from '@/theme/constants';
-import React from 'react';
-import { StyleSheet, Text } from 'react-native';
+import { StyleSheet } from 'react-native';
 
 /* ----------------------------- Types & Storage ----------------------------- */
 

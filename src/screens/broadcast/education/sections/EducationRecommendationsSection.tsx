@@ -104,14 +104,16 @@ export default function EducationRecommendationsSection({
 
       {spotlight.length > 0 ? (
         <View style={{ gap: 10 }}>
-          {spotlight.map(({ category, course }) => (
-            <View key={`${course.id}-${category.id}`}>
-              <Text style={{ color: palette.primaryStrong, fontWeight: '700' }}>
-                {category.name} spotlight
-              </Text>
-              <Text style={{ color: palette.text, fontSize: 14 }}>{course.title}</Text>
-            </View>
-          ))}
+          {spotlight.map(({ category, course }) =>
+            course ? (
+              <View key={`${course.id}-${category.id}`}>
+                <Text style={{ color: palette.primaryStrong, fontWeight: '700' }}>
+                  {category.name} spotlight
+                </Text>
+                <Text style={{ color: palette.text, fontSize: 14 }}>{course.title}</Text>
+              </View>
+            ) : null,
+          )}
         </View>
       ) : null}
     </View>

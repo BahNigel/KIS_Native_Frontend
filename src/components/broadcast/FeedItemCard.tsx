@@ -1,4 +1,4 @@
-import React, { use, useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Image,
   Pressable,
@@ -49,10 +49,6 @@ type Props = {
 
 export default function FeedItemCard({ item, onPress, onReact }: Props) {
   const { palette } = useKISTheme();
-
-  useEffect(()=>{
-    console.log('FeedItemCard rendered with item:', item);
-  },[])
 
   const normalizedAttachments = (item.attachments ?? [])
     .filter(Boolean)

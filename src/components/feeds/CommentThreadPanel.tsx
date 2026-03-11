@@ -135,7 +135,7 @@ export default function CommentThreadPanel({
     return () => {
       active = false;
     };
-  }, [conversationId, fetchConversationId, onConversationResolved]);
+  }, [conversationId, fetchConversationId, onConversationResolved, postId]);
 
   const sortByCreatedAt = useCallback((arr: CommentMessage[]) => {
     arr.sort((a, b) => parseCommentTimestamp(a.createdAt) - parseCommentTimestamp(b.createdAt));

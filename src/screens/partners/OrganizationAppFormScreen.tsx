@@ -26,6 +26,7 @@ import ROUTES from '@/network';
 import type { RootStackParamList } from '@/navigation/types';
 import { uploadFileToBackend } from '@/Module/ChatRoom/uploadFileToBackend';
 import { ORGANIZATION_APPS_UPDATED_EVENT } from '@/constants/partnerOrganizationApps';
+import { getAccessToken } from '@/security/authStorage';
 
 const TYPE_OPTIONS: Array<{ id: string; label: string }> = [
   { id: 'kis', label: 'KIS App' },
@@ -44,7 +45,18 @@ const VISIBILITY_OPTIONS: Array<{ id: string; label: string }> = [
 
 const DEFAULT_VISIBILITY = ['owner', 'admin', 'manager'];
 
-const buildPayload = (state: Record<string, string>) => ({
+type OrganizationAppPayload = {
+  name: string;
+  description: string;
+  link: string;
+  type: string;
+  group: string;
+  badge_label: string;
+  visible_to?: string[];
+  icon?: string;
+};
+
+const buildPayload = (state: Record<string, string>): OrganizationAppPayload => ({
   name: state.name.trim(),
   description: state.description.trim(),
   link: state.link.trim(),
@@ -116,7 +128,7 @@ const OrganizationAppFormScreen = () => {
     if (!selectedIcon) {
       return iconRemoteUrl;
     }
-    const token = await AsyncStorage.getItem('access_token');
+    const token = await getAccessToken();
     if (!token) {
       Alert.alert('Authentication required', 'You must be logged in to upload an icon.');
       throw new Error('Missing auth token');
@@ -360,9 +372,9 @@ const OrganizationAppFormScreen = () => {
 
         <View style={{ marginTop: 16 }}>
           <KISButton
-            title={isEditing ? 'Update app' : 'Create app'}
+            title={submitting ? 'Saving…' : isEditing ? 'Update app' : 'Create app'}
             onPress={handleSubmit}
-            loading={submitting}
+            disabled={submitting}
             size="sm"
           />
         </View>

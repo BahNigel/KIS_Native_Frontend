@@ -4,7 +4,6 @@ import {
   Alert,
   Animated,
   DeviceEventEmitter,
-  Image,
   Linking,
   Pressable,
   ScrollView,
@@ -16,7 +15,6 @@ import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import KISButton from '@/constants/KISButton';
-import KISTextInput from '@/constants/KISTextInput';
 import Skeleton from '@/components/common/Skeleton';
 import PartnerCreateSlide from '@/components/partners/CreatePartnerScreen';
 import { KISIcon } from '@/constants/kisIcons';
@@ -24,9 +22,6 @@ import { useAuth } from '../../../App';
 import { launchImageLibrary, Asset } from 'react-native-image-picker';
 import { profileLayout, styles } from './profile/profile.styles';
 import { useProfileController } from './profile/useProfileController';
-import { formatMoney } from './profile/profile.utils';
-import UpgradeSheet from './profile/profile/sheets/UpgradeSheet';
-import { getAttachmentPreviewInfo } from '@/components/broadcast/attachmentPreview';
 import { getRequest } from '@/network/get';
 import ROUTES from '@/network';
 import {
@@ -40,7 +35,6 @@ import { filterInstitutionsForVisibleRoles } from '@/screens/health/accessContro
 
 import HeroHeader from './profile/components/HeroHeader';
 import AccountCreditsCard from './profile/components/AccountCreditsCard';
-import { isPartnerTier } from '@/services/tierAccess';
 
 import BottomSheet from './profile/sheets/BottomSheet';
 import SheetHeader from './profile/sheets/SheetHeader';
@@ -48,7 +42,6 @@ import {
   BroadcastProfilesSection,
   ImpactSnapshotSection,
   PartnerProfilesSection,
-  SectionCardsList,
   LogoutSection,
 } from '@/screens/tabs/profile-screen-sections';
 import type {
@@ -67,9 +60,7 @@ import {
   UpgradeModal,
   WalletModal,
   buildDefaultFeedMediaOptions,
-  getPartnerLimitText,
   getSheetTitle,
-  HEALTH_INSTITUTION_TYPES,
   PROFILE_MANAGEMENT_TYPE,
 } from './profile-screen';
 import type {
@@ -83,8 +74,8 @@ import { HealthManagementModal } from './profile-screen/HealthManagementModal';
 
 export default function ProfileScreen() {
   const { palette } = useKISTheme();
-  const { setAuth, setPhone } = useAuth();
-  const c = useProfileController({ setAuth, setPhone });
+  const { setAuth, setPhone, callingCode } = useAuth();
+  const c = useProfileController({ setAuth, setPhone, locationCallingCode: callingCode });
   const tabsNavigation = useNavigation<BottomTabNavigationProp<MainTabsParamList, 'Profile'>>();
   const route = useRoute<RouteProp<MainTabsParamList, 'Profile'>>();
   const broadcastProfiles = c.broadcastProfiles;
@@ -128,6 +119,7 @@ export default function ProfileScreen() {
   const [inAppNotifications, setInAppNotifications] = useState<InAppNotification[]>([]);
   const [loadingNotifications, setLoadingNotifications] = useState(false);
   const [deletingNotificationId, setDeletingNotificationId] = useState<string | null>(null);
+  const [deletingGalleryItemId, setDeletingGalleryItemId] = useState<string | null>(null);
 
   const loadInAppNotifications = useCallback(async () => {
     setLoadingNotifications(true);
@@ -227,12 +219,112 @@ export default function ProfileScreen() {
   const partnerProfilesLimitValue = c.profile?.partner_profiles_limit_value ?? 0;
   const partnerProfilesIsUnlimited = !!c.profile?.partner_profiles_is_unlimited;
   const canCreatePartner = !!c.profile?.partner_profiles_can_create;
-  const partnerLimitText = getPartnerLimitText(
-    partnerProfilesIsUnlimited,
-    partnerProfilesLimitLabel ?? undefined,
-    partnerProfilesLimitValue,
-  );
   const showCreatePartnerButton = canCreatePartner;
+  const editGalleryItems = useMemo(() => {
+    const gallery: Array<{
+      id: string;
+      uri: string;
+      kind: 'image' | 'video';
+      title: string;
+      section: string;
+      itemType?: any;
+      itemId?: string;
+      deletable?: boolean;
+    }> = [];
+
+    const pushItem = (
+      id: string,
+      uri: unknown,
+      hint: string,
+      section: string,
+      forceKind?: 'image' | 'video',
+      itemType?: any,
+      itemId?: string,
+      deletable?: boolean,
+    ) => {
+      const value = String(uri || '').trim();
+      if (!value) return;
+      const lower = value.toLowerCase();
+      const isVideo =
+        forceKind === 'video' ||
+        /\.(mp4|mov|webm|m3u8|mkv|avi)(\?|$)/i.test(lower) ||
+        lower.includes('video');
+      gallery.push({
+        id,
+        uri: value,
+        kind: isVideo ? 'video' : 'image',
+        title: hint,
+        section,
+        itemType,
+        itemId,
+        deletable: !!deletable,
+      });
+    };
+
+    pushItem('cover_preview', c.profile?.profile?.cover_url, 'Cover image', 'Cover');
+    pushItem('avatar_preview', c.profile?.profile?.avatar_url, 'Profile image', 'Avatar');
+
+    const showcases = c.profile?.sections?.showcases || {};
+    const orderedTypes = ['portfolio', 'case_study', 'testimonial', 'certification', 'intro_video', 'highlight'];
+    orderedTypes.forEach((typeKey) => {
+      const rows = Array.isArray((showcases as any)?.[typeKey]) ? (showcases as any)[typeKey] : [];
+      rows.forEach((row: any, index: number) => {
+        const rowId = String(row?.id || `${typeKey}_${index}`);
+        const uri = row?.file_url || row?.file || row?.cover_url || row?.payload?.url;
+        const title = String(
+          row?.title ||
+            row?.name ||
+            row?.summary ||
+            typeKey.replace(/_/g, ' '),
+        );
+        const forceKind = typeKey === 'intro_video' ? 'video' : undefined;
+        pushItem(
+          rowId,
+          uri,
+          title,
+          typeKey.replace(/_/g, ' '),
+          forceKind,
+          typeKey,
+          rowId,
+          !!row?.id,
+        );
+      });
+    });
+    return gallery;
+  }, [c.profile?.profile?.avatar_url, c.profile?.profile?.cover_url, c.profile?.sections?.showcases]);
+
+  const handleDeleteGalleryItem = useCallback(async (item: any) => {
+    const itemType = item?.itemType;
+    const itemId = String(item?.itemId || '').trim();
+    if (!itemType || !itemId) return;
+    setDeletingGalleryItemId(itemId);
+    try {
+      await c.deleteItem(itemType, itemId);
+    } finally {
+      setDeletingGalleryItemId(null);
+    }
+  }, [c]);
+
+  const handleDeleteWalletEntry = useCallback((entryId: string) => {
+    const id = String(entryId || '').trim();
+    if (!id) return;
+    Alert.alert(
+      'Delete transaction history',
+      'This removes the transaction from your history list.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => {
+            c.deleteWalletLedgerEntry(id).catch((error: any) => {
+              Alert.alert('Wallet', error?.message || 'Unable to delete transaction history.');
+            });
+          },
+        },
+      ],
+    );
+  }, [c]);
 
   const sheetTitle = useMemo(() => getSheetTitle(c.activeSheet), [c.activeSheet]);
 
@@ -308,8 +400,6 @@ export default function ProfileScreen() {
     });
   }, [managementPanelOffset]);
 
-  const [selectedHealthInstitution, setSelectedHealthInstitution] = useState<any | null>(null);
-
   const resetFeedForm = useCallback(() => {
     setPanelFeedItemTitle('');
     setPanelFeedItemSummary('');
@@ -318,7 +408,7 @@ export default function ProfileScreen() {
     setPanelFeedAssets([]);
     setPanelFeedExistingAttachments([]);
     setPanelFeedMediaOptions(buildDefaultFeedMediaOptions());
-  }, [buildDefaultFeedMediaOptions]);
+  }, []);
 
   const updatePanelFeedMediaOptions = useCallback(
     (type: FeedMediaType, updates: Partial<FeedMediaOptions[FeedMediaType]>) => {
@@ -417,7 +507,7 @@ export default function ProfileScreen() {
       }
       setPanelFeedMediaOptions(nextOptions);
     },
-    [buildDefaultFeedMediaOptions],
+    [],
   );
 
   const handleCancelFeedEdit = useCallback(() => {
@@ -471,14 +561,6 @@ export default function ProfileScreen() {
     }
     tabsNavigation.setParams({ broadcastProfileKey: undefined });
   }, [tabsNavigation, managementPanelKey, openManagementPanel, requestedBroadcastProfileKey]);
-
-  const openProfileInsights = useCallback(() => {
-    rootNavigation?.navigate('ProfileInsights');
-  }, [rootNavigation]);
-
-  const openAdminTools = useCallback(() => {
-    rootNavigation?.navigate('AdminTools');
-  }, [rootNavigation]);
 
   const openMarketLandingBuilder = useCallback(() => {
     rootNavigation?.navigate('ProfileLandingEditor', {
@@ -683,15 +765,6 @@ export default function ProfileScreen() {
     setMarketFormMode('edit');
   }, []);
 
-  const beginEducationEdit = useCallback((course: any) => {
-    setEducationForm({
-      id: course.id,
-      title: course.title,
-      summary: course.summary || '',
-    });
-    setEducationFormMode('edit');
-  }, []);
-
   const unwrapList = useCallback((payload: any) => {
     if (!payload) return [];
     if (Array.isArray(payload)) return payload;
@@ -753,14 +826,6 @@ export default function ProfileScreen() {
   );
 
   const nextLesson = upcomingLessons[0] ?? null;
-
-  const handlePlanLesson = useCallback(() => {
-    Alert.alert('Lesson', 'Lesson scheduling tools coming soon (Phase 2).');
-  }, []);
-
-  const handleRecordSession = useCallback(() => {
-    Alert.alert('Recording', 'Live session capture will appear here once enabled.');
-  }, []);
 
   const handleEducationModuleSave = useCallback(async () => {
     const title = educationModuleForm.title.trim();
@@ -1123,37 +1188,13 @@ export default function ProfileScreen() {
               showCreatePartnerButton={showCreatePartnerButton}
               onCreatePartner={c.openCreatePartner}
               walletLedger={c.walletLedger}
+              onDeleteWalletEntry={handleDeleteWalletEntry}
+              deletingWalletEntryId={c.deletingWalletEntryId}
               partnerProfilesCount={partnerProfilesCount}
               partnerProfilesLimitLabel={partnerProfilesLimitLabel}
               partnerProfilesLimitValue={partnerProfilesLimitValue}
               partnerProfilesIsUnlimited={partnerProfilesIsUnlimited}
             />
-
-            <View
-              style={[
-                styles.card,
-                {
-                  borderColor: palette.divider,
-                  backgroundColor: palette.surface,
-                  borderWidth: 1,
-                  marginTop: 12,
-                },
-              ]}
-            >
-              <Text style={[styles.title, { color: palette.text }]}>Profile analytics</Text>
-              <Text style={[styles.subtext, { color: palette.subtext, marginTop: 4 }]}>
-                Surface-level KPIs directly from the analytics backend.
-              </Text>
-            <View style={{ marginTop: 10 }}>
-              <KISButton title="View insights" onPress={openProfileInsights} />
-              <KISButton
-                title="Developer tools"
-                variant="outline"
-                onPress={openAdminTools}
-                style={{ marginTop: 8 }}
-              />
-            </View>
-          </View>
 
             <View
               style={[
@@ -1257,13 +1298,6 @@ export default function ProfileScreen() {
               ]}
             />
 
-            <SectionCardsList
-              sections={c.sectionList}
-              onAdd={(type) => c.openItemEditor(type)}
-              onEdit={(type, item) => c.openItemEditor(type, item)}
-              onDelete={(type, id) => c.deleteItem(type, id)}
-            />
-
             <LogoutSection palette={palette} onLogout={c.logout} />
           </>
         )}
@@ -1322,6 +1356,21 @@ export default function ProfileScreen() {
                 pickImage={c.pickImage}
                 saving={c.saving}
                 saveProfile={c.saveProfile}
+                sections={c.sectionList}
+                onAddSectionItem={(type) => {
+                  if (type === 'portfolio' || type === 'intro_video') {
+                    c.addGalleryMedia();
+                    return;
+                  }
+                  c.openItemEditor(type);
+                }}
+                onEditSectionItem={(type, item) => c.openItemEditor(type, item)}
+                onDeleteSectionItem={(type, id) => c.deleteItem(type, id)}
+                galleryItems={editGalleryItems}
+                onAddGalleryMedia={c.addGalleryMedia}
+                addingGalleryMedia={c.addingGalleryMedia}
+                onDeleteGalleryItem={handleDeleteGalleryItem}
+                deletingGalleryItemId={deletingGalleryItemId}
               />
             )}
 
@@ -1351,6 +1400,9 @@ export default function ProfileScreen() {
                 palette={palette}
                 walletForm={c.walletForm}
                 setWalletForm={c.setWalletForm}
+                setWalletRecipient={c.setWalletRecipient}
+                walletRecipientVerification={c.walletRecipientVerification}
+                verifyWalletRecipient={c.verifyWalletRecipient}
                 saving={c.saving}
                 submitWalletAction={c.submitWalletAction}
                 lastWalletPaymentUrl={c.lastWalletPaymentUrl}
@@ -1370,6 +1422,8 @@ export default function ProfileScreen() {
                 onResume={c.resumeSubscription}
                 onDowngrade={c.downgradeTier}
                 onRetry={c.retryTransaction}
+                onDeleteTransaction={c.deleteBillingTransaction}
+                deletingTransactionId={c.deletingBillingTransactionId}
               />
             )}
           </ScrollView>

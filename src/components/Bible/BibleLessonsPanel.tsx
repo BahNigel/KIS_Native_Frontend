@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Alert, DeviceEventEmitter, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useKISTheme } from '@/theme/useTheme';
@@ -35,7 +35,7 @@ export default function BibleLessonsPanel() {
   const [detailVisible, setDetailVisible] = useState(false);
   const hasCcPartnerLessons = partnerCourses.length > 0;
 
-  const normalizeCourse = (course: Course) => ({
+  const normalizeCourse = useCallback((course: Course) => ({
     ...course,
     is_free:
       typeof course.is_free === 'boolean'
@@ -43,9 +43,9 @@ export default function BibleLessonsPanel() {
         : course.price_amount === null ||
           course.price_amount === undefined ||
           String(course.price_amount) === '0',
-  });
+  }), []);
 
-  const loadCourses = async () => {
+  const loadCourses = useCallback(async () => {
     const [bibleRes, partnerRes] = await Promise.all([
       getRequest(`${ROUTES.bible.courses}?scope=bible`, { errorMessage: 'Unable to load Bible courses.' }),
       getRequest(`${ROUTES.bible.courses}?scope=partner`, { errorMessage: 'Unable to load partner courses.' }),
@@ -56,11 +56,11 @@ export default function BibleLessonsPanel() {
     const partnerList = Array.isArray(partnerPayload) ? partnerPayload : [];
     setBibleCourses(bibleList.map(normalizeCourse));
     setPartnerCourses(partnerList.map(normalizeCourse));
-  };
+  }, [normalizeCourse]);
 
   useEffect(() => {
     loadCourses();
-  }, []);
+  }, [loadCourses]);
 
   const openCourse = (course: Course) => {
     setSelectedCourse(course);

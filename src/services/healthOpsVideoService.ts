@@ -1,4 +1,5 @@
 import ROUTES from '@/network';
+import { deleteRequest } from '@/network/delete';
 import { getRequest } from '@/network/get';
 import { patchRequest } from '@/network/patch';
 import { postRequest } from '@/network/post';
@@ -82,5 +83,62 @@ export const endHealthOpsVideoSession = (
     },
     {
       errorMessage: 'Unable to end video consultation session.',
+    },
+  );
+
+export const fetchEngineSessionVideoItems = (engineSessionId: string) =>
+  getRequest(ROUTES.healthOps.engineSessionVideoItems(engineSessionId), {
+    errorMessage: 'Unable to load video items.',
+  });
+
+export const updateEngineSessionVideoItemProgress = (
+  engineSessionId: string,
+  itemId: string,
+  options?: {
+    watchedSeconds?: number;
+    isCompleted?: boolean;
+    payload?: Record<string, any>;
+  },
+) =>
+  patchRequest(
+    ROUTES.healthOps.engineSessionVideoItemProgress(engineSessionId, itemId),
+    {
+      ...(typeof options?.watchedSeconds === 'number' ? { watched_seconds: Math.max(0, Math.floor(options.watchedSeconds)) } : {}),
+      ...(typeof options?.isCompleted === 'boolean' ? { is_completed: options.isCompleted } : {}),
+      ...(options?.payload && typeof options.payload === 'object' ? { payload: options.payload } : {}),
+    },
+    {
+      errorMessage: 'Unable to update video progress.',
+    },
+  );
+
+export const likeEngineSessionVideoItem = (engineSessionId: string, itemId: string) =>
+  postRequest(
+    ROUTES.healthOps.engineSessionVideoItemLike(engineSessionId, itemId),
+    {},
+    {
+      errorMessage: 'Unable to like video.',
+    },
+  );
+
+export const unlikeEngineSessionVideoItem = (engineSessionId: string, itemId: string) =>
+  deleteRequest(
+    ROUTES.healthOps.engineSessionVideoItemLike(engineSessionId, itemId),
+    {
+      errorMessage: 'Unable to unlike video.',
+    },
+  );
+
+export const fetchEngineSessionVideoItemComments = (engineSessionId: string, itemId: string) =>
+  getRequest(ROUTES.healthOps.engineSessionVideoItemComments(engineSessionId, itemId), {
+    errorMessage: 'Unable to load video comments.',
+  });
+
+export const createEngineSessionVideoItemComment = (engineSessionId: string, itemId: string, body: string) =>
+  postRequest(
+    ROUTES.healthOps.engineSessionVideoItemComments(engineSessionId, itemId),
+    { body: String(body || '').trim() },
+    {
+      errorMessage: 'Unable to post video comment.',
     },
   );

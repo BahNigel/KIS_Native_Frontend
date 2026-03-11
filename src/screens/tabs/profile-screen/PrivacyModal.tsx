@@ -50,9 +50,9 @@ export function PrivacyModal(props: PrivacyModalProps) {
               ))}
             </View>
 
-            {(rule.visibility === 'custom' || rule.visibility === 'contacts') && (
+            {rule.visibility === 'custom' && (
               <KISTextInput
-                label="Allowed user IDs (comma separated)"
+                label="Allowed phone numbers (comma separated)"
                 value={allowValue}
                 onChangeText={(text) =>
                   setDraftPrivacy((s: any) => ({

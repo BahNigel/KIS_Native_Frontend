@@ -19,6 +19,7 @@ import ROUTES, { CHAT_BASE_URL } from '@/network';
 import { getRequest } from '@/network/get';
 import apiService from '@/services/apiService';
 import { uploadFileToBackend } from '@/Module/ChatRoom/uploadFileToBackend';
+import { getAccessToken } from '@/security/authStorage';
 
 type MemberUser = {
   id?: string;
@@ -72,16 +73,6 @@ export const CommunityInfoPage: React.FC<CommunityInfoPageProps> = ({
   const [members, setMembers] = useState<CommunityMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-
-  const initials = useMemo(() => {
-    const title = communityName || 'Community';
-    return title
-      .split(' ')
-      .map((p) => p[0])
-      .join('')
-      .slice(0, 2)
-      .toUpperCase();
-  }, [communityName]);
 
   useEffect(() => {
     let mounted = true;
@@ -145,7 +136,7 @@ export const CommunityInfoPage: React.FC<CommunityInfoPageProps> = ({
       return;
     }
 
-    const token = await AsyncStorage.getItem('access_token');
+    const token = await getAccessToken();
     const deviceId = await AsyncStorage.getItem('device_id');
     if (!token) {
       Alert.alert('Not signed in', 'Please log in again.');

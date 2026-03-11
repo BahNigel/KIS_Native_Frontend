@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React from 'react';
 import { ActivityIndicator, Image, Pressable, Text, View } from 'react-native';
 import { useKISTheme } from '@/theme/useTheme';
 import styles from '@/components/partners/partnersStyles';

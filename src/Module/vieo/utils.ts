@@ -10,7 +10,7 @@ export const normalizeVideoUrl = (value?: string | null): string | null => {
       return null;
     }
     return normalized.toString();
-  } catch (error) {
+  } catch {
     return null;
   }
 };

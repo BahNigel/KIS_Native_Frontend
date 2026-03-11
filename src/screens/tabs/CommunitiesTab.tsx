@@ -26,8 +26,6 @@ import { useSocket } from '../../../SocketProvider';
 import CommunityRoomPage from '@/Module/Community/CommunityRoomPage';
 import CommunityInfoPage from '@/Module/Community/CommunityInfoPage';
 
-const emptyArr: any[] = [];
-
 type Community = {
   id: string;
   name: string;
@@ -609,12 +607,15 @@ const styles = StyleSheet.create({
   headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
   title: { fontSize: 18, fontWeight: '700' },
   card: { padding: 12, borderRadius: 12, borderWidth: 2, marginBottom: 10 },
+  communityCard: { padding: 12, borderRadius: 12, borderWidth: 2, marginBottom: 10 },
+  communityRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   iconBtn: { padding: 6 },
   segmentRow: { flexDirection: 'row', gap: 8, marginBottom: 12 },
   segment: { flex: 1, paddingVertical: 8, borderRadius: 10, borderWidth: 2, alignItems: 'center' },
   composer: { flexDirection: 'row', alignItems: 'center', borderWidth: 2, borderRadius: 10, paddingHorizontal: 8, marginBottom: 12 },
   input: { flex: 1, paddingVertical: 8, paddingHorizontal: 8 },
   primaryBtn: { paddingVertical: 10, borderRadius: 10, alignItems: 'center', marginBottom: 12 },
+  overlay: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 },
   modalOverlay: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.45)' },
   modalCard: { width: '88%', borderRadius: 14, borderWidth: 2, padding: 16 },
   modalRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 12 },

@@ -3,7 +3,7 @@ import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert } from 'rea
 import KISButton from '@/constants/KISButton';
 import { styles as profileStyles } from '@/screens/tabs/profile/profile.styles';
 import { KISIcon } from '@/constants/kisIcons';
-import { institutionSchemaMap, allInstitutionTypes, InstitutionSchema, SectionDefinition, FieldDefinition } from '@/schema/institutionOnboarding';
+import { institutionSchemaMap, allInstitutionTypes, InstitutionSchema, FieldDefinition } from '@/schema/institutionOnboarding';
 import KISTextInput from '@/constants/KISTextInput';
 
 const STEP_ORDER = ['identity', 'location', 'contact', 'media', 'compliance'];
@@ -30,7 +30,7 @@ const renderField = (
           placeholder={field.placeholder}
           keyboardType={field.type === 'number' ? 'numeric' : 'default'}
           multiline={field.type === 'textarea'}
-          disabled={disabled}
+          editable={!disabled}
         />
       );
     case 'select':
@@ -95,7 +95,7 @@ const renderField = (
 };
 
 export default function InstitutionOnboardingScreen() {
-  const [selectedType, setSelectedType] = useState(allInstitutionTypes[0]);
+  const [selectedType, _setSelectedType] = useState(allInstitutionTypes[0]);
   const [currentStep, setCurrentStep] = useState(0);
   const schema = useMemo<InstitutionSchema>(() => institutionSchemaMap[selectedType], [selectedType]);
   const [formState, setFormState] = useState<Record<string, any>>({ type: selectedType });

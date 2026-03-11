@@ -20,10 +20,11 @@ import { postRequest } from '@/network/post/index';
 import ROUTES from '@/network';
 import { useAuth } from '../../App';
 import { ensureDeviceId } from '@/security/e2ee';
+import { setAuthTokens } from '@/security/authStorage';
 import { KIS_TOKENS } from '@/theme/constants';
 
-const CM_REGION = 'CM';
-const CM_NATIONAL_MAX = 9;
+const DEFAULT_COUNTRY_ISO = 'CM';
+const DEFAULT_COUNTRY_CODE = '+237';
 
 const makeStyles = (tokens: typeof KIS_TOKENS) =>
   StyleSheet.create({
@@ -94,9 +95,9 @@ const makeStyles = (tokens: typeof KIS_TOKENS) =>
 export default function LoginScreen({ navigation }: any) {
   const { palette, tokens } = useKISTheme();
   const styles = useMemo(() => makeStyles(tokens), [tokens]);
-  const { setAuth, setPhone } = useAuth();
+  const { setAuth, setPhone, countryISO, callingCode, locationReady } = useAuth();
 
-  const [phone, setPhoneInput] = useState('');
+  const [phoneNumber, setPhoneNumber] = useState('');
   const [password, setPassword] = useState('');
   const [remember, setRemember] = useState(true);
   const [loading, setLoading] = useState(false);
@@ -107,44 +108,46 @@ export default function LoginScreen({ navigation }: any) {
   const [forgotPassword, setForgotPassword] = useState('');
   const [forgotLoading, setForgotLoading] = useState(false);
 
-  // Accept either national digits or +E.164. If national, enforce 0–9 digits (CM).
-  const onChangePhone = useCallback((value: string) => {
-    const v = (value || '').trim();
-
-    if (v.startsWith('+')) {
-      // Let backend normalize E.164; keep as-is but strip illegal chars
-      const cleaned = v.replace(/[^\d+]/g, '');
-      setPhoneInput(cleaned);
-      return;
-    }
-
-    // National input (CM). Keep only digits and hard-cap to 9.
-    const nat = v.replace(/\D/g, '').slice(0, CM_NATIONAL_MAX);
-    setPhoneInput(nat);
+  const onChangePhoneNumber = useCallback((value: string) => {
+    const digits = String(value || '').replace(/[^\d]/g, '').slice(0, 14);
+    setPhoneNumber(digits);
   }, []);
 
-  const phoneValid = useMemo(() => {
-    if (!phone) return false;
-    if (phone.startsWith('+')) {
-      // '+2376…' — allow basic length check; backend does full validation
-      return phone.replace(/[^\d]/g, '').length >= 11; // +237 + 9 digits = 12 chars incl '+'
-    }
-    // national digits for CM: 9 digits
-    return /^\d{9}$/.test(phone);
-  }, [phone]);
+  const activeCountryCode = useMemo(() => {
+    const digits = String(callingCode || DEFAULT_COUNTRY_CODE).replace(/[^\d]/g, '').slice(0, 4);
+    return digits ? `+${digits}` : DEFAULT_COUNTRY_CODE;
+  }, [callingCode]);
 
-  const canSubmit = phoneValid && password.length > 0 && !loading;
+  const activeCountryISO = useMemo(
+    () => String(countryISO || DEFAULT_COUNTRY_ISO).trim().toUpperCase() || DEFAULT_COUNTRY_ISO,
+    [countryISO],
+  );
+
+  const phoneValid = useMemo(() => {
+    const normalizedCode = String(activeCountryCode || '').replace(/[^\d]/g, '');
+    const normalizedPhone = String(phoneNumber || '').replace(/[^\d]/g, '');
+    if (!normalizedCode || !normalizedPhone) return false;
+    return normalizedPhone.length >= 6;
+  }, [activeCountryCode, phoneNumber]);
+
+  const composedPhone = useMemo(() => {
+    const normalizedCode = String(activeCountryCode || '').replace(/[^\d]/g, '');
+    const normalizedPhone = String(phoneNumber || '').replace(/[^\d]/g, '');
+    if (!normalizedPhone) return '';
+    return `${normalizedCode ? `+${normalizedCode}` : ''}${normalizedPhone}`;
+  }, [activeCountryCode, phoneNumber]);
+
+  const canSubmit = !!locationReady && phoneValid && password.length > 0 && !loading;
 
   const persistAuth = async (data: any) => {
     const access = data?.access || data?.access_token;
     const refresh = data?.refresh || data?.refresh_token;
-    if (access) await AsyncStorage.setItem('access_token', access);
-    if (refresh) await AsyncStorage.setItem('refresh_token', refresh);
+    await setAuthTokens({ accessToken: access ?? null, refreshToken: refresh ?? null });
 
     // Save what the user typed (national or +E.164); optional
-    if (remember && phone) {
-      await AsyncStorage.setItem('user_phone', phone.trim());
-      setPhone?.(phone.trim());
+    if (remember && composedPhone) {
+      await AsyncStorage.setItem('user_phone', composedPhone.trim());
+      setPhone?.(composedPhone.trim());
     } else {
       await AsyncStorage.removeItem('user_phone');
       setPhone?.(null);
@@ -156,12 +159,16 @@ export default function LoginScreen({ navigation }: any) {
       if (!canSubmit) return;
       setLoading(true);
 
-      // Always send country: "CM", keep phone as typed (either 9 digits or +E.164)
+      // Country code is derived from live device location.
       const deviceId = await ensureDeviceId();
+      const normalizedCode = String(activeCountryCode || '').replace(/[^\d]/g, '');
+      const normalizedPhone = String(phoneNumber || '').replace(/[^\d]/g, '');
       const payload = {
-        phone: phone.trim(),
+        phone: composedPhone.trim(),
+        phone_country_code: normalizedCode ? `+${normalizedCode}` : '',
+        phone_number: normalizedPhone,
         password,
-        country: CM_REGION,
+        country: activeCountryISO,
         device_id: deviceId,
         device_platform: Platform.OS,
       };
@@ -193,9 +200,9 @@ export default function LoginScreen({ navigation }: any) {
   const forgotPhoneValid = useMemo(() => {
     if (!forgotPhone) return false;
     if (forgotPhone.startsWith('+')) {
-      return forgotPhone.replace(/[^\d]/g, '').length >= 11;
+      return forgotPhone.replace(/[^\d]/g, '').length >= 8;
     }
-    return /^\d{9}$/.test(forgotPhone);
+    return /^\d{6,14}$/.test(forgotPhone);
   }, [forgotPhone]);
 
   const requestResetCode = async () => {
@@ -258,23 +265,21 @@ export default function LoginScreen({ navigation }: any) {
         Log In
       </KISText>
 
-      <View>
-        <KISText preset="helper" color={palette.subtext}>
-          Country
-        </KISText>
-        <KISText preset="title" color={palette.text}>
-          CM
-        </KISText>
-      </View>
+      <KISTextInput
+        label="Country code (auto from location)"
+        value={`${activeCountryISO} ${activeCountryCode}`}
+        editable={false}
+        helperText="Country code updates automatically from your device location."
+      />
 
       <KISTextInput
-        label="Phone (CM)"
-        placeholder="e.g. 676139881 or +237676139881"
+        label="Phone number"
+        placeholder="e.g. 676139881"
         autoCapitalize="none"
         keyboardType="phone-pad"
-        value={phone}
-        onChangeText={onChangePhone}
-        errorText={phone.length > 0 && !phoneValid ? 'Enter a valid CM number (9 digits) or +237…' : undefined}
+        value={phoneNumber}
+        onChangeText={onChangePhoneNumber}
+        errorText={phoneNumber.length > 0 && !phoneValid ? 'Enter a valid phone number.' : undefined}
       />
 
       <KISTextInput
@@ -328,15 +333,15 @@ export default function LoginScreen({ navigation }: any) {
               Reset password
             </KISText>
             <KISTextInput
-              label="Phone (CM)"
-              placeholder="e.g. 676139881 or +237676139881"
+              label={`Phone (${activeCountryISO})`}
+              placeholder={`e.g. 676139881 or ${activeCountryCode}676139881`}
               autoCapitalize="none"
               keyboardType="phone-pad"
               value={forgotPhone}
               onChangeText={setForgotPhone}
               errorText={
                 forgotPhone.length > 0 && !forgotPhoneValid
-                  ? 'Enter a valid CM number (9 digits) or +237…'
+                  ? `Enter a valid number or ${activeCountryCode}…`
                   : undefined
               }
             />

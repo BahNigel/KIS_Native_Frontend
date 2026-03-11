@@ -18,7 +18,7 @@ export function useDraftState(
   useEffect(() => {
     const nextKey = makeDraftKey();
     setDraftKey(nextKey);
-    setDraft((prev) => {
+    setDraft((_prev) => {
       const existing = draftsByKey[nextKey];
       return existing ?? '';
     });

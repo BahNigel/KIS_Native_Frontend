@@ -3,6 +3,11 @@ import { RefreshControl, Text, View } from 'react-native';
 import { useKISTheme } from '@/theme/useTheme';
 
 import BroadcastFeedCard from '@/components/broadcast/BroadcastFeedCard';
+import BroadcastAuthorProfileSheet from '@/components/broadcast/BroadcastAuthorProfileSheet';
+import {
+  isUserBroadcastSource,
+} from '@/components/broadcast/authorProfileUtils';
+import useAuthorProfilePreview from '@/components/broadcast/useAuthorProfilePreview';
 import SectionHeader from '@/screens/broadcast/feeds/components/SectionHeader';
 
 export type BroadcastSourceMeta = {
@@ -23,7 +28,7 @@ export type BroadcastFeedItem = {
   text_doc?: any;
   text_plain?: string;
   attachments?: any[];
-  author?: { display_name?: string; avatar_url?: string; id?: string };
+  author?: { display_name?: string; avatar_url?: string; id?: string; bio?: string; headline?: string };
   created_at?: string;
   broadcasted_at?: string;
   reaction_count?: number;
@@ -56,6 +61,14 @@ export default function FeedsMainListSection({
   onSubscribe,
 }: Props) {
   const { palette } = useKISTheme();
+  const {
+    visible: authorProfileVisible,
+    loading: authorProfileLoading,
+    error: authorProfileError,
+    profile: authorProfile,
+    openAuthorProfile,
+    closeAuthorProfile,
+  } = useAuthorProfilePreview();
 
   const headerSubtitle = useMemo(() => {
     // optional: if your backend returns a top channel/source, you can show it here
@@ -114,7 +127,6 @@ export default function FeedsMainListSection({
               allow_subscribe: canSubscribe,
               is_subscribed: subscribed,
             };
-console.log('Rendering BroadcastFeedCard for item:', item);
             return (
               <BroadcastFeedCard
                 key={item.id}
@@ -134,6 +146,13 @@ console.log('Rendering BroadcastFeedCard for item:', item);
                 onMenuPress={() => {}}
                 onSave={() => {}}
                 onToggleComments={() => {}}
+                onOpenAuthorProfile={
+                  isUserBroadcastSource(item)
+                    ? () => {
+                        void openAuthorProfile(item);
+                      }
+                    : undefined
+                }
                 onSubscribe={
                   canSubscribe
                     ? async () => {
@@ -162,6 +181,13 @@ console.log('Rendering BroadcastFeedCard for item:', item);
           ) : null}
         </View>
       </View>
+      <BroadcastAuthorProfileSheet
+        visible={authorProfileVisible}
+        loading={authorProfileLoading}
+        error={authorProfileError}
+        profile={authorProfile}
+        onClose={closeAuthorProfile}
+      />
     </View>
   );
 }

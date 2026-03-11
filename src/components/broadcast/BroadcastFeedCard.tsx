@@ -2,9 +2,16 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useKISTheme } from '@/theme/useTheme';
 import { KISIcon } from '@/constants/kisIcons';
+import KISText from '@/components/common/KISText';
 import { resolveBackendAssetUrl } from '@/network';
 import RichTextRenderer from '@/components/feeds/RichTextRenderer';
 import { getAttachmentPreviewInfo } from './attachmentPreview';
+import {
+  extractBroadcastAuthorBio,
+  formatKisHandle,
+  isUserBroadcastSource,
+  truncateWords,
+} from '@/components/broadcast/authorProfileUtils';
 
 type BroadcastSourceMeta = {
   type: 'community' | 'partner' | 'channel' | 'market' | 'lesson' | 'live' | string;
@@ -37,6 +44,10 @@ export type BroadcastFeedItem = {
     display_name?: string;
     avatar_url?: string;
     id?: string;
+    profile_id?: string;
+    bio?: string;
+    headline?: string;
+    summary?: string;
   };
   created_at?: string;
   broadcasted_at?: string;
@@ -76,6 +87,7 @@ type Props = {
   onVideoPress?: () => void;
   onSave?: () => void;
   onJoinLesson?: () => void;
+  onOpenAuthorProfile?: () => void;
   commentConversationId?: string | null;
   fetchConversationId?: () => Promise<string | null>;
   onConversationResolved?: (conversationId: string | null) => void;
@@ -129,35 +141,40 @@ export default function BroadcastFeedCard({
   onVideoPress,
   onSave,
   onJoinLesson,
+  onOpenAuthorProfile,
   onToggleComments,
   onSubscribe,
 }: Props) {
   const { palette, tokens } = useKISTheme();
   const styles = useMemo(() => makeStyles(tokens), [tokens]);
   const [excerptExpanded, setExcerptExpanded] = useState(false);
-
-  useCallback(()=>{
-    console.log('BroadcastFeedCard rendered with item 2:', item);
-  },[]);
+  const [authorBioExpanded, setAuthorBioExpanded] = useState(false);
 
   const when = safeTimeLabel(item.broadcasted_at ?? item.created_at);
   const sourceName =
     item.source?.name ||
     (item.source?.type ? item.source.type.charAt(0).toUpperCase() + item.source.type.slice(1) : '') ||
     '';
+  const isUserSource = isUserBroadcastSource(item);
+  const authorDisplayName = String(item.author?.display_name ?? '').trim();
+  const authorName = isUserSource
+    ? authorDisplayName || 'KIS user'
+    : authorDisplayName || sourceName || 'Broadcast';
+  const headerName = isUserSource ? formatKisHandle(authorName) : authorName;
+  const authorBio = isUserSource ? extractBroadcastAuthorBio(item) : '';
+  const truncatedAuthorBio = useMemo(() => truncateWords(authorBio, 18), [authorBio]);
+  const metaSource = isUserSource ? sourceName || 'Broadcast profile' : sourceName;
 
   const excerpt = getTextExcerpt(item);
   const showTitle = Boolean(item.title && item.title.trim().length);
   const showExcerpt = Boolean(excerpt && excerpt.length);
 
-  const attachments = Array.isArray(item.attachments) ? item.attachments : [];
-  const attachmentPreviews = useMemo(
-    () =>
-      attachments
-        .map((a) => getAttachmentPreviewInfo(a))
-        .filter((info) => Boolean(info.previewUri || info.url)),
-    [attachments],
-  );
+  const attachmentPreviews = useMemo(() => {
+    const attachments = Array.isArray(item.attachments) ? item.attachments : [];
+    return attachments
+      .map((a) => getAttachmentPreviewInfo(a))
+      .filter((info) => Boolean(info.previewUri || info.url));
+  }, [item.attachments]);
   const [activeAttachmentIndex, setActiveAttachmentIndex] = useState(0);
 
   const handlePrevAttachment = useCallback(() => {
@@ -176,6 +193,10 @@ export default function BroadcastFeedCard({
     setActiveAttachmentIndex(0);
   }, [attachmentPreviews.length]);
 
+  useEffect(() => {
+    setAuthorBioExpanded(false);
+  }, [item.id]);
+
   const activeAttachment = attachmentPreviews[activeAttachmentIndex];
   const durationLabel =
     typeof item.video_duration_seconds === 'number' ? formatDuration(item.video_duration_seconds) : null;
@@ -184,6 +205,15 @@ export default function BroadcastFeedCard({
   const isSubscribed = Boolean(item.source?.is_subscribed);
 
   const onPressPrimary = onVideoPress ?? onOpenMarket ?? onOpenSource;
+  const authorAvatarUri = resolveBackendAssetUrl(
+    item.author?.avatar_url ??
+      (item as any)?.author?.avatarUrl ??
+      (item as any)?.author?.avatar ??
+      (item as any)?.profile?.avatar_url ??
+      (item as any)?.profile?.avatarUrl ??
+      (item as any)?.profile?.avatar ??
+      null,
+  );
 
   return (
     <View style={[styles.card, { backgroundColor: palette.card, borderColor: palette.divider }]}>
@@ -191,8 +221,8 @@ export default function BroadcastFeedCard({
       <View style={styles.headerRow}>
         <Image
           source={
-            item.author?.avatar_url
-              ? { uri: resolveBackendAssetUrl(item.author.avatar_url) }
+            authorAvatarUri
+              ? { uri: authorAvatarUri }
               : fallbackAvatar
           }
           style={[styles.avatar, { backgroundColor: palette.bar }]}
@@ -200,9 +230,21 @@ export default function BroadcastFeedCard({
 
         <View style={{ flex: 1 }}>
           <View style={styles.headerTopLine}>
-            <Text style={[styles.headerName, { color: palette.text }]} numberOfLines={1}>
-              {item.author?.display_name || sourceName || 'Broadcast'}
-            </Text>
+            {isUserSource ? (
+              <Pressable
+                disabled={!onOpenAuthorProfile}
+                onPress={onOpenAuthorProfile}
+                style={styles.authorTapTarget}
+              >
+                <KISText autoLinkHandles={false} style={[styles.headerName, { color: palette.text }]} numberOfLines={1}>
+                  {headerName}
+                </KISText>
+              </Pressable>
+            ) : (
+              <KISText autoLinkHandles={false} style={[styles.headerName, { color: palette.text }]} numberOfLines={1}>
+                {headerName}
+              </KISText>
+            )}
 
             {item.source?.verified ? (
               <View style={[styles.verifiedDot, { backgroundColor: palette.primaryStrong }]}>
@@ -212,9 +254,24 @@ export default function BroadcastFeedCard({
           </View>
 
           <Text style={[styles.headerMeta, { color: palette.subtext }]} numberOfLines={1}>
-            {sourceName ? `${sourceName}${when ? ' • ' : ''}` : ''}
+            {metaSource ? `${metaSource}${when ? ' • ' : ''}` : ''}
             {when}
           </Text>
+          {isUserSource && truncatedAuthorBio.text ? (
+            <View style={styles.authorBioRow}>
+              <KISText
+                style={[styles.authorBioText, { color: palette.subtext }]}
+                numberOfLines={authorBioExpanded ? undefined : 2}
+              >
+                {authorBioExpanded ? authorBio : truncatedAuthorBio.text}
+              </KISText>
+              {!authorBioExpanded && truncatedAuthorBio.truncated ? (
+                <Pressable onPress={() => setAuthorBioExpanded(true)}>
+                  <Text style={[styles.authorBioMore, { color: palette.primaryStrong }]}>more</Text>
+                </Pressable>
+              ) : null}
+            </View>
+          ) : null}
         </View>
 
         <Pressable
@@ -228,19 +285,19 @@ export default function BroadcastFeedCard({
 
       {/* ───── Title + body (mockup-style) ───── */}
       {showTitle ? (
-        <Text style={[styles.title, { color: palette.text }]} numberOfLines={2}>
+        <KISText style={[styles.title, { color: palette.text }]} numberOfLines={2}>
           {item.title}
-        </Text>
+        </KISText>
       ) : null}
 
       {showExcerpt ? (
         <View style={{ marginTop: 4 }}>
-          <Text
+          <KISText
             style={[styles.bodyText, { color: palette.subtext }]}
             numberOfLines={excerptExpanded ? undefined : 3}
           >
             {excerpt}
-          </Text>
+          </KISText>
           {!excerptExpanded ? (
             <Pressable onPress={() => setExcerptExpanded(true)} style={{ marginTop: 2 }}>
               <Text style={{ color: palette.primaryStrong, fontWeight: '900' }}>Read more</Text>
@@ -404,7 +461,7 @@ export default function BroadcastFeedCard({
   );
 }
 
-const makeStyles = (tokens: any) =>
+const makeStyles = (_tokens: any) =>
   StyleSheet.create({
     card: {
       borderWidth: 2,
@@ -436,6 +493,11 @@ const makeStyles = (tokens: any) =>
       gap: 8,
     },
 
+    authorTapTarget: {
+      maxWidth: '92%',
+      alignSelf: 'flex-start',
+    },
+
     headerName: {
       fontSize: 15,
       fontWeight: '900',
@@ -455,6 +517,22 @@ const makeStyles = (tokens: any) =>
       fontSize: 12,
       fontWeight: '700',
       marginTop: 2,
+    },
+
+    authorBioRow: {
+      marginTop: 4,
+    },
+
+    authorBioText: {
+      fontSize: 12,
+      lineHeight: 17,
+      fontWeight: '600',
+    },
+
+    authorBioMore: {
+      marginTop: 2,
+      fontSize: 12,
+      fontWeight: '800',
     },
 
     menuBtn: {

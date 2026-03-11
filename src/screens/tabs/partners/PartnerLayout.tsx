@@ -1,5 +1,5 @@
 import React from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { View } from 'react-native';
 import styles from '@/components/partners/partnersStyles';
 import PartnersLeftRail from '@/components/partners/PartnersLeftRail';
 import PartnersCenterPane from '@/components/partners/PartnersCenterPane';
@@ -7,7 +7,6 @@ import PartnersMessagesPane from '@/components/partners/PartnersMessagesPane';
 import PartnerSheet from '@/components/partners/PartnerSheet';
 import PartnerPanels from './PartnerPanels';
 import { useKISTheme } from '@/theme/useTheme';
-import { KISIcon } from '@/constants/kisIcons';
 import PartnerAppLaunchBar from '@/components/partners/PartnerAppLaunchBar';
 import { usePartnerOrganizationAppsContext } from '@/context/partners/PartnerOrganizationAppsContext';
 import type { PartnerOrganizationApp } from '@/screens/tabs/partners/hooks/usePartnerOrganizationApps';
@@ -15,14 +14,14 @@ import type { PartnerOrganizationApp } from '@/screens/tabs/partners/hooks/usePa
 type Props = {
   rootPanHandlers: Record<string, any>;
   partners: any[];
-  selectedPartnerId: string | null;
-  setSelectedPartnerId: (id: string | null) => void;
+  selectedPartnerId: string;
+  setSelectedPartnerId: (id: string) => void;
   onAddPartnerPress: () => void;
   onLogout: () => void;
   selectedPartner: any | null;
   selectedGroupId: string | null;
   selectedChannelId: string | null;
-  selectedFeed: string | null;
+  selectedFeed: 'general' | null;
   selectedCommunityFeedId: string | null;
   rootGroups: any[];
   rootChannels: any[];
@@ -123,7 +122,7 @@ export default function PartnerLayout({
   onOpenLinks,
   animatePartnerSheet,
   panels,
-  onOpenInsights,
+  onOpenInsights: _onOpenInsights,
   onLaunchOrganizationApp,
   onOpenOrganizationApps,
 }: Props) {

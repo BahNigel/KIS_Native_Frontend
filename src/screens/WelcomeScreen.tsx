@@ -8,6 +8,7 @@ import {
   useWindowDimensions,
   ScrollView,
   Platform,
+  type ViewStyle,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
@@ -28,6 +29,7 @@ import { getRequest } from '@/network/get';
 import ROUTES from '@/network';
 // NEW: consume app-wide auth context (optional but nice to keep in sync)
 import { useAuth } from '../../App';
+import { getAccessToken } from '@/security/authStorage';
 
 const PRIVACY_URL = 'https://christiancommunit.netlify.app';
 const AUTH_429_BACKOFF_MS = 2 * 60 * 1000;
@@ -107,10 +109,6 @@ export default function WelcomeScreen() {
     { label: 'Communities', value: '78' },
   ];
 
-  const goMain = useCallback(() => {
-    navigation.reset({ index: 0, routes: [{ name: 'MainTabs' }] });
-  }, [navigation]);
-
   const openExternal = useCallback(() => {
     Linking.openURL(PRIVACY_URL).catch(() => {});
   }, []);
@@ -124,7 +122,7 @@ export default function WelcomeScreen() {
     loginCheckInFlightRef.current = true;
     lastLoginCheckAtRef.current = now;
     try {
-      const token = await AsyncStorage.getItem('access_token');
+      const token = await getAccessToken();
       const storedPhone = await AsyncStorage.getItem('user_phone');
       if (storedPhone) setPhone?.(storedPhone);
 
@@ -140,7 +138,6 @@ export default function WelcomeScreen() {
         if (Number(res?.status) === 429) {
           welcomeAuthCheckBlockedUntil = Date.now() + AUTH_429_BACKOFF_MS;
           setAuth?.(true);
-          goMain();
           return;
         }
         setAuth?.(false);
@@ -151,8 +148,7 @@ export default function WelcomeScreen() {
       const active = res?.success && (u.is_active || u.status === 'active');
 
       if (active) {
-        setAuth?.(true);         // sync global state
-        goMain();                // redirect
+        setAuth?.(true); // App.tsx will switch navigator branch to MainTabs
       } else {
         setAuth?.(false);
       }
@@ -162,7 +158,7 @@ export default function WelcomeScreen() {
     } finally {
       loginCheckInFlightRef.current = false;
     }
-  }, [goMain, setAuth, setPhone]);
+  }, [setAuth, setPhone]);
 
   // Run once on mount
   useEffect(() => {
@@ -203,7 +199,13 @@ export default function WelcomeScreen() {
             >
               <View style={styles.bubbleOverlay} pointerEvents="none">
                 {[1, 2, 3].map((i) => (
-                  <View key={i} style={[styles.bubble, styles[`bubble${i}` as keyof typeof styles]]} />
+                  <View
+                    key={i}
+                    style={[
+                      styles.bubble,
+                      styles[`bubble${i}` as 'bubble1' | 'bubble2' | 'bubble3'] as ViewStyle,
+                    ]}
+                  />
                 ))}
               </View>
               <View style={styles.heroWrapper}>

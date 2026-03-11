@@ -1,20 +1,22 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, Text, TouchableOpacity, View } from 'react-native';
+import { Animated, Text, TouchableOpacity, View, Image } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import KISButton from '@/constants/KISButton';
 import { useKISTheme } from '@/theme/useTheme';
 import { styles } from '../profile.styles';
+import coin from '../../../../assets/KIS-Coin.png';
 
 const MICROS_PER_KISC = 100000;
+const CENTS_PER_KISC = 10000;
 
 const toKisc = (micro?: number) => {
   const safe = Number.isFinite(Number(micro)) ? Number(micro) : 0;
   return (safe / MICROS_PER_KISC).toFixed(3);
 };
 
-const toUsd = (micro?: number) => {
-  const safe = Number.isFinite(Number(micro)) ? Number(micro) : 0;
-  return ((safe / MICROS_PER_KISC) * 100).toFixed(2);
+const toKiscFromCents = (cents?: number) => {
+  const safe = Number.isFinite(Number(cents)) ? Math.max(0, Number(cents)) : 0;
+  return (safe / CENTS_PER_KISC).toFixed(3);
 };
 
 const toEntryAmount = (entry: any) => {
@@ -25,11 +27,26 @@ const toEntryAmount = (entry: any) => {
   }
   const amountCents = Number(entry?.amount_cents);
   if (Number.isFinite(amountCents) && amountCents !== 0) {
-    const usd = Math.abs(amountCents) / 100;
+    const kisc = Math.abs(amountCents) / CENTS_PER_KISC;
     const sign = amountCents < 0 ? '-' : '+';
-    return `${sign}$${usd.toFixed(2)}`;
+    return `${sign}${kisc.toFixed(3)} KISC`;
   }
   return '0.000 KISC';
+};
+
+const toCounterpartyLabel = (entry: any) => {
+  const name = String(entry?.counterparty_name || '').trim();
+  const phone = String(entry?.counterparty_phone || '').trim();
+  if (!name && !phone) return '';
+  const kind = String(entry?.kind || '').toLowerCase();
+  const direction =
+    kind === 'transfer_out'
+      ? 'To'
+      : kind === 'transfer_in'
+      ? 'From'
+      : 'Counterparty';
+  const identity = name && phone ? `${name} (${phone})` : name || phone;
+  return `${direction}: ${identity}`;
 };
 
 export default function AccountCreditsCard({
@@ -37,7 +54,7 @@ export default function AccountCreditsCard({
   tierPriceCents,
   kisBalanceMicro,
   kisBalanceKisc,
-  kisBalanceUsd,
+  kisBalanceUsd: _kisBalanceUsd,
   points,
   onWallet,
   onUpgrade,
@@ -48,6 +65,8 @@ export default function AccountCreditsCard({
   partnerProfilesLimitLabel,
   partnerProfilesLimitValue,
   partnerProfilesIsUnlimited,
+  onDeleteWalletEntry,
+  deletingWalletEntryId,
 }: {
   tierName: string;
   tierPriceCents: number;
@@ -64,6 +83,8 @@ export default function AccountCreditsCard({
   partnerProfilesLimitLabel?: string | null;
   partnerProfilesLimitValue?: number | null;
   partnerProfilesIsUnlimited?: boolean;
+  onDeleteWalletEntry?: (entryId: string) => void;
+  deletingWalletEntryId?: string | null;
 }) {
   const { palette } = useKISTheme();
   const [showHistory, setShowHistory] = useState(false);
@@ -98,16 +119,18 @@ export default function AccountCreditsCard({
     () => (kisBalanceKisc && kisBalanceKisc.trim() ? kisBalanceKisc : toKisc(kisBalanceMicro)),
     [kisBalanceKisc, kisBalanceMicro],
   );
-  const resolvedUsd = useMemo(
-    () => (kisBalanceUsd && kisBalanceUsd.trim() ? kisBalanceUsd : toUsd(kisBalanceMicro)),
-    [kisBalanceMicro, kisBalanceUsd],
-  );
 
   return (
     <View style={[styles.sectionCard, { backgroundColor: palette.card, borderColor: palette.divider }]}>
       <View style={styles.headerRow}>
         <Text style={[styles.title, { color: palette.text }]}>Account & KIS-Coins</Text>
-        <Text style={[styles.subtext, { color: palette.subtext }]}>${(tierPriceCents / 100).toFixed(2)}/mo</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+          <Image source={coin} style={{ width: 14, height: 14 }} />
+          <Text style={[styles.subtext, { color: palette.subtext }]}>
+            {toKiscFromCents(tierPriceCents)} KISC
+          </Text>
+          <Text style={[styles.subtext, { color: palette.subtext }]}>/mo</Text>
+        </View>
       </View>
 
       <View
@@ -152,58 +175,18 @@ export default function AccountCreditsCard({
                   }),
                 }}
               />
-              <LinearGradient
-                colors={['#FCE28A', '#DFA735', '#B87416']}
-                start={{ x: 0.1, y: 0.1 }}
-                end={{ x: 0.9, y: 0.9 }}
-                style={{
-                  width: 98,
-                  height: 98,
-                  borderRadius: 49,
-                  borderWidth: 2,
-                  borderColor: '#F9E9A3',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  shadowColor: '#DFA735',
-                  shadowOpacity: 0.35,
-                  shadowRadius: 12,
-                  shadowOffset: { width: 0, height: 6 },
-                  elevation: 5,
-                }}
-              >
-                <View
-                  style={{
-                    width: 82,
-                    height: 82,
-                    borderRadius: 41,
-                    borderWidth: 1,
-                    borderColor: '#FAE89D99',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    backgroundColor: '#D19127AA',
-                    paddingHorizontal: 8,
-                  }}
-                >
-                  <Text style={{ fontSize: 11, fontWeight: '900', color: '#FFF9E7' }}>KIS</Text>
-                  <Text style={{ fontSize: 12, fontWeight: '900', color: '#FFF9E7', marginTop: 3 }}>
-                    {resolvedKisc}
-                  </Text>
-                  <Text style={{ fontSize: 8, fontWeight: '700', color: '#FFF4D1', marginTop: 4, textAlign: 'center' }}>
-                    Health Access Trust Care
-                  </Text>
-                </View>
-              </LinearGradient>
+              <Image source={coin} style={{ width: 130, height: 130, marginTop: 10 }} />
             </View>
-            <Text style={[styles.statMeta, { color: palette.subtext, marginTop: 6 }]}>${resolvedUsd} USD</Text>
+            <Text style={[styles.statMeta, { color: palette.subtext, marginTop: 6 }]}>
+              {resolvedKisc} KISC
+            </Text>
           </View>
 
           <View style={{ flex: 1, gap: 6 }}>
             <Text style={[styles.statLabel, { color: palette.subtext }]}>KIS Coin Balance</Text>
             <Text style={[styles.statValue, { color: palette.text }]}>{resolvedKisc} KISC</Text>
-            <Text style={[styles.statMeta, { color: palette.subtext }]}>USD Equivalent: ${resolvedUsd}</Text>
-            <Text style={[styles.statMeta, { color: palette.subtext }]}>
-              1 KISC = $100.00
-            </Text>
+            <Text style={[styles.statMeta, { color: palette.subtext }]}>Used for upgrades, transfers, and billing.</Text>
+            <Text style={[styles.statMeta, { color: palette.subtext }]}>Top up anytime from the wallet section.</Text>
           </View>
         </View>
       </View>
@@ -251,12 +234,28 @@ export default function AccountCreditsCard({
                 </Text>
                 <Text style={[styles.subtext, { color: palette.subtext }]}>
                   {toEntryAmount(entry)}
-                  {entry.reference ? ` • ${entry.reference}` : ''}
+                  {toCounterpartyLabel(entry)
+                    ? ` • ${toCounterpartyLabel(entry)}`
+                    : entry.reference
+                    ? ` • ${entry.reference}`
+                    : ''}
                 </Text>
               </View>
-              <Text style={[styles.subtext, { color: palette.subtext }]}>
-                {new Date(entry.created_at).toLocaleDateString()}
-              </Text>
+              <View style={{ alignItems: 'flex-end', gap: 6 }}>
+                <Text style={[styles.subtext, { color: palette.subtext }]}>
+                  {new Date(entry.created_at).toLocaleDateString()}
+                </Text>
+                {onDeleteWalletEntry ? (
+                  <TouchableOpacity
+                    onPress={() => onDeleteWalletEntry(String(entry.id || ''))}
+                    disabled={deletingWalletEntryId === String(entry.id || '')}
+                  >
+                    <Text style={{ fontSize: 12, color: palette.warning }}>
+                      {deletingWalletEntryId === String(entry.id || '') ? 'Deleting...' : 'Delete'}
+                    </Text>
+                  </TouchableOpacity>
+                ) : null}
+              </View>
             </View>
           ))
         )}

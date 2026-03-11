@@ -84,11 +84,11 @@ export function FinancialPanel({ palette, profileId, organizationId, refreshKey 
     } finally {
       setLoading(false);
     }
-  }, [refreshKey, organizationId, profileId]);
+  }, [organizationId]);
 
   useEffect(() => {
     void loadFinancialData();
-  }, [loadFinancialData]);
+  }, [loadFinancialData, profileId, refreshKey]);
 
   const handleReconcile = useCallback(
     async (id: string) => {
@@ -156,8 +156,8 @@ export function FinancialPanel({ palette, profileId, organizationId, refreshKey 
 
   const statStyle = useMemo(
     () => ({
-      flexDirection: 'row',
-      justifyContent: 'space-between',
+      flexDirection: 'row' as const,
+      justifyContent: 'space-between' as const,
       borderWidth: 1,
       borderColor: palette.divider,
       borderRadius: 12,

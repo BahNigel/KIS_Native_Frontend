@@ -26,7 +26,7 @@ type GlobalShellProps = {
 export default function GlobalShell({
   organizations,
   activeProfileId,
-  activeOrganizationId,
+  activeOrganizationId: _activeOrganizationId,
   onSelectProfile,
   emergencyMode,
   onToggleEmergency,

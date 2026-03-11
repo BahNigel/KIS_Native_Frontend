@@ -1,6 +1,7 @@
 // network/routes/index.ts
 import { useEffect, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getAccessToken } from '@/security/authStorage';
 
 import authRoutes from './routes/authRoutes';
 import broadcastRoutes from './routes/broadcastRoutes';
@@ -66,17 +67,12 @@ export const useMediaHeaders = (): MediaHeaders => {
   useEffect(() => {
     let active = true;
     (async () => {
-      const token = await AsyncStorage.getItem('access_token');
+      const token = await getAccessToken();
       const deviceId = await AsyncStorage.getItem('device_id');
       if (!active) return;
       const next: MediaHeaders = {};
       if (token) next.Authorization = `Bearer ${token}`;
       if (deviceId) next['X-Device-Id'] = deviceId;
-      console.log('[useMediaHeaders] headers ready', {
-        token: !!token,
-        deviceId: !!deviceId,
-        next,
-      });
       setHeaders(next);
     })();
     return () => {

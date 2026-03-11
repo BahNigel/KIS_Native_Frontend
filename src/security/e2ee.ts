@@ -225,11 +225,15 @@ export const initE2EE = async (userId?: string | null) => {
   let registrationId = await signalStore.getLocalRegistrationId();
 
   if (!identityKey?.pubKey || !identityKey?.privKey) {
-    identityKey = await libsignal.KeyHelper.generateIdentityKeyPair();
+    const generatedIdentityKey = await libsignal.KeyHelper.generateIdentityKeyPair();
+    identityKey = generatedIdentityKey;
     await signalStore.put('identityKey', {
-      pubKey: toB64(toBinaryInput(identityKey.pubKey)),
-      privKey: toB64(toBinaryInput(identityKey.privKey)),
+      pubKey: toB64(toBinaryInput(generatedIdentityKey.pubKey)),
+      privKey: toB64(toBinaryInput(generatedIdentityKey.privKey)),
     });
+  }
+  if (!identityKey?.pubKey || !identityKey?.privKey) {
+    throw new Error('Failed to initialize identity key pair.');
   }
 
   if (!registrationId) {

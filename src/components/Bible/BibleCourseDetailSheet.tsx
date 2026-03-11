@@ -1,9 +1,8 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Linking, Modal, Pressable, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import Video from 'react-native-video';
 import Pdf from 'react-native-pdf';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import RNFS from 'react-native-fs';
 import { useNavigation } from '@react-navigation/native';
 import { useKISTheme } from '@/theme/useTheme';
@@ -16,6 +15,7 @@ import ROUTES, {
   buildMediaSource,
   useMediaHeaders,
 } from '@/network';
+import { getAccessToken } from '@/security/authStorage';
 
 type Course = {
   id: string;
@@ -149,7 +149,7 @@ export default function BibleCourseDetailSheet({
 
   useEffect(() => {
     if (!certificateVisible) return;
-    AsyncStorage.getItem('access_token').then((token) => {
+    getAccessToken().then((token) => {
       setCertificateToken(token || null);
       setCertificateAuth(token ? `Bearer ${token}` : null);
     });
@@ -159,7 +159,6 @@ export default function BibleCourseDetailSheet({
   const certificateUrl = courseId ? ROUTES.bible.courseCertificate(courseId) : null;
   const certificateFetchUrl =
     certificateUrl && certificateToken ? `${certificateUrl}?token=${encodeURIComponent(certificateToken)}` : certificateUrl;
-  const certificateHeaders = certificateAuth ? { Authorization: certificateAuth } : undefined;
 
   useEffect(() => {
     const fetchCertificate = async () => {
@@ -167,11 +166,11 @@ export default function BibleCourseDetailSheet({
       setCertificateLoading(true);
       setCertificateLocalUri(null);
       try {
-        const filePath = `${RNFS.DocumentDirectoryPath}/certificate-${courseState?.id}.pdf`;
+        const filePath = `${RNFS.DocumentDirectoryPath}/certificate-${courseId}.pdf`;
         await RNFS.downloadFile({
           fromUrl: certificateFetchUrl,
           toFile: filePath,
-          headers: certificateHeaders,
+          headers: certificateAuth ? { Authorization: certificateAuth } : undefined,
         }).promise;
         setCertificateLocalUri(`file://${filePath}`);
       } catch (err: any) {
@@ -181,9 +180,9 @@ export default function BibleCourseDetailSheet({
       }
     };
     fetchCertificate();
-  }, [certificateVisible, certificateFetchUrl, certificateAuth]);
+  }, [certificateVisible, certificateFetchUrl, certificateAuth, courseId]);
 
-  const loadLessons = async () => {
+  const loadLessons = useCallback(async () => {
     if (!courseId) return;
     setLoadingLessons(true);
     const res = await getRequest(`${ROUTES.bible.lessons}?course=${courseId}`, {
@@ -212,29 +211,18 @@ export default function BibleCourseDetailSheet({
     setLessonReactions(reactionMap);
     setLessonCommentCounts(commentMap);
     setLoadingLessons(false);
-  };
+  }, [courseId]);
 
-  const loadComments = async () => {
+  const loadComments = useCallback(async () => {
     if (!courseId || !courseState?.is_public) return;
     const res = await getRequest(`${ROUTES.bible.courseComments}?course=${courseId}`, {
       errorMessage: 'Unable to load comments.',
     });
     const payload = res?.data?.results ?? res?.data ?? [];
     setComments(Array.isArray(payload) ? payload : []);
-  };
+  }, [courseId, courseState?.is_public]);
 
-  useEffect(() => {
-    if (!visible || !courseId) return;
-    loadLessons();
-    loadComments();
-    loadQuizzes();
-    loadAssignments();
-    loadCredential();
-    loadForum();
-    loadLiveSessions();
-  }, [visible, courseId]);
-
-  const loadForum = async () => {
+  const loadForum = useCallback(async () => {
     if (!courseId) return;
     const res = await getRequest(`${ROUTES.bible.courseForums}?course=${courseId}`, {
       errorMessage: 'Unable to load forum.',
@@ -242,7 +230,7 @@ export default function BibleCourseDetailSheet({
     const payload = res?.data?.results ?? res?.data ?? [];
     const forum = Array.isArray(payload) ? payload[0] : payload;
     setForums(forum || null);
-  };
+  }, [courseId]);
 
   const loadThreads = async (forumId: string) => {
     const res = await getRequest(`${ROUTES.bible.forumThreads}?forum=${forumId}`, {
@@ -298,14 +286,14 @@ export default function BibleCourseDetailSheet({
     }
   };
 
-  const loadLiveSessions = async () => {
+  const loadLiveSessions = useCallback(async () => {
     if (!courseId) return;
     const res = await getRequest(`${ROUTES.bible.liveSessions}?course=${courseId}`, {
       errorMessage: 'Unable to load live sessions.',
     });
     const payload = res?.data?.results ?? res?.data ?? [];
     setLiveSessions(Array.isArray(payload) ? payload : []);
-  };
+  }, [courseId]);
 
   const registerLive = async (sessionId: string) => {
     const res = await postRequest(
@@ -331,25 +319,25 @@ export default function BibleCourseDetailSheet({
     }
   };
 
-  const loadQuizzes = async () => {
+  const loadQuizzes = useCallback(async () => {
     if (!courseId) return;
     const res = await getRequest(`${ROUTES.bible.quizzes}?course=${courseId}`, {
       errorMessage: 'Unable to load quizzes.',
     });
     const payload = res?.data?.results ?? res?.data ?? [];
     setQuizzes(Array.isArray(payload) ? payload : []);
-  };
+  }, [courseId]);
 
-  const loadAssignments = async () => {
+  const loadAssignments = useCallback(async () => {
     if (!courseId) return;
     const res = await getRequest(`${ROUTES.bible.assignments}?course=${courseId}`, {
       errorMessage: 'Unable to load assignments.',
     });
     const payload = res?.data?.results ?? res?.data ?? [];
     setAssignments(Array.isArray(payload) ? payload : []);
-  };
+  }, [courseId]);
 
-  const loadCredential = async () => {
+  const loadCredential = useCallback(async () => {
     if (!courseState?.enrollment_id) {
       setCredential(null);
       return;
@@ -364,7 +352,28 @@ export default function BibleCourseDetailSheet({
     }
     const match = payload.find((item: any) => String(item.enrollment) === String(courseState.enrollment_id));
     setCredential(match ?? null);
-  };
+  }, [courseState?.enrollment_id]);
+
+  useEffect(() => {
+    if (!visible || !courseId) return;
+    loadLessons();
+    loadComments();
+    loadQuizzes();
+    loadAssignments();
+    loadCredential();
+    loadForum();
+    loadLiveSessions();
+  }, [
+    visible,
+    courseId,
+    loadLessons,
+    loadComments,
+    loadQuizzes,
+    loadAssignments,
+    loadCredential,
+    loadForum,
+    loadLiveSessions,
+  ]);
 
   const updateCourseState = (next: Course) => {
     setCourseState(next);
@@ -1282,11 +1291,11 @@ export default function BibleCourseDetailSheet({
                         await Linking.openURL(certificateLocalUri);
                         return;
                       }
-                      const filePath = `${RNFS.DocumentDirectoryPath}/certificate-${courseState.id}.pdf`;
+                      const filePath = `${RNFS.DocumentDirectoryPath}/certificate-${courseId}.pdf`;
                       await RNFS.downloadFile({
                         fromUrl: certificateFetchUrl,
                         toFile: filePath,
-                        headers: certificateHeaders,
+                        headers: certificateAuth ? { Authorization: certificateAuth } : undefined,
                       }).promise;
                       await Linking.openURL(`file://${filePath}`);
                     } catch (err: any) {

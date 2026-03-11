@@ -8,7 +8,6 @@ export type RootStackParamList = {
   Register: undefined;
   DeviceVerification: { phone?: string | null; email?: string | null } | undefined;
   MainTabs: undefined;
-  ProfileInsights: undefined;
   PartnerInsights: undefined;
   AdminTools: undefined;
   AdminDashboard: { target: string; title: string };
@@ -20,7 +19,7 @@ export type RootStackParamList = {
   BridgeDashboard: undefined;
   TiersDashboard: undefined;
   NotificationsDashboard: undefined;
-  OrganizationApp: { app: PartnerOrganizationApp };
+  OrganizationApp: { app: PartnerOrganizationApp; partnerId?: string };
   OrganizationAppForm: { partnerId: string; app?: PartnerOrganizationApp };
   HealthInstitutionDetail: {
     institutionId: string;
@@ -67,6 +66,7 @@ export type RootStackParamList = {
     serviceId?: string;
     serviceName: string;
     serviceDescription?: string;
+    configuredEngineFlowKeys?: string[];
     dateKey?: string;
     timeValue?: string;
     statusLabel?: string;

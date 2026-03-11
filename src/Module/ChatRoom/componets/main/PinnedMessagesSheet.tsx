@@ -29,7 +29,7 @@ type PinnedMessagesSheetProps = {
 export const PinnedMessagesSheet: React.FC<PinnedMessagesSheetProps> = ({
   visible,
   onClose,
-  roomId,
+  roomId: _roomId,
   pinnedMessages,
   palette,
   onJumpToMessage,

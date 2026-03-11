@@ -1,12 +1,11 @@
 // src/screens/chat/ChatRoomHandlers.ts
 
-import { Alert, DeviceEventEmitter } from 'react-native';
+import { DeviceEventEmitter } from 'react-native';
 import {
   uploadFileToBackend,
   AttachmentMeta,
 } from './uploadFileToBackend';
 import ROUTES, { NEST_API_BASE_URL } from '@/network';
-import { getRequest } from '@/network/get';
 import { postRequest } from '@/network/post';
 
 import type { ChatMessage } from './chatTypes';

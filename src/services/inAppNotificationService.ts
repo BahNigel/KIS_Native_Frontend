@@ -161,12 +161,12 @@ export const deleteInAppNotification = async (notificationId: string) => {
 
 export const upsertAvailabilityReminders = async (
   institutionId: string,
-  dayTimes: Record<string, string>,
+  calendar_times: Record<string, string>,
 ) => {
   const existing = await readJson<AvailabilityReminder[]>(AVAILABILITY_REMINDERS_KEY, []);
   const keepOther = existing.filter((item) => item.institutionId !== institutionId);
 
-  const nextForInstitution: AvailabilityReminder[] = Object.entries(dayTimes)
+  const nextForInstitution: AvailabilityReminder[] = Object.entries(calendar_times)
     .map(([dateKey, time]) => {
       const fireAt = parseReminderDate(dateKey, time);
       if (!fireAt) return null;

@@ -43,6 +43,7 @@ import { FeedComposerPayload } from './composer/types';
 import RichTextRenderer from './RichTextRenderer';
 import FeedComposerSheet from './composer/FeedComposerSheet';
 import { logFeedEvent, type FeedType } from '@/network/personalization';
+import { getAccessToken } from '@/security/authStorage';
 
 const PERSONALIZATION_HISTORY_KEY = '@kis:personalization-history';
 
@@ -170,7 +171,7 @@ const uploadFeedAttachmentsIfNeeded = async (
   const attachments = Array.isArray(payload.attachments) ? payload.attachments : [];
   if (!attachments.length) return payload;
 
-  const token = await AsyncStorage.getItem('access_token');
+  const token = await getAccessToken();
   if (!token) {
     Alert.alert('Upload failed', 'Unable to upload attachments. Please sign in again.');
     return null;
@@ -250,7 +251,7 @@ export default function FeedScreen<T extends FeedPost>({
   deleteEndpoint,
   broadcastEndpoint,
   commentChatContext,
-  chatHeaderLabel,
+  chatHeaderLabel: _chatHeaderLabel,
   emptyStateText,
   feedType = 'broadcast',
 }: FeedScreenProps<T>) {
@@ -372,7 +373,7 @@ export default function FeedScreen<T extends FeedPost>({
     }
         setActiveCommentPostId((prev) => (prev === postId ? null : postId));
     setFeedScrollEnabled(true);
-  }, [feedType]);
+  }, [normalizedFeedType]);
 
   const handleCommentScrollStart = useCallback(() => {
     setFeedScrollEnabled(false);
@@ -547,7 +548,7 @@ export default function FeedScreen<T extends FeedPost>({
 
       requestAnimationFrame(() => setIsModalVideoPlaying(true));
     },
-    [mediaHeaders, feedType],
+    [mediaHeaders, normalizedFeedType],
   );
 
   const openVideoModal = useCallback(
@@ -638,7 +639,7 @@ export default function FeedScreen<T extends FeedPost>({
   }, []);
 
   const uploadShareAsset = useCallback(async (uri: string) => {
-    const token = await AsyncStorage.getItem('access_token');
+    const token = await getAccessToken();
     if (!token) return null;
     const attachment = await uploadFileToBackend({
       file: { uri, name: `kis-share-${Date.now()}.png`, type: 'image/png' },

@@ -22,6 +22,7 @@ import {
 import {
   ensureInstitutionDashboardExists,
   fetchInstitutionAvailability,
+  fetchInstitutionServices,
   updateInstitutionAvailability,
 } from '@/services/healthDashboardService';
 import {
@@ -41,6 +42,8 @@ const isSupportedType = (value: string): value is HealthDashboardInstitutionType
   HEALTH_DASHBOARD_INSTITUTION_TYPES.includes(value as HealthDashboardInstitutionType);
 
 type CalendarViewMode = 'year' | 'month' | 'week';
+type ScheduleApplyScope = 'day' | 'week' | 'month' | 'year';
+type DayTimeMode = 'slots' | 'all_day';
 
 type ServiceAvailability = {
   enabled: boolean;
@@ -53,6 +56,8 @@ type AvailabilityDraft = {
   serviceAvailability: Record<string, ServiceAvailability>;
   dayStatuses: Record<string, AvailabilityStatusKey>;
   dayTimes: Record<string, string>;
+  dayTimeLists: Record<string, string[]>;
+  dayTimeModes: Record<string, DayTimeMode>;
   dayServiceIds: Record<string, string[]>;
 };
 
@@ -78,6 +83,7 @@ const WEEKDAY_ORDER = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', '
 const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 const TIME_STEP_MINUTES = 30;
+const SCHEDULE_APPLY_SCOPES: ScheduleApplyScope[] = ['day', 'week', 'month', 'year'];
 
 const toDateOnlyIso = (date: Date) => {
   const y = date.getFullYear();
@@ -93,6 +99,52 @@ const fromIso = (value: string) => {
 };
 
 const isTimeValue = (value: unknown): value is string => /^\d{2}:\d{2}$/.test(String(value || ''));
+const toModeToken = (value: unknown) =>
+  String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, '_');
+const isAllDayValue = (value: unknown) => {
+  const normalized = toModeToken(value);
+  return normalized === 'all_day' || normalized === 'allday' || normalized === 'full_day';
+};
+
+const normalizeTimeList = (value: unknown): string[] => {
+  const isTimeText = (entry: string) => /^\d{2}:\d{2}$/.test(entry);
+  if (Array.isArray(value)) {
+    return Array.from(
+      new Set(
+        value
+          .map((entry) => String(entry || '').trim())
+          .filter((entry) => isTimeText(entry)),
+      ),
+    ).sort();
+  }
+  const raw = String(value || '').trim();
+  if (!raw) return [];
+  if (isAllDayValue(raw)) return [];
+  if (isTimeText(raw)) return [raw];
+  return Array.from(
+    new Set(
+      raw
+        .split(',')
+        .map((entry: string) => entry.trim())
+        .filter((entry: string) => isTimeText(entry)),
+    ),
+  ).sort();
+};
+
+const resolveDateTimeList = (draft: AvailabilityDraft | null | undefined, dateKey: string): string[] => {
+  if (!draft || !dateKey) return [];
+  const explicit = Array.isArray(draft.dayTimeLists?.[dateKey]) ? draft.dayTimeLists[dateKey] : [];
+  if (explicit.length > 0) return normalizeTimeList(explicit);
+  return normalizeTimeList(draft.dayTimes?.[dateKey]);
+};
+
+const resolveDateTimeMode = (draft: AvailabilityDraft | null | undefined, dateKey: string): DayTimeMode => {
+  if (!draft || !dateKey) return 'slots';
+  return draft.dayTimeModes?.[dateKey] === 'all_day' ? 'all_day' : 'slots';
+};
 
 const parseDateTime = (dateKey: string, time: string) => {
   const date = fromIso(dateKey);
@@ -135,10 +187,176 @@ const buildDateTimesFromPayload = (raw: any, year: number): Record<string, strin
   Object.entries(source).forEach(([dateKey, value]) => {
     const date = fromIso(dateKey);
     if (!date || date.getFullYear() !== year) return;
-    if (!isTimeValue(value)) return;
-    map[toDateOnlyIso(date)] = value;
+    const times = normalizeTimeList(value);
+    if (!times.length) return;
+    map[toDateOnlyIso(date)] = times[0];
   });
   return map;
+};
+
+const buildDateTimeListsFromPayload = (raw: any, year: number): Record<string, string[]> => {
+  const source =
+    raw?.calendar_time_lists ??
+    raw?.calendarTimeLists ??
+    raw?.day_time_lists ??
+    raw?.dayTimeLists ??
+    {};
+  const legacy =
+    raw?.calendar_times ??
+    raw?.calendarTimes ??
+    raw?.date_times ??
+    raw?.dateTimes ??
+    {};
+
+  const map: Record<string, string[]> = {};
+  if (source && typeof source === 'object' && !Array.isArray(source)) {
+    Object.entries(source).forEach(([dateKey, value]) => {
+      const date = fromIso(dateKey);
+      if (!date || date.getFullYear() !== year) return;
+      const times = normalizeTimeList(value);
+      if (!times.length) return;
+      map[toDateOnlyIso(date)] = times;
+    });
+  }
+
+  if (legacy && typeof legacy === 'object' && !Array.isArray(legacy)) {
+    Object.entries(legacy).forEach(([dateKey, value]) => {
+      const date = fromIso(dateKey);
+      if (!date || date.getFullYear() !== year) return;
+      const normalizedDateKey = toDateOnlyIso(date);
+      if (map[normalizedDateKey]?.length) return;
+      const times = normalizeTimeList(value);
+      if (!times.length) return;
+      map[normalizedDateKey] = times;
+    });
+  }
+
+  return map;
+};
+
+const buildDateTimeModesFromPayload = (
+  raw: any,
+  year: number,
+  timeLists: Record<string, string[]>,
+): Record<string, DayTimeMode> => {
+  const source =
+    raw?.calendar_time_modes ??
+    raw?.calendarTimeModes ??
+    raw?.day_time_modes ??
+    raw?.dayTimeModes ??
+    {};
+  const legacyTimes =
+    raw?.calendar_times ??
+    raw?.calendarTimes ??
+    raw?.date_times ??
+    raw?.dateTimes ??
+    {};
+  const allDayDatesRaw = raw?.all_day_dates ?? raw?.allDayDates ?? [];
+  const map: Record<string, DayTimeMode> = {};
+
+  if (source && typeof source === 'object' && !Array.isArray(source)) {
+    Object.entries(source).forEach(([dateKey, value]) => {
+      const date = fromIso(dateKey);
+      if (!date || date.getFullYear() !== year) return;
+      const normalizedDateKey = toDateOnlyIso(date);
+      map[normalizedDateKey] = isAllDayValue(value) ? 'all_day' : 'slots';
+    });
+  }
+
+  if (Array.isArray(allDayDatesRaw)) {
+    allDayDatesRaw.forEach((dateKey) => {
+      const date = fromIso(String(dateKey || ''));
+      if (!date || date.getFullYear() !== year) return;
+      map[toDateOnlyIso(date)] = 'all_day';
+    });
+  }
+
+  if (legacyTimes && typeof legacyTimes === 'object' && !Array.isArray(legacyTimes)) {
+    Object.entries(legacyTimes).forEach(([dateKey, value]) => {
+      const date = fromIso(dateKey);
+      if (!date || date.getFullYear() !== year) return;
+      const normalizedDateKey = toDateOnlyIso(date);
+      if (map[normalizedDateKey]) return;
+      if (isAllDayValue(value)) {
+        map[normalizedDateKey] = 'all_day';
+      }
+    });
+  }
+
+  Object.keys(timeLists).forEach((dateKey) => {
+    if (map[dateKey]) return;
+    map[dateKey] = 'slots';
+  });
+
+  return map;
+};
+
+const getScopeDateKeys = (
+  date: Date,
+  scope: ScheduleApplyScope,
+  year: number,
+): string[] => {
+  const pushIfValidYear = (target: Date[], candidate: Date) => {
+    if (candidate.getFullYear() === year) {
+      target.push(candidate);
+    }
+  };
+  const targets: Date[] = [];
+
+  if (scope === 'day') {
+    pushIfValidYear(targets, date);
+  } else if (scope === 'week') {
+    const weekStart = addDays(date, -date.getDay());
+    for (let offset = 0; offset < 7; offset += 1) {
+      pushIfValidYear(targets, addDays(weekStart, offset));
+    }
+  } else if (scope === 'month') {
+    const first = startOfMonth(date);
+    const lastDay = endOfMonth(date).getDate();
+    for (let day = 1; day <= lastDay; day += 1) {
+      pushIfValidYear(targets, new Date(first.getFullYear(), first.getMonth(), day));
+    }
+  } else {
+    const first = new Date(year, 0, 1);
+    const totalDays = Math.ceil((new Date(year + 1, 0, 1).getTime() - first.getTime()) / (24 * 60 * 60 * 1000));
+    for (let offset = 0; offset < totalDays; offset += 1) {
+      pushIfValidYear(targets, addDays(first, offset));
+    }
+  }
+
+  return targets.map((item) => toDateOnlyIso(item));
+};
+
+const extractServiceRows = (payload: any, preferredKeys: string[]): any[] => {
+  const queue: any[] = [payload];
+  const visited = new Set<any>();
+
+  while (queue.length > 0) {
+    const current = queue.shift();
+    if (!current) continue;
+    if (Array.isArray(current)) return current;
+    if (typeof current !== 'object') continue;
+    if (visited.has(current)) continue;
+    visited.add(current);
+
+    for (const key of preferredKeys) {
+      const candidate = current?.[key];
+      if (Array.isArray(candidate)) return candidate;
+      if (candidate && typeof candidate === 'object') {
+        queue.push(candidate);
+      }
+    }
+
+    const nestedKeys = ['data', 'payload', 'result', 'response'];
+    nestedKeys.forEach((key) => {
+      const nested = current?.[key];
+      if (nested && typeof nested === 'object') {
+        queue.push(nested);
+      }
+    });
+  }
+
+  return [];
 };
 
 const normalizeServiceRow = (raw: any, index: number): ServiceDefinition | null => {
@@ -157,6 +375,41 @@ const normalizeServiceRow = (raw: any, index: number): ServiceDefinition | null 
       : Number.isFinite(Number(raw.base_price_cents))
       ? Number(raw.base_price_cents)
       : undefined,
+  };
+};
+
+const normalizeHealthOpsServiceRow = (raw: any, index: number): ServiceDefinition | null => {
+  if (!raw || typeof raw !== 'object') return null;
+  const source =
+    raw?.service && typeof raw.service === 'object'
+      ? { ...raw, ...raw.service }
+      : raw;
+  const id = String(
+    source.id ??
+      source.service_id ??
+      source.serviceId ??
+      source.key ??
+      source.slug ??
+      `service_${index + 1}`,
+  ).trim();
+  const name = String(source.name ?? source.title ?? source.label ?? '').trim();
+  if (!id || !name) return null;
+  const description = String(source.description ?? source.summary ?? '').trim();
+  const baseCostMicro = Number(
+    source.base_cost_micro ??
+      source.baseCostMicro ??
+      source.amount_micro ??
+      source.amountMicro,
+  );
+  const basePriceCents = Number.isFinite(baseCostMicro)
+    ? Math.max(0, Math.round(baseCostMicro / 10))
+    : undefined;
+  return {
+    id,
+    name,
+    description,
+    active: source.is_active !== false && source.active !== false,
+    basePriceCents,
   };
 };
 
@@ -291,6 +544,8 @@ const createDefaultDraft = (institutionType: HealthDashboardInstitutionType): Av
   serviceAvailability: defaultServiceAvailability(institutionType),
   dayStatuses: {},
   dayTimes: {},
+  dayTimeLists: {},
+  dayTimeModes: {},
   dayServiceIds: {},
 });
 
@@ -314,11 +569,20 @@ export default function AvailabilityManagementScreen({ navigation, route }: any)
     const now = new Date();
     return new Date(now.getFullYear(), now.getMonth(), now.getDate());
   }, []);
+  const currentMonthStart = useMemo(
+    () => new Date(todayStart.getFullYear(), todayStart.getMonth(), 1),
+    [todayStart],
+  );
+  const currentYearEnd = useMemo(
+    () => new Date(calendarYear, 11, 31),
+    [calendarYear],
+  );
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [draft, setDraft] = useState<AvailabilityDraft | null>(null);
   const [calendarMode, setCalendarMode] = useState<CalendarViewMode>('month');
+  const [applyScope, setApplyScope] = useState<ScheduleApplyScope>('day');
   const [anchorDate, setAnchorDate] = useState(new Date(calendarYear, new Date().getMonth(), new Date().getDate()));
   const [selectedStatus, setSelectedStatus] = useState<AvailabilityStatusKey | typeof CLEAR_STATUS_KEY>('available');
   const [activeDateKey, setActiveDateKey] = useState<string | null>(null);
@@ -338,27 +602,47 @@ export default function AvailabilityManagementScreen({ navigation, route }: any)
     try {
       const fallback = createDefaultDraft(dashboardType);
       const bootstrap = await ensureInstitutionDashboardExists(institutionId, dashboardType);
-      if (!bootstrap?.success) {
-        throw new Error(bootstrap?.message || 'Unable to initialize institution dashboard.');
+      if (!bootstrap?.success && Number(bootstrap?.status) !== 404) {
+        // Continue in best-effort mode so service scheduling remains usable.
       }
 
-      const res = await fetchInstitutionAvailability(institutionId);
-      if (!res?.success && Number(res?.status) !== 404) {
-        throw new Error(res?.message || 'Unable to load availability data.');
-      }
+      const [res, dashboardServicesRes, dashboardServicesRawRes, healthOpsServicesRes, cardsResponse] = await Promise.all([
+        fetchInstitutionAvailability(institutionId),
+        fetchInstitutionServices(institutionId),
+        getRequest(ROUTES.healthDashboard.services(institutionId), {
+          errorMessage: 'Unable to load institution services.',
+        }),
+        getRequest(ROUTES.healthOps.institutionServices(institutionId), {
+          errorMessage: 'Unable to load institution services.',
+        }),
+        getRequest(ROUTES.broadcasts.healthCards(institutionId), {
+          errorMessage: 'Unable to load backend health cards.',
+        }),
+      ]);
 
-      const payload = res?.data ?? res ?? {};
+      const payload = (res?.success ? res?.data : undefined) ?? res ?? {};
       const data = payload?.availability ?? payload?.draft ?? payload;
-      const cardsResponse = await getRequest(ROUTES.broadcasts.healthCards(institutionId), {
-        errorMessage: 'Unable to load backend health cards.',
-      });
       const backendCards = cardsResponse?.success && Array.isArray(cardsResponse?.data?.cards)
         ? cardsResponse.data.cards
         : [];
       const backendServices = backendCards
         .map((card: any, index: number) => normalizeServiceRow(card?.service, index))
         .filter(Boolean) as ServiceDefinition[];
+      const dashboardServiceRows = [
+        ...extractServiceRows(dashboardServicesRes, ['services', 'results', 'items']),
+        ...extractServiceRows(dashboardServicesRawRes, ['services', 'results', 'items']),
+      ];
+      const dashboardServices = dashboardServiceRows
+        .map((row: any, index: number) => normalizeServiceRow(row, index))
+        .filter(Boolean) as ServiceDefinition[];
+      const healthOpsServiceRows = extractServiceRows(healthOpsServicesRes, ['results', 'services', 'items']);
+      const healthOpsServices = healthOpsServiceRows
+        .map((row: any, index: number) => normalizeHealthOpsServiceRow(row, index))
+        .filter(Boolean) as ServiceDefinition[];
       const fallbackServices = HEALTH_DASHBOARD_DEFAULT_SERVICES[dashboardType];
+      const parsedDayTimes = buildDateTimesFromPayload(data || {}, calendarYear);
+      const parsedDayTimeLists = buildDateTimeListsFromPayload(data || {}, calendarYear);
+      const parsedDayTimeModes = buildDateTimeModesFromPayload(data || {}, calendarYear, parsedDayTimeLists);
       const scheduledServiceIdsByDate = buildDateServiceIdsFromPayload(data || {}, calendarYear);
       const scheduleLinkedServiceIds = new Set(
         Object.values(scheduledServiceIdsByDate).flatMap((ids) => ids.map((item) => String(item || '').trim()).filter(Boolean)),
@@ -371,12 +655,24 @@ export default function AvailabilityManagementScreen({ navigation, route }: any)
         });
       }
 
-      const catalogSeed = backendServices.length > 0 ? backendServices : fallbackServices;
+      const catalogSeed = [
+        ...fallbackServices,
+        ...backendServices,
+        ...dashboardServices,
+        ...healthOpsServices,
+      ];
       const catalogMap = new Map<string, ServiceDefinition>();
       catalogSeed.forEach((service) => {
         const serviceId = String(service?.id || '').trim();
         if (!serviceId) return;
-        catalogMap.set(serviceId, service);
+        const existing = catalogMap.get(serviceId);
+        catalogMap.set(serviceId, {
+          ...existing,
+          ...service,
+          id: serviceId,
+          name: String(service?.name || existing?.name || '').trim() || existing?.name || 'Health Service',
+          description: String(service?.description || existing?.description || '').trim(),
+        });
       });
       scheduleLinkedServiceIds.forEach((serviceId) => {
         if (catalogMap.has(serviceId)) return;
@@ -401,9 +697,25 @@ export default function AvailabilityManagementScreen({ navigation, route }: any)
         serviceAvailability: {
           ...fallback.serviceAvailability,
           ...(data?.serviceAvailability || data?.service_availability || {}),
+          ...Object.fromEntries(
+            catalog.map((service) => {
+              const serviceId = String(service.id || '').trim();
+              if (!serviceId) return ['', { enabled: true, durationMin: 30, slotGapMin: 10 }];
+              return [
+                serviceId,
+                (data?.serviceAvailability || data?.service_availability || {})?.[serviceId] || {
+                  enabled: service.active !== false,
+                  durationMin: 30,
+                  slotGapMin: 10,
+                },
+              ];
+            }).filter(([serviceId]) => Boolean(serviceId)),
+          ),
         },
         dayStatuses: buildDateStatusesFromLegacy(data || {}, calendarYear),
-        dayTimes: buildDateTimesFromPayload(data || {}, calendarYear),
+        dayTimes: parsedDayTimes,
+        dayTimeLists: parsedDayTimeLists,
+        dayTimeModes: parsedDayTimeModes,
         dayServiceIds: Object.fromEntries(
           Object.entries(scheduledServiceIdsByDate).map(([dateKey, ids]) => {
             const filtered = ids.filter((id) => activeServiceIdSet.has(id));
@@ -444,27 +756,54 @@ export default function AvailabilityManagementScreen({ navigation, route }: any)
       if (!draft) return;
       const date = fromIso(dateKey);
       if (!date || date.getFullYear() !== calendarYear) return;
-      if (date < todayStart) return;
+      const scopedDateKeys = getScopeDateKeys(date, applyScope, calendarYear);
+      if (!scopedDateKeys.length) return;
       updateDraft((prev) => {
         const nextMap = { ...(prev.dayStatuses || {}) };
         const nextTimes = { ...(prev.dayTimes || {}) };
+        const nextTimeLists = { ...(prev.dayTimeLists || {}) };
+        const nextTimeModes = { ...(prev.dayTimeModes || {}) };
         const nextServiceIds = { ...(prev.dayServiceIds || {}) };
-        const currentStatus = nextMap[dateKey];
-        if (selectedStatus === CLEAR_STATUS_KEY) {
-          delete nextMap[dateKey];
-          delete nextTimes[dateKey];
-          delete nextServiceIds[dateKey];
-        } else if (toggleIfSame && currentStatus === selectedStatus) {
-          delete nextMap[dateKey];
-          delete nextTimes[dateKey];
-          delete nextServiceIds[dateKey];
-        } else {
-          nextMap[dateKey] = selectedStatus;
-        }
-        return { ...prev, dayStatuses: nextMap, dayTimes: nextTimes, dayServiceIds: nextServiceIds };
+
+        scopedDateKeys.forEach((targetDateKey) => {
+          const targetDate = fromIso(targetDateKey);
+          if (!targetDate || targetDate < todayStart) return;
+          const currentStatus = nextMap[targetDateKey];
+          if (selectedStatus === CLEAR_STATUS_KEY) {
+            delete nextMap[targetDateKey];
+            delete nextTimes[targetDateKey];
+            delete nextTimeLists[targetDateKey];
+            delete nextTimeModes[targetDateKey];
+            delete nextServiceIds[targetDateKey];
+            return;
+          }
+          if (toggleIfSame && applyScope === 'day' && currentStatus === selectedStatus) {
+            delete nextMap[targetDateKey];
+            delete nextTimes[targetDateKey];
+            delete nextTimeLists[targetDateKey];
+            delete nextTimeModes[targetDateKey];
+            delete nextServiceIds[targetDateKey];
+            return;
+          }
+          nextMap[targetDateKey] = selectedStatus;
+          if (applyScope !== 'day') {
+            nextTimeModes[targetDateKey] = 'all_day';
+            delete nextTimes[targetDateKey];
+            delete nextTimeLists[targetDateKey];
+          }
+        });
+
+        return {
+          ...prev,
+          dayStatuses: nextMap,
+          dayTimes: nextTimes,
+          dayTimeLists: nextTimeLists,
+          dayTimeModes: nextTimeModes,
+          dayServiceIds: nextServiceIds,
+        };
       });
     },
-    [calendarYear, draft, selectedStatus, todayStart, updateDraft],
+    [applyScope, calendarYear, draft, selectedStatus, todayStart, updateDraft],
   );
 
   const handleDayPress = useCallback(
@@ -477,9 +816,6 @@ export default function AvailabilityManagementScreen({ navigation, route }: any)
         if (existingStatus) {
           applyStatusToDateKey(dateKey);
         }
-        return;
-      }
-      if (existingStatus) {
         return;
       }
       applyStatusToDateKey(dateKey);
@@ -500,12 +836,13 @@ export default function AvailabilityManagementScreen({ navigation, route }: any)
 
   const paintAtPoint = useCallback(
     (x: number, y: number) => {
+      if (applyScope !== 'day') return;
       const dateKey = hitTestDateKey(x, y);
       if (!dateKey || paintedDateKeysRef.current.has(dateKey)) return;
       paintedDateKeysRef.current.add(dateKey);
       applyStatusToDateKey(dateKey);
     },
-    [applyStatusToDateKey, hitTestDateKey],
+    [applyScope, applyStatusToDateKey, hitTestDateKey],
   );
 
   const calendarPanResponder = useMemo(
@@ -540,33 +877,45 @@ export default function AvailabilityManagementScreen({ navigation, route }: any)
     if (calendarMode === 'month') {
       setAnchorDate((prev) => {
         const next = addMonths(prev, -1);
-        return next.getFullYear() < calendarYear ? new Date(calendarYear, 0, 1) : next;
+        if (next < currentMonthStart) return currentMonthStart;
+        return next;
       });
       return;
     }
     if (calendarMode === 'week') {
       setAnchorDate((prev) => {
         const next = addDays(prev, -7);
-        return next.getFullYear() < calendarYear ? new Date(calendarYear, 0, 1) : next;
+        if (next < currentMonthStart) return currentMonthStart;
+        return next;
       });
     }
-  }, [calendarMode, calendarYear]);
+  }, [calendarMode, currentMonthStart]);
 
   const goNext = useCallback(() => {
     if (calendarMode === 'month') {
       setAnchorDate((prev) => {
         const next = addMonths(prev, 1);
-        return next.getFullYear() > calendarYear ? new Date(calendarYear, 11, 31) : next;
+        if (next > currentYearEnd) return currentYearEnd;
+        return next;
       });
       return;
     }
     if (calendarMode === 'week') {
       setAnchorDate((prev) => {
         const next = addDays(prev, 7);
-        return next.getFullYear() > calendarYear ? new Date(calendarYear, 11, 31) : next;
+        if (next > currentYearEnd) return currentYearEnd;
+        return next;
       });
     }
-  }, [calendarMode, calendarYear]);
+  }, [calendarMode, currentYearEnd]);
+
+  useEffect(() => {
+    setAnchorDate((prev) => {
+      if (prev < currentMonthStart) return currentMonthStart;
+      if (prev > currentYearEnd) return currentYearEnd;
+      return prev;
+    });
+  }, [currentMonthStart, currentYearEnd]);
 
   const saveAvailability = useCallback(async () => {
     if (!institutionId || !draft) return;
@@ -575,18 +924,29 @@ export default function AvailabilityManagementScreen({ navigation, route }: any)
     try {
       const serviceRequiredStatuses = new Set<AvailabilityStatusKey>(['available', 'limited', 'on_call']);
       const scheduledDates = Object.keys(draft.dayStatuses || {});
-      const selectedServiceIds = new Set<string>();
+      const scheduledFutureDates = scheduledDates.filter((dateKey) => {
+        const parsed = fromIso(dateKey);
+        if (!parsed) return true;
+        return parsed >= todayStart;
+      });
+      const timeModeByDate: Record<string, DayTimeMode> = {};
+      const timeListByDate: Record<string, string[]> = {};
       scheduledDates.forEach((dateKey) => {
+        timeModeByDate[dateKey] = resolveDateTimeMode(draft, dateKey);
+        timeListByDate[dateKey] = resolveDateTimeList(draft, dateKey);
+      });
+      const selectedServiceIds = new Set<string>();
+      scheduledFutureDates.forEach((dateKey) => {
         const ids = Array.isArray(draft.dayServiceIds?.[dateKey]) ? draft.dayServiceIds[dateKey] : [];
         ids
           .map((item) => String(item || '').trim())
           .filter(Boolean)
           .forEach((serviceId) => selectedServiceIds.add(serviceId));
       });
-      if (scheduledDates.length > 0 && selectedServiceIds.size === 0) {
+      if (scheduledFutureDates.length > 0 && selectedServiceIds.size === 0) {
         throw new Error('Add at least one service before saving schedule.');
       }
-      const datesWithoutServices = scheduledDates.filter((dateKey) => {
+      const datesWithoutServices = scheduledFutureDates.filter((dateKey) => {
         const status = draft.dayStatuses?.[dateKey];
         if (!status || !serviceRequiredStatuses.has(status)) return false;
         return !Array.isArray(draft.dayServiceIds?.[dateKey]) || draft.dayServiceIds[dateKey].length === 0;
@@ -595,6 +955,18 @@ export default function AvailabilityManagementScreen({ navigation, route }: any)
         const sample = datesWithoutServices.slice(0, 3).join(', ');
         const suffix = datesWithoutServices.length > 3 ? '...' : '';
         throw new Error(`Add at least one service for: ${sample}${suffix}`);
+      }
+      const datesWithoutTimes = scheduledFutureDates.filter((dateKey) => {
+        const status = draft.dayStatuses?.[dateKey];
+        if (!status || !serviceRequiredStatuses.has(status)) return false;
+        const mode = timeModeByDate[dateKey];
+        if (mode === 'all_day') return false;
+        return (timeListByDate[dateKey] || []).length === 0;
+      });
+      if (datesWithoutTimes.length > 0) {
+        const sample = datesWithoutTimes.slice(0, 3).join(', ');
+        const suffix = datesWithoutTimes.length > 3 ? '...' : '';
+        throw new Error(`Add at least one time slot or switch to all-day for: ${sample}${suffix}`);
       }
 
       const blockedStatuses = new Set<AvailabilityStatusKey>(['blocked', 'holiday', 'fully_booked']);
@@ -609,10 +981,31 @@ export default function AvailabilityManagementScreen({ navigation, route }: any)
           reason: STATUS_OPTIONS.find((option) => option.key === status)?.label || 'Blocked',
         }));
 
+      const calendarTimeLists = Object.fromEntries(
+        Object.entries(timeListByDate)
+          .map(([dateKey, value]) => [dateKey, normalizeTimeList(value)])
+          .filter(([, value]) => Array.isArray(value) && value.length > 0),
+      );
+      const calendarTimeModes = Object.fromEntries(
+        Object.entries(timeModeByDate)
+          .map(([dateKey, value]) => [dateKey, value === 'all_day' ? 'all_day' : 'slots']),
+      );
+      const legacyCalendarTimes = Object.fromEntries(
+        Object.entries(timeListByDate)
+          .map(([dateKey, value]) => [dateKey, normalizeTimeList(value)[0]])
+          .filter(([, value]) => Boolean(value)),
+      );
+      Object.entries(timeModeByDate).forEach(([dateKey, mode]) => {
+        if (mode !== 'all_day') return;
+        legacyCalendarTimes[dateKey] = 'all_day';
+      });
+
       const payload = {
         timezone: draft.timezone,
         calendar_statuses: draft.dayStatuses,
-        calendar_times: draft.dayTimes,
+        calendar_times: legacyCalendarTimes,
+        calendar_time_lists: calendarTimeLists,
+        calendar_time_modes: calendarTimeModes,
         calendar_service_ids: draft.dayServiceIds,
         blocked_times: blockedTimes,
         slots: [],
@@ -622,7 +1015,16 @@ export default function AvailabilityManagementScreen({ navigation, route }: any)
 
       const res = await updateInstitutionAvailability(institutionId, payload);
       if (!res?.success) throw new Error(res?.message || 'Unable to save availability settings.');
-      await upsertAvailabilityReminders(institutionId, draft.dayTimes);
+      const reminderCalendarTimes = Object.entries(legacyCalendarTimes).reduce<Record<string, string>>(
+        (acc, [dateKey, timeValue]) => {
+          const parsed = fromIso(dateKey);
+          if (parsed && parsed < todayStart) return acc;
+          acc[dateKey] = String(timeValue);
+          return acc;
+        },
+        {},
+      );
+      await upsertAvailabilityReminders(institutionId, reminderCalendarTimes);
       await runInAppNotificationTick();
       Alert.alert('Availability', 'Calendar availability saved.');
     } catch (error: any) {
@@ -630,16 +1032,26 @@ export default function AvailabilityManagementScreen({ navigation, route }: any)
     } finally {
       setSaving(false);
     }
-  }, [draft, institutionId]);
+  }, [draft, institutionId, todayStart]);
 
   const renderDayCell = useCallback(
     (date: Date, compact = false, rowLayoutKey?: string) => {
       const dateKey = toDateOnlyIso(date);
       const statusKey = draft?.dayStatuses?.[dateKey];
       const statusMeta = STATUS_OPTIONS.find((option) => option.key === statusKey);
-      const selectedTime = draft?.dayTimes?.[dateKey];
+      const timeMode = resolveDateTimeMode(draft, dateKey);
+      const selectedTimes = resolveDateTimeList(draft, dateKey);
       const selectedServicesCount = draft?.dayServiceIds?.[dateKey]?.length ?? 0;
-      const countdownLabel = selectedTime ? buildCountdownLabel(dateKey, selectedTime, nowMs) : null;
+      const nextSlot = selectedTimes.find((time) => {
+        const parsed = parseDateTime(dateKey, time);
+        return !!parsed && parsed.getTime() > nowMs;
+      }) || selectedTimes[0];
+      const countdownLabel =
+        timeMode === 'all_day'
+          ? 'All day'
+          : nextSlot
+          ? buildCountdownLabel(dateKey, nextSlot, nowMs) || nextSlot
+          : null;
       const inYear = date.getFullYear() === calendarYear;
       const isPastDate = date < todayStart;
       const isSelectable = inYear && !isPastDate;
@@ -722,7 +1134,7 @@ export default function AvailabilityManagementScreen({ navigation, route }: any)
         </TouchableOpacity>
       );
     },
-    [activeDateKey, anchorDate, calendarYear, draft?.dayServiceIds, draft?.dayStatuses, draft?.dayTimes, handleDayPress, nowMs, palette.accentPrimary, palette.background, palette.divider, palette.subtext, palette.surface, palette.text, todayStart, typography.caption],
+    [activeDateKey, anchorDate, calendarYear, draft?.dayServiceIds, draft?.dayStatuses, draft?.dayTimeLists, draft?.dayTimeModes, draft?.dayTimes, handleDayPress, nowMs, palette.accentPrimary, palette.background, palette.divider, palette.subtext, palette.surface, palette.text, todayStart, typography.caption],
   );
 
   const weekGrid = useMemo(() => getWeekGrid(anchorDate), [anchorDate]);
@@ -767,7 +1179,8 @@ export default function AvailabilityManagementScreen({ navigation, route }: any)
 
   const activeDate = activeDateKey ? fromIso(activeDateKey) : null;
   const activeDateStatus = activeDateKey ? draft?.dayStatuses?.[activeDateKey] : undefined;
-  const activeDateTime = activeDateKey ? draft?.dayTimes?.[activeDateKey] : undefined;
+  const activeDateTimeMode: DayTimeMode = activeDateKey ? resolveDateTimeMode(draft, activeDateKey) : 'slots';
+  const activeDateTimes = activeDateKey ? resolveDateTimeList(draft, activeDateKey) : [];
   const activeDateServiceIds = activeDateKey ? draft?.dayServiceIds?.[activeDateKey] || [] : [];
   const activeServices = useMemo(
     () => servicesCatalog.filter((service) => service.active !== false),
@@ -795,19 +1208,73 @@ export default function AvailabilityManagementScreen({ navigation, route }: any)
   const setActiveDayTime = useCallback(
     (time: string | null) => {
       if (!activeDateKey) return;
+
       updateDraft((prev) => {
-        const nextTimes = { ...(prev.dayTimes || {}) };
+        const nextTimes: Record<string, string> = {
+          ...(prev.dayTimes || {}),
+        };
+        const nextTimeLists: Record<string, string[]> = {
+          ...(prev.dayTimeLists || {}),
+        };
+        const nextTimeModes: Record<string, DayTimeMode> = {
+          ...(prev.dayTimeModes || {}),
+        };
+
         if (!time) {
           delete nextTimes[activeDateKey];
-        } else {
-          nextTimes[activeDateKey] = time;
+          delete nextTimeLists[activeDateKey];
+          nextTimeModes[activeDateKey] = 'slots';
+          return {
+            ...prev,
+            dayTimes: nextTimes,
+            dayTimeLists: nextTimeLists,
+            dayTimeModes: nextTimeModes,
+          };
         }
-        return { ...prev, dayTimes: nextTimes };
+
+        const existingTimes = resolveDateTimeList(prev, activeDateKey);
+        const index = existingTimes.indexOf(time);
+
+        if (index >= 0) {
+          existingTimes.splice(index, 1);
+        } else {
+          existingTimes.push(time);
+        }
+
+        const normalized = normalizeTimeList(existingTimes);
+        if (normalized.length === 0) {
+          delete nextTimes[activeDateKey];
+          delete nextTimeLists[activeDateKey];
+        } else {
+          nextTimes[activeDateKey] = normalized[0];
+          nextTimeLists[activeDateKey] = normalized;
+        }
+        nextTimeModes[activeDateKey] = 'slots';
+
+        return {
+          ...prev,
+          dayTimes: nextTimes,
+          dayTimeLists: nextTimeLists,
+          dayTimeModes: nextTimeModes,
+        };
       });
     },
     [activeDateKey, updateDraft],
   );
 
+  const setActiveDateTimeMode = useCallback(
+    (mode: DayTimeMode) => {
+      if (!activeDateKey) return;
+      updateDraft((prev) => ({
+        ...prev,
+        dayTimeModes: {
+          ...(prev.dayTimeModes || {}),
+          [activeDateKey]: mode,
+        },
+      }));
+    },
+    [activeDateKey, updateDraft],
+  );
   const toggleActiveDayServiceId = useCallback(
     (serviceId: string) => {
       if (!activeDateKey) return;
@@ -884,7 +1351,7 @@ export default function AvailabilityManagementScreen({ navigation, route }: any)
           <View style={{ borderRadius: spacing.lg, padding: spacing.md, backgroundColor: palette.card, ...borders.card }}>
             <Text style={{ ...typography.h2, color: palette.text }}>Scheduling & Availability</Text>
             <Text style={{ ...typography.body, color: palette.subtext, marginTop: spacing.xs }}>
-              Tap a color, then tap dates on the calendar. Switch between year, month, and week views.
+              Tap a status color, choose scope (day/week/month/year), then tap a date anchor to apply.
             </Text>
 
             <View style={{ marginTop: spacing.md, flexDirection: 'row', gap: spacing.xs }}>
@@ -905,6 +1372,34 @@ export default function AvailabilityManagementScreen({ navigation, route }: any)
                 </TouchableOpacity>
               ))}
             </View>
+
+            <Text style={{ ...typography.caption, color: palette.subtext, marginTop: spacing.sm }}>
+              Apply scope
+            </Text>
+            <View style={{ marginTop: spacing.xs, flexDirection: 'row', gap: spacing.xs, flexWrap: 'wrap' }}>
+              {SCHEDULE_APPLY_SCOPES.map((scope) => (
+                <TouchableOpacity
+                  key={`scope-${scope}`}
+                  onPress={() => setApplyScope(scope)}
+                  style={{
+                    borderRadius: 999,
+                    borderWidth: 1,
+                    borderColor: applyScope === scope ? palette.accentPrimary : palette.divider,
+                    backgroundColor: applyScope === scope ? `${palette.accentPrimary}22` : palette.surface,
+                    paddingHorizontal: spacing.md,
+                    paddingVertical: spacing.xs,
+                  }}
+                >
+                  <Text style={{ ...typography.label, color: palette.text }}>{scope.toUpperCase()}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <Text style={{ ...typography.caption, color: palette.subtext, marginTop: spacing.xs }}>
+              Year scope applies only within {calendarYear}.
+            </Text>
+            <Text style={{ ...typography.caption, color: palette.subtext, marginTop: 2 }}>
+              Week/Month/Year scope marks selected dates as all-day access by default.
+            </Text>
 
             {calendarMode !== 'year' ? (
               <View style={{ marginTop: spacing.sm, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -927,13 +1422,16 @@ export default function AvailabilityManagementScreen({ navigation, route }: any)
                   <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', gap: spacing.sm }}>
                     {Array.from({ length: 12 }, (_, month) => {
                       const monthDate = new Date(calendarYear, month, 1);
+                      const disabledMonth = monthDate < currentMonthStart;
                       return (
                         <TouchableOpacity
                           key={`month-${month}`}
                           onPress={() => {
+                            if (disabledMonth) return;
                             setAnchorDate(monthDate);
                             setCalendarMode('month');
                           }}
+                          disabled={disabledMonth}
                           style={{
                             width: '48%',
                             borderWidth: 1,
@@ -941,6 +1439,7 @@ export default function AvailabilityManagementScreen({ navigation, route }: any)
                             borderRadius: spacing.sm,
                             padding: spacing.xs,
                             backgroundColor: palette.card,
+                            opacity: disabledMonth ? 0.45 : 1,
                           }}
                         >
                           <Text style={{ ...typography.caption, color: palette.text, marginBottom: 4 }}>{MONTH_LABELS[month]}</Text>
@@ -1053,12 +1552,32 @@ export default function AvailabilityManagementScreen({ navigation, route }: any)
                     )}
 
                     <Text style={{ ...typography.caption, color: palette.subtext, marginTop: spacing.sm, marginBottom: 6 }}>
-                      Time (30-minute slots)
+                      Access window
                     </Text>
-                    {timeOptions.length ? (
-                      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs }}>
+
+                    <View style={{ flexDirection: 'row', gap: spacing.xs }}>
+                      <KISButton
+                        title="Specific Times"
+                        size="sm"
+                        variant={activeDateTimeMode === 'slots' ? 'primary' : 'outline'}
+                        onPress={() => setActiveDateTimeMode('slots')}
+                      />
+                      <KISButton
+                        title="All Day"
+                        size="sm"
+                        variant={activeDateTimeMode === 'all_day' ? 'primary' : 'outline'}
+                        onPress={() => setActiveDateTimeMode('all_day')}
+                      />
+                    </View>
+
+                    {activeDateTimeMode === 'all_day' ? (
+                      <Text style={{ ...typography.caption, color: palette.accentPrimary, marginTop: spacing.sm }}>
+                        Full-day access enabled. Users can book this service at any time on this date.
+                      </Text>
+                    ) : timeOptions.length ? (
+                      <View style={{ marginTop: spacing.sm, flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs }}>
                         {timeOptions.map((option) => {
-                          const selected = option === activeDateTime;
+                          const selected = activeDateTimes.includes(option);
                           return (
                             <TouchableOpacity
                               key={`${activeDateKey}-${option}`}
@@ -1078,19 +1597,30 @@ export default function AvailabilityManagementScreen({ navigation, route }: any)
                         })}
                       </View>
                     ) : (
-                      <Text style={{ ...typography.caption, color: palette.subtext }}>
+                      <Text style={{ ...typography.caption, color: palette.subtext, marginTop: spacing.sm }}>
                         No remaining time slots for this date.
                       </Text>
                     )}
 
-                    <Text style={{ ...typography.caption, color: palette.subtext, marginTop: spacing.sm }}>
-                      Selected: {activeDateServiceIds.length} service(s){activeDateTime ? ` • ${activeDateTime}` : ''}
-                    </Text>
-                    {activeDateTime ? (
+                    {activeDateTimeMode === 'slots' && activeDateTimes.length > 0 ? (
                       <View style={{ marginTop: spacing.xs }}>
-                        <KISButton title="Clear selected time" size="sm" variant="outline" onPress={() => setActiveDayTime(null)} />
+                        <KISButton
+                          title="Clear selected times"
+                          size="sm"
+                          variant="outline"
+                          onPress={() => setActiveDayTime(null)}
+                        />
                       </View>
                     ) : null}
+
+                    <Text style={{ ...typography.caption, color: palette.subtext, marginTop: spacing.sm }}>
+                      Selected: {activeDateServiceIds.length} service(s)
+                      {activeDateTimeMode === 'all_day'
+                        ? ' • All day'
+                        : activeDateTimes.length > 0
+                        ? ` • ${activeDateTimes.join(', ')}`
+                        : ''}
+                    </Text>
                   </View>
                 ) : (
                   <View style={{ paddingHorizontal: spacing.sm, paddingBottom: spacing.sm }}>

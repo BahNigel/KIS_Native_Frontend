@@ -8,8 +8,13 @@ import ROUTES from '@/network';
 import KISButton from '@/constants/KISButton';
 import { KISIcon } from '@/constants/kisIcons';
 import { resolveBackendAssetUrl } from '@/network';
-import { resolveBookingEngines } from '@/features/health-dashboard/bookingEngines';
+import { resolveBookingEnginesFromKeys } from '@/features/health-dashboard/bookingEngines';
 import { startHealthServiceSession } from '@/services/healthOpsAppointmentService';
+import { fetchHealthProfileState } from '@/services/healthProfileService';
+import {
+  fetchInstitutionLandingPage,
+  fetchInstitutionProfileEditor,
+} from '@/services/healthDashboardService';
 
 type Props = {
   searchTerm?: string;
@@ -32,6 +37,7 @@ type HealthcareBroadcastCard = {
     date?: string;
     time?: string;
     status?: string;
+    service_id?: string;
     service_name?: string;
     service_description?: string;
     institution_logo_url?: string;
@@ -39,6 +45,10 @@ type HealthcareBroadcastCard = {
     membership_discount_pct?: number;
     viewer_is_member?: boolean;
     viewer_can_manage?: boolean;
+    landing_is_published?: boolean;
+    landingIsPublished?: boolean;
+    institution_landing_is_published?: boolean;
+    institutionLandingIsPublished?: boolean;
   };
 };
 
@@ -49,7 +59,7 @@ type InstitutionBroadcastMeta = {
   name: string;
   type?: string;
   landingDraft: any;
-  landingExists: boolean;
+  landingIsPublished: boolean;
   logoUrl: string;
   membershipOpen: boolean;
   membershipDiscountPercent: number;
@@ -70,6 +80,61 @@ const STATUS_COLOR: Record<string, string> = {
   on_call: '#3B82F6',
   holiday: '#8B5CF6',
   blocked: '#6B7280',
+};
+
+const BOOKING_ENGINE_TO_FLOW_KEY: Record<string, string> = {
+  appointment: 'appointment',
+  video: 'video',
+  lab: 'clinical',
+  prescription: 'pharmacy',
+  payment: 'billing',
+  surgery: 'admission',
+  admission: 'admission',
+  emergency: 'emergency',
+  wellness: 'wellness',
+  logistics: 'home_logistics',
+};
+
+const resolveConfiguredEngineFlowKeys = (engines: Array<{ key?: string }>): string[] =>
+  Array.from(
+    new Set(
+      engines
+        .map((engine) => BOOKING_ENGINE_TO_FLOW_KEY[String(engine?.key || '').trim().toLowerCase()])
+        .filter((value): value is string => !!value),
+    ),
+  );
+
+const normalizeStringList = (value: unknown): string[] => {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => String(item || '').trim())
+    .filter(Boolean);
+};
+
+const extractServiceEngineTokens = (service: any, card: any): string[] => {
+  const tokens: string[] = [
+    ...normalizeStringList(service?.availableEngines),
+    ...normalizeStringList(service?.available_engines),
+    ...normalizeStringList(service?.engineNames),
+    ...normalizeStringList(service?.engine_names),
+    ...normalizeStringList(service?.mediumNames),
+    ...normalizeStringList(service?.medium_names),
+    ...normalizeStringList(card?.service_medium_names),
+    ...normalizeStringList(card?.serviceMediumNames),
+  ];
+  if (Array.isArray(service?.medium_links)) {
+    service.medium_links.forEach((link: any) => {
+      const mediumName = String(link?.medium?.name || link?.name || '').trim();
+      if (mediumName) tokens.push(mediumName);
+    });
+  }
+  if (Array.isArray(service?.mediumLinks)) {
+    service.mediumLinks.forEach((link: any) => {
+      const mediumName = String(link?.medium?.name || link?.name || '').trim();
+      if (mediumName) tokens.push(mediumName);
+    });
+  }
+  return Array.from(new Set(tokens));
 };
 
 const toDateLabel = (value?: string) => {
@@ -105,12 +170,16 @@ const resolveLandingDraft = (institution: any) => {
   return {};
 };
 
-const hasLandingPage = (draft: any) => {
-  if (!draft || typeof draft !== 'object') return false;
-  if (Array.isArray(draft.sections) && draft.sections.length > 0) return true;
-  if (typeof draft.about === 'string' && draft.about.trim().length > 0) return true;
-  if (Array.isArray(draft.gallery) && draft.gallery.length > 0) return true;
-  if (typeof draft?.hero?.title === 'string' && draft.hero.title.trim().length > 0) return true;
+const resolveLandingPublished = (...values: unknown[]) => {
+  for (const value of values) {
+    if (typeof value === 'boolean') return value;
+    if (typeof value === 'number' && Number.isFinite(value)) return value !== 0;
+    if (typeof value === 'string') {
+      const normalized = value.trim().toLowerCase();
+      if (['true', '1', 'yes', 'published', 'active'].includes(normalized)) return true;
+      if (['false', '0', 'no', 'unpublished', 'inactive'].includes(normalized)) return false;
+    }
+  }
   return false;
 };
 
@@ -164,9 +233,9 @@ export default function BroadcastHealthcarePage({ searchTerm, searchContext }: P
   const loadHealthcareBroadcasts = useCallback(async () => {
     setLoading(true);
     try {
-      const [res, profileResResult] = await Promise.allSettled([
+      const [res, profileStateResult] = await Promise.allSettled([
         getRequest(ROUTES.broadcasts.list, { errorMessage: 'Unable to load healthcare broadcasts.' }),
-        getRequest(ROUTES.broadcasts.createProfile, { errorMessage: 'Unable to load institution profiles.' }),
+        fetchHealthProfileState({ forceNetwork: true }),
       ]);
       if (res.status !== 'fulfilled' || !res.value?.success) {
         throw new Error(
@@ -186,9 +255,8 @@ export default function BroadcastHealthcarePage({ searchTerm, searchContext }: P
       });
       setItems(healthcareRows);
 
-      const profileRes = profileResResult.status === 'fulfilled' ? profileResResult.value : null;
-      const healthProfile = profileRes?.data?.profiles?.health ?? {};
-      const institutions = Array.isArray(healthProfile?.institutions) ? healthProfile.institutions : [];
+      const profileState = profileStateResult.status === 'fulfilled' ? profileStateResult.value : null;
+      const institutions = Array.isArray(profileState?.profile?.institutions) ? profileState.profile.institutions : [];
       const nextMeta: Record<string, InstitutionBroadcastMeta> = {};
       institutions.forEach((institution: any) => {
         const id = String(institution?.id || '').trim();
@@ -219,21 +287,84 @@ export default function BroadcastHealthcarePage({ searchTerm, searchContext }: P
           name: String(institution?.name || ''),
           type: String(institution?.type || '').trim().toLowerCase(),
           landingDraft: draft,
-          landingExists: hasLandingPage(draft),
+          landingIsPublished: resolveLandingPublished(
+            draft?.isPublished,
+            draft?.is_published,
+            institution?.landing_is_published,
+            institution?.landingIsPublished,
+            institution?.landing_page_is_published,
+            institution?.landingPageIsPublished,
+          ),
           logoUrl: resolvedLogo,
           membershipOpen: !!membershipOpen,
           membershipDiscountPercent,
         };
       });
-      setInstitutionMeta(nextMeta);
 
-      const institutionIds = Array.from(
+      const institutionIds: string[] = Array.from(
         new Set(
           healthcareRows
             .map((row: any) => resolveInstitutionIdFromBroadcast(row))
-            .filter(Boolean),
+            .map((value: unknown) => String(value || '').trim())
+            .filter((value: string) => value.length > 0),
         ),
       );
+      const landingInstitutionIds = Array.from(new Set([...institutionIds, ...Object.keys(nextMeta)]));
+      const landingResponses = await Promise.allSettled(
+        landingInstitutionIds.map((institutionId) => fetchInstitutionLandingPage(institutionId)),
+      );
+      const profileEditorResponses = await Promise.allSettled(
+        landingInstitutionIds.map((institutionId) => fetchInstitutionProfileEditor(institutionId)),
+      );
+      const mergedMeta: Record<string, InstitutionBroadcastMeta> = { ...nextMeta };
+      landingResponses.forEach((result, index) => {
+        if (result.status !== 'fulfilled' || !result.value?.success || !result.value?.data) return;
+        const institutionId = landingInstitutionIds[index];
+        const current = mergedMeta[institutionId] || {
+          id: institutionId,
+          name: '',
+          type: '',
+          landingDraft: {},
+          landingIsPublished: false,
+          logoUrl: '',
+          membershipOpen: false,
+          membershipDiscountPercent: 10,
+        };
+        const landingDraft = current.landingDraft || {};
+        const rawLogo = String(
+          (landingDraft as any)?.landingLogoUrl || current.logoUrl || '',
+        ).trim();
+        mergedMeta[institutionId] = {
+          ...current,
+          landingDraft,
+          landingIsPublished: !!result.value.data.isPublished,
+          logoUrl: resolveBackendAssetUrl(rawLogo) || rawLogo || current.logoUrl,
+        };
+      });
+      profileEditorResponses.forEach((result, index) => {
+        if (result.status !== 'fulfilled' || !result.value?.success) return;
+        const institutionId = landingInstitutionIds[index];
+        const current = mergedMeta[institutionId];
+        if (!current) return;
+        const payload = result.value?.data ?? {};
+        const profileDraft = payload?.profile_editor ?? payload?.draft ?? payload;
+        if (
+          !profileDraft ||
+          typeof profileDraft !== 'object' ||
+          Array.isArray(profileDraft) ||
+          Object.keys(profileDraft).length === 0
+        ) {
+          return;
+        }
+        const rawLogo = String((profileDraft as any)?.landingLogoUrl || current.logoUrl || '').trim();
+        mergedMeta[institutionId] = {
+          ...current,
+          landingDraft: profileDraft,
+          logoUrl: resolveBackendAssetUrl(rawLogo) || rawLogo || current.logoUrl,
+        };
+      });
+      setInstitutionMeta(mergedMeta);
+
       const detailResponses = await Promise.allSettled(
         institutionIds.map((institutionId) =>
           getRequest(ROUTES.broadcasts.healthCards(institutionId), { errorMessage: 'Unable to load health card details.' }),
@@ -313,6 +444,7 @@ export default function BroadcastHealthcarePage({ searchTerm, searchContext }: P
       basePriceCents?: number;
       memberPriceCents?: number;
       institutionType?: string;
+      configuredEngineFlowKeys?: string[];
     }) => {
       const institutionId = String(args.institutionId || '').trim();
       if (!institutionId) {
@@ -374,6 +506,7 @@ export default function BroadcastHealthcarePage({ searchTerm, searchContext }: P
         serviceId: args.serviceId,
         serviceName: args.serviceName,
         serviceDescription: args.serviceDescription,
+        configuredEngineFlowKeys: Array.isArray(args.configuredEngineFlowKeys) ? args.configuredEngineFlowKeys : undefined,
         dateKey: args.date,
         timeValue: args.time,
         statusLabel: args.status,
@@ -425,6 +558,7 @@ export default function BroadcastHealthcarePage({ searchTerm, searchContext }: P
       return target < todayStart;
     });
   }, [filtered, timeFilter]);
+  console.log("checking the health card Items: ", withTimeFilter)
 
   if (loading) {
     return (
@@ -463,7 +597,8 @@ export default function BroadcastHealthcarePage({ searchTerm, searchContext }: P
         const matchedCard = institutionCardData?.cardsById?.[cardId] || null;
         const service = matchedCard?.service || {};
         const serviceId = String(service?.id || card?.service_id || '');
-        const bookingEngines = resolveBookingEngines(service, String(institution?.type || ''));
+        const explicitEngineTokens = extractServiceEngineTokens(service, card);
+        const bookingEngines = resolveBookingEnginesFromKeys(explicitEngineTokens);
         const rating = institutionCardData?.ratingsByService?.[serviceId];
         const memberDiscount =
           institutionCardData?.membershipDiscountPercent ??
@@ -477,17 +612,33 @@ export default function BroadcastHealthcarePage({ searchTerm, searchContext }: P
           false;
         const viewerIsMember = !!(institutionCardData?.viewerIsMember ?? card?.viewer_is_member ?? false);
         const viewerCanManage = !!(institutionCardData?.viewerCanManage ?? card?.viewer_can_manage ?? false);
+        const landingPublished = resolveLandingPublished(
+          institution?.landingIsPublished,
+          card?.landing_is_published,
+          card?.landingIsPublished,
+          card?.institution_landing_is_published,
+          card?.institutionLandingIsPublished,
+        );
         const logoUrl = resolveBackendAssetUrl(
           String(
             institution?.logoUrl || card.institution_logo_url || item.attachments?.[0]?.url || '',
           ).trim(),
         ) || String(institution?.logoUrl || card.institution_logo_url || item.attachments?.[0]?.url || '').trim();
+        const openLandingPreview = () => {
+          if (!landingPublished) return;
+          navigation.navigate('InstitutionLandingPreview', {
+            institutionId,
+            institutionType: institution?.type || undefined,
+            institutionName: institution?.name || card.institution_name || item.source?.name || 'Healthcare Institution',
+            draft: institution?.landingDraft || {},
+          });
+        };
 
         return (
           <View
             key={item.id}
             style={{
-              borderWidth: 1,
+              borderWidth: 3,
               borderColor: palette.divider,
               borderRadius: 18,
               backgroundColor: palette.card,
@@ -500,6 +651,14 @@ export default function BroadcastHealthcarePage({ searchTerm, searchContext }: P
               ) : (
                 <KISIcon name="heart" size={28} color={palette.primary} />
               )}
+              {landingPublished ? (
+                <TouchableOpacity
+                  onPress={openLandingPreview}
+                  accessibilityRole="button"
+                  accessibilityLabel="Open institution landing page"
+                  style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0 }}
+                />
+              ) : null}
               {membershipOpen && !viewerIsMember && !viewerCanManage ? (
                 <View style={{ position: 'absolute', left: 8, top: 8 }}>
                   <KISButton
@@ -512,29 +671,32 @@ export default function BroadcastHealthcarePage({ searchTerm, searchContext }: P
                   />
                 </View>
               ) : null}
-              {institution?.landingExists ? (
-                <View style={{ position: 'absolute', right: 8, bottom: 8 }}>
-                  <KISButton
-                    title="View"
-                    size="xs"
-                    variant="outline"
-                    onPress={() => {
-                      navigation.navigate('InstitutionLandingPreview', {
-                        institutionId,
-                        institutionType: institution?.type || undefined,
-                        institutionName: institution?.name || card.institution_name || item.source?.name || 'Healthcare Institution',
-                        draft: institution?.landingDraft || {},
-                      });
-                    }}
-                  />
-                </View>
-              ) : null}
             </View>
             <View style={{ padding: 14 }}>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                <Text style={{ color: palette.text, fontWeight: '900', fontSize: 17, flex: 1, paddingRight: 8 }}>
-                  {card.service_name || item.title || 'Health Service'}
-                </Text>
+                <View style={{ flex: 1, paddingRight: 8 }}>
+                  {landingPublished ? (
+                    <TouchableOpacity onPress={openLandingPreview} accessibilityRole="button">
+                      <Text
+                        style={{
+                          color: palette.primary,
+                          fontWeight: '900',
+                          fontSize: 17,
+                          textDecorationLine: 'underline',
+                        }}
+                      >
+                        {card.service_name || item.title || 'Health Service'}
+                      </Text>
+                      <Text style={{ color: palette.primary, marginTop: 2, fontSize: 11, fontWeight: '700' }}>
+                        Tap title to open institution page
+                      </Text>
+                    </TouchableOpacity>
+                  ) : (
+                    <Text style={{ color: palette.text, fontWeight: '900', fontSize: 17 }}>
+                      {card.service_name || item.title || 'Health Service'}
+                    </Text>
+                  )}
+                </View>
                 <View style={{ borderRadius: 999, backgroundColor: `${statusColor}22`, paddingHorizontal: 10, paddingVertical: 4 }}>
                   <Text style={{ color: statusColor, fontWeight: '800', fontSize: 12 }}>
                     {statusKey.replace('_', ' ')}
@@ -555,9 +717,24 @@ export default function BroadcastHealthcarePage({ searchTerm, searchContext }: P
                 {toDateLabel(card.date)}{card.time ? ` · ${card.time}` : ''}
               </Text>
 
-              <Text style={{ color: palette.text, marginTop: 6, fontWeight: '700' }}>
-                {institution?.name || card.institution_name || item.source?.name || 'Healthcare Institution'}
-              </Text>
+              {landingPublished ? (
+                <TouchableOpacity onPress={openLandingPreview} accessibilityRole="button">
+                  <Text
+                    style={{
+                      color: palette.primary,
+                      marginTop: 6,
+                      fontWeight: '700',
+                      textDecorationLine: 'underline',
+                    }}
+                  >
+                    {institution?.name || card.institution_name || item.source?.name || 'Healthcare Institution'}
+                  </Text>
+                </TouchableOpacity>
+              ) : (
+                <Text style={{ color: palette.text, marginTop: 6, fontWeight: '700' }}>
+                  {institution?.name || card.institution_name || item.source?.name || 'Healthcare Institution'}
+                </Text>
+              )}
 
               <Text style={{ color: palette.text, marginTop: 6, fontWeight: '700' }}>
                 Service price: {toMoney(service?.basePriceCents ?? service?.base_price_cents)}
@@ -649,6 +826,7 @@ export default function BroadcastHealthcarePage({ searchTerm, searchContext }: P
                           )
                         : undefined,
                       institutionType: institution?.type,
+                      configuredEngineFlowKeys: resolveConfiguredEngineFlowKeys(bookingEngines),
                     }).catch((error: any) => {
                       Alert.alert('Book now', error?.message || 'Unable to start this session.');
                     });

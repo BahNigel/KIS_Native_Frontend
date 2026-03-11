@@ -8,10 +8,8 @@ import {
   Image,
   Share,
   Alert,
-  Modal,
 } from 'react-native';
 import { useKISTheme } from '@/theme/useTheme';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import ROUTES, {
   buildMediaSource,
   resolveBackendAssetUrl,
@@ -19,7 +17,6 @@ import ROUTES, {
 } from '@/network';
 import { getRequest } from '@/network/get';
 import { postRequest } from '@/network/post';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { KISIcon } from '@/constants/kisIcons';
 import ImagePlaceholder from '@/components/common/ImagePlaceholder';
 import Skeleton from '@/components/common/Skeleton';
@@ -31,6 +28,7 @@ import { InlineCommentSheet, formatCommentContextLabel } from '@/components/feed
 import ShareRenderer, { type SharePayload } from '@/components/feeds/ShareRenderer';
 import { uploadFileToBackend } from '@/Module/ChatRoom/uploadFileToBackend';
 import Video from 'react-native-video';
+import { getAccessToken } from '@/security/authStorage';
 
 type FeedItem =
   | { type: 'post'; data: PartnerPost }
@@ -43,7 +41,6 @@ type Props = {
 
 export default function PartnerFeedPage({ partner, onBack }: Props) {
   const { palette } = useKISTheme();
-  const insets = useSafeAreaInsets();
   const [loading, setLoading] = useState(true);
   const [posts, setPosts] = useState<PartnerPost[]>([]);
   const [composerVisible, setComposerVisible] = useState(false);
@@ -171,7 +168,7 @@ export default function PartnerFeedPage({ partner, onBack }: Props) {
   };
 
   const uploadShareAsset = async (uri: string) => {
-    const token = await AsyncStorage.getItem('access_token');
+    const token = await getAccessToken();
     if (!token) return null;
     const attachment = await uploadFileToBackend({
       file: {

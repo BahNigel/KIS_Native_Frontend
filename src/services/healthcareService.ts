@@ -87,8 +87,9 @@ export const createReferralRoute = (payload: Record<string, any>) =>
     errorMessage: 'Unable to create referral.',
   });
 
-export const fetchClinicalEvents = () =>
+export const fetchClinicalEvents = (params?: Record<string, any>) =>
   getRequest(ROUTES.clinical.events, {
+    params,
     errorMessage: 'Unable to load event log.',
   });
 

@@ -1,6 +1,5 @@
 import React, { useRef } from 'react';
 import {
-  View,
   Pressable,
   PanResponder,
   GestureResponderEvent,
@@ -43,7 +42,7 @@ export const InteractiveMessageRow: React.FC<Props> = ({
   palette,
   currentUserId,
   onReplyToMessage,
-  onEditMessage,
+  onEditMessage: _onEditMessage,
   onPressMessage,
   onLongPressMessage,
   onReactMessage,
@@ -81,7 +80,7 @@ export const InteractiveMessageRow: React.FC<Props> = ({
     ]).start();
   };
 
-  const handlePress = (e: GestureResponderEvent) => {
+  const handlePress = (_e: GestureResponderEvent) => {
     const now = Date.now();
 
     // If selection mode is on, pressing toggles selection

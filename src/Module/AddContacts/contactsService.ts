@@ -1,6 +1,6 @@
 // src/screens/chat/contactsService.ts
 
-import Contacts, { Contact as RNContact } from 'react-native-contacts';
+import Contacts from 'react-native-contacts';
 import { Platform, PermissionsAndroid } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import ROUTES from '@/network';

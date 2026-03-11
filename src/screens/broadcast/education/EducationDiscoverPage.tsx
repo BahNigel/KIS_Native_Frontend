@@ -180,7 +180,10 @@ export default function EducationDiscoverPage({ searchTerm = '', searchContext =
   const showLessons = contextKey === 'lessons' || contextKey === 'workshops' || !contextKey;
   const showCourses = contextKey !== 'lessons';
 
-  const educationProfilesList = broadcastProfiles?.education_profiles ?? [];
+  const educationProfilesList = useMemo(
+    () => broadcastProfiles?.education_profiles ?? [],
+    [broadcastProfiles?.education_profiles],
+  );
   const hasEducationProfile = Boolean(broadcastProfiles?.education);
   const openEducationProfile = useCallback(() => {
     navigation.navigate('Profile', {

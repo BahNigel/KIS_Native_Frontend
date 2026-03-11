@@ -12,7 +12,6 @@ import {
   Image,
   Pressable,
 } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { launchImageLibrary } from 'react-native-image-picker';
 
 import { useKISTheme } from '../../theme/useTheme';
@@ -20,6 +19,7 @@ import KISButton from '../../constants/KISButton';
 import { postRequest } from '@/network/post';
 import ROUTES, { CHAT_BASE_URL } from '@/network';
 import { uploadFileToBackend } from '@/Module/ChatRoom/uploadFileToBackend';
+import { getAccessToken } from '@/security/authStorage';
 
 type Props = {
   onClose: () => void;
@@ -50,7 +50,7 @@ export default function PartnerCreateSlide({ onClose }: Props) {
       return;
     }
 
-    const token = await AsyncStorage.getItem('access_token');
+    const token = await getAccessToken();
     if (!token) {
       Alert.alert('Not signed in', 'Please log in again.');
       return;

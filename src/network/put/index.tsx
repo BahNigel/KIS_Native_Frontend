@@ -29,6 +29,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import apiService from '../../services/apiService';
 import type { ApiResult, HeadersInit } from '../types';
+import { getAccessToken } from '@/security/authStorage';
 
 interface PutDataOptions {
   headers?: HeadersInit; // Custom headers for the API request
@@ -46,8 +47,7 @@ export const putData = async (
   const { headers = {}, messages = {} } = options;
 
   try {
-    // Retrieve the user token from AsyncStorage for authorization
-    const userToken = await AsyncStorage.getItem('userToken');
+    const userToken = await getAccessToken();
     const deviceId = await AsyncStorage.getItem('device_id');
     const requestHeaders: HeadersInit = { ...headers };
     if (userToken) requestHeaders.Authorization = `Bearer ${userToken}`;
@@ -57,7 +57,7 @@ export const putData = async (
     const response = await apiService.put(url, data, requestHeaders);
 
     // Parse the API response
-    const responseData = await response.json();
+    const responseData = await response.json().catch(() => ({}));
 
     // Check the API response status
     if (response.status === 200 || response.status === 204) {

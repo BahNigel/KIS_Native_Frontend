@@ -1,7 +1,7 @@
 // src/navigation/MainTabs.tsx
 // ❌ No NavigationContainer here — only navigators and screens.
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   DeviceEventEmitter,
   Platform,
@@ -13,7 +13,6 @@ import {
   useWindowDimensions,      // ✅ useWindowDimensions instead of Dimensions
   Animated as RNAnimated,   // 👈 native Animated for overlay
 } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   createBottomTabNavigator,
   BottomTabBarProps,
@@ -79,7 +78,7 @@ function AnimatedKISTabBar({
     else if (typeof theme.setMode === 'function') theme.setMode(systemScheme ?? 'light');
     // @ts-ignore
     else if (typeof theme.useSystem === 'function') theme.useSystem();
-  }, [systemScheme]);
+  }, [systemScheme, theme]);
 
   const insets = useSafeAreaInsets();
 
@@ -273,7 +272,7 @@ export function MainTabs() {
         if (active) {
           setCommunityByConversationId(next);
         }
-      } catch (err) {
+      } catch {
         if (active) {
           setCommunityByConversationId({});
         }
@@ -286,27 +285,7 @@ export function MainTabs() {
     };
   }, [currentUserId]);
 
-  useEffect(() => {
-    let mounted = true;
-    const logDeviceAuth = async () => {
-      try {
-        const token = await AsyncStorage.getItem('access_token');
-        const deviceId = await AsyncStorage.getItem('device_id');
-        if (mounted) {
-          console.log('[DEV] access_token:', token);
-          console.log('[DEV] device_id:', deviceId);
-        }
-      } catch (e) {
-        console.warn('[DEV] failed to read auth/device tokens', e);
-      }
-    };
-    logDeviceAuth();
-    return () => {
-      mounted = false;
-    };
-  }, []);
-
-  const openCommunity = (community: { id: string; name: string }) => {
+  const openCommunity = useCallback((community: { id: string; name: string }) => {
     setActiveCommunity(community);
     setCommunityVisible(true);
 
@@ -315,9 +294,9 @@ export function MainTabs() {
       duration: 260,
       useNativeDriver: true,
     }).start();
-  };
+  }, [communitySlide]);
 
-  const openChat = (chat: Chat) => {
+  const openChat = useCallback((chat: Chat) => {
     const conversationKey = chat?.conversationId ?? chat?.id;
     const communityEntry =
       conversationKey && communityByConversationId[String(conversationKey)]
@@ -344,7 +323,7 @@ export function MainTabs() {
       duration: 260,
       useNativeDriver: true,
     }).start();
-  };
+  }, [chatSlide, communityByConversationId, openCommunity]);
 
   useEffect(() => {
     const sub = DeviceEventEmitter.addListener('chat.open', (payload: any) => {

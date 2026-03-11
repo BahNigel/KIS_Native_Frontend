@@ -20,7 +20,7 @@ const readJson = async (path: string) => {
   const content = await RNFS.readFile(path, 'utf8');
   try {
     return JSON.parse(content);
-  } catch (e) {
+  } catch {
     // If something went wrong with the previous file, just drop it.
     return null;
   }

@@ -150,7 +150,6 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
   });
 
   const isMe = (message as any).fromMe ?? false;
-  const kind: string = (message as any).kind ?? 'text';
   const status = (message as any).status as
     | ChatMessage['status']
     | string
@@ -269,7 +268,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
     try {
       await audioPlayer.stopPlayer();
       audioPlayer.removePlayBackListener();
-    } catch (e) {
+    } catch {
       // ignore
     }
     setIsPlaying(false);
@@ -331,7 +330,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
       try {
         audioPlayer.stopPlayer();
         audioPlayer.removePlayBackListener();
-      } catch (e) {
+      } catch {
         // ignore
       }
     };

@@ -90,6 +90,7 @@ export type KISIconName =
   | 'plus'
   | 'bookmark'
   | 'bolt'
+  | 'chevron-left'
   | 'chevron-right'
   | 'star'
   | 'phone'
@@ -257,6 +258,7 @@ const ion: IonMap = {
   plus: { filled: 'add', outline: 'add-outline' },
   bookmark: { filled: 'bookmark', outline: 'bookmark-outline' },
   bolt: { filled: 'flash', outline: 'flash-outline' },
+  'chevron-left': { filled: 'chevron-back', outline: 'chevron-back' },
   'chevron-right': { filled: 'chevron-forward', outline: 'chevron-forward' },
   star: { filled: 'star', outline: 'star-outline' },
   phone: { filled: 'call', outline: 'call-outline' },

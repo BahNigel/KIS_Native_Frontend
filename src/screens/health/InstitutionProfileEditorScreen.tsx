@@ -29,7 +29,9 @@ import {
 } from '@/features/health-dashboard/models';
 import {
   ensureInstitutionDashboardExists,
+  fetchInstitutionLandingPage,
   fetchInstitutionProfileEditor,
+  upsertInstitutionLandingPage,
   updateInstitutionProfileEditor,
   uploadHealthDashboardImage,
 } from '@/services/healthDashboardService';
@@ -52,7 +54,8 @@ const buildInstitutionServicesCtaUrl = (institutionId: string) =>
 const isSupportedType = (value: string): value is HealthDashboardInstitutionType =>
   HEALTH_DASHBOARD_INSTITUTION_TYPES.includes(value as HealthDashboardInstitutionType);
 
-const createDefaultDraft = (institutionType: HealthDashboardInstitutionType): InstitutionProfileEditorDraft => ({
+const createDefaultDraft = (_institutionType: HealthDashboardInstitutionType): InstitutionProfileEditorDraft => ({
+  isPublished: false,
   hero: {
     imageUrl: '',
     title: '',
@@ -180,6 +183,9 @@ const mergeLegacyCompatibility = (base: InstitutionProfileEditorDraft, sections:
   };
 };
 
+const hasDraftContent = (value: any) =>
+  !!(value && typeof value === 'object' && Object.keys(value).length > 0);
+
 export default function InstitutionProfileEditorScreen({ navigation, route }: any) {
   const institutionId = route?.params?.institutionId as string | undefined;
   const institutionType = route?.params?.institutionType as string | undefined;
@@ -206,10 +212,12 @@ export default function InstitutionProfileEditorScreen({ navigation, route }: an
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [savingPublishState, setSavingPublishState] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
   const [uploadingLandingImage, setUploadingLandingImage] = useState(false);
   const [uploadingLandingLogo, setUploadingLandingLogo] = useState(false);
   const [draft, setDraft] = useState<InstitutionProfileEditorDraft | null>(null);
+  const [landingPublished, setLandingPublished] = useState(false);
   const [sections, setSections] = useState<DynamicLandingSection[]>([]);
   const [selectedType, setSelectedType] = useState<SectionType | null>(null);
   const [sectionDraftName, setSectionDraftName] = useState('');
@@ -240,17 +248,34 @@ export default function InstitutionProfileEditorScreen({ navigation, route }: an
       const bootstrap = await ensureInstitutionDashboardExists(institutionId, dashboardType);
       if (!bootstrap?.success) throw new Error(bootstrap?.message || 'Unable to initialize institution dashboard.');
 
-      const res = await fetchInstitutionProfileEditor(institutionId);
+      const [res, landingRes] = await Promise.all([
+        fetchInstitutionProfileEditor(institutionId),
+        fetchInstitutionLandingPage(institutionId),
+      ]);
       if (!res?.success && Number(res?.status) !== 404) {
         throw new Error(res?.message || 'Unable to load profile editor data.');
       }
 
       const payload = res?.data ?? res ?? {};
-      const existing = payload?.profile_editor ?? payload?.draft ?? payload;
+      const existingFromEditor = payload?.profile_editor ?? payload?.draft ?? payload;
+      const landingDraft =
+        landingRes?.success && landingRes?.data?.draft && typeof landingRes.data.draft === 'object'
+          ? landingRes.data.draft
+          : null;
+      const existing = hasDraftContent(existingFromEditor)
+        ? existingFromEditor
+        : hasDraftContent(landingDraft)
+          ? landingDraft
+          : existingFromEditor;
+      const publishedFromLanding = landingRes?.success ? !!landingRes?.data?.isPublished : null;
+      const publishedFromDraft = typeof existing?.isPublished === 'boolean' ? existing.isPublished : null;
+      const effectivePublished = publishedFromLanding ?? publishedFromDraft ?? false;
+      setLandingPublished(effectivePublished);
 
       const hydrated: InstitutionProfileEditorDraft = {
         ...fallbackWithCta,
         ...(existing || {}),
+        isPublished: effectivePublished,
         hero: {
           ...fallbackWithCta.hero,
           ...(existing?.hero || {}),
@@ -294,6 +319,7 @@ export default function InstitutionProfileEditorScreen({ navigation, route }: an
         },
       };
       setDraft(fallbackWithCta);
+      setLandingPublished(false);
       setSections([]);
     } finally {
       setLoading(false);
@@ -400,6 +426,10 @@ export default function InstitutionProfileEditorScreen({ navigation, route }: an
       setUploadingImage(false);
     }
   }, [selectedType]);
+
+  const handleRemoveSectionBackgroundImage = useCallback(() => {
+    setSectionDraftData((prev) => ({ ...prev, sectionBackgroundImageUrl: '' }));
+  }, []);
 
   const handlePickGalleryImage = useCallback(async () => {
     if (selectedType !== 'image_gallery_grid') return;
@@ -558,6 +588,32 @@ export default function InstitutionProfileEditorScreen({ navigation, route }: an
     setIsSectionTypePickerOpen(false);
   }, []);
 
+  const handleSavePublishState = useCallback(async () => {
+    if (!institutionId) return;
+    setSavingPublishState(true);
+    try {
+      const response = await upsertInstitutionLandingPage(institutionId, {
+        isPublished: landingPublished,
+      });
+      if (!response?.success) {
+        throw new Error(response?.message || 'Unable to update publish status.');
+      }
+      const effectivePublished = !!response?.data?.isPublished;
+      setLandingPublished(effectivePublished);
+      setDraft((prev) => (prev ? { ...prev, isPublished: effectivePublished } : prev));
+      Alert.alert(
+        'Profile editor',
+        effectivePublished
+          ? 'Landing page is now published. Health card titles are clickable.'
+          : 'Landing page is now unpublished. Health card titles are not clickable.',
+      );
+    } catch (error: any) {
+      Alert.alert('Profile editor', error?.message || 'Unable to update publish status.');
+    } finally {
+      setSavingPublishState(false);
+    }
+  }, [institutionId, landingPublished]);
+
   const handleSave = useCallback(async () => {
     if (!institutionId || !draft) return;
     setSaving(true);
@@ -565,6 +621,7 @@ export default function InstitutionProfileEditorScreen({ navigation, route }: an
       const payload = mergeLegacyCompatibility(
         {
           ...draft,
+          isPublished: landingPublished,
           hero: {
             ...draft.hero,
             ctaUrl: generatedCtaUrl || draft.hero.ctaUrl,
@@ -578,6 +635,14 @@ export default function InstitutionProfileEditorScreen({ navigation, route }: an
 
       const res = await updateInstitutionProfileEditor(institutionId, payload);
       if (!res?.success) throw new Error(res?.message || 'Unable to save profile editor draft.');
+      const publishRes = await upsertInstitutionLandingPage(institutionId, {
+        isPublished: landingPublished,
+      });
+      if (publishRes?.success && publishRes?.data) {
+        const effectivePublished = !!publishRes.data.isPublished;
+        setLandingPublished(effectivePublished);
+        payload.isPublished = effectivePublished;
+      }
       setDraft(payload);
       if (localBuilderCacheKey) {
         await AsyncStorage.removeItem(localBuilderCacheKey);
@@ -588,7 +653,7 @@ export default function InstitutionProfileEditorScreen({ navigation, route }: an
     } finally {
       setSaving(false);
     }
-  }, [draft, generatedCtaUrl, institutionId, localBuilderCacheKey, sections]);
+  }, [draft, generatedCtaUrl, institutionId, landingPublished, localBuilderCacheKey, sections]);
 
   const handleOpenLandingPreview = useCallback(() => {
     if (!dashboardType) return;
@@ -598,10 +663,11 @@ export default function InstitutionProfileEditorScreen({ navigation, route }: an
       institutionName: draft?.hero?.title || undefined,
       draft: {
         ...(draft || {}),
+        isPublished: landingPublished,
         sections,
       },
     });
-  }, [dashboardType, draft, institutionId, navigation, sections]);
+  }, [dashboardType, draft, institutionId, landingPublished, navigation, sections]);
 
   if (!dashboardType) {
     return (
@@ -657,6 +723,49 @@ export default function InstitutionProfileEditorScreen({ navigation, route }: an
             <Text style={{ ...typography.body, color: palette.subtext, marginTop: spacing.xs }}>
               Dynamic Section Builder with live preview.
             </Text>
+
+            <View
+              style={{
+                marginTop: spacing.md,
+                borderWidth: 1,
+                borderColor: palette.divider,
+                borderRadius: spacing.md,
+                backgroundColor: palette.surface,
+                padding: spacing.sm,
+              }}
+            >
+              <Text style={{ ...typography.h3, color: palette.text }}>Landing Page Visibility</Text>
+              <Text style={{ ...typography.body, color: palette.subtext, marginTop: spacing.xs }}>
+                {landingPublished
+                  ? 'Published: health card titles link to this landing page.'
+                  : 'Unpublished: health card titles are not clickable.'}
+              </Text>
+              <View style={{ marginTop: spacing.sm, flexDirection: 'row', gap: spacing.xs }}>
+                <KISButton
+                  title="Published"
+                  size="sm"
+                  variant={landingPublished ? 'primary' : 'outline'}
+                  onPress={() => setLandingPublished(true)}
+                  disabled={savingPublishState || saving}
+                />
+                <KISButton
+                  title="Unpublished"
+                  size="sm"
+                  variant={!landingPublished ? 'primary' : 'outline'}
+                  onPress={() => setLandingPublished(false)}
+                  disabled={savingPublishState || saving}
+                />
+              </View>
+              <View style={{ marginTop: spacing.sm }}>
+                <KISButton
+                  title={savingPublishState ? 'Saving Publish Status...' : 'Save Publish Status'}
+                  onPress={() => {
+                    handleSavePublishState().catch(() => undefined);
+                  }}
+                  disabled={savingPublishState || saving}
+                />
+              </View>
+            </View>
 
             <Text style={{ ...typography.h3, color: palette.text, marginTop: spacing.md }}>Live Landing Preview</Text>
             <TouchableOpacity
@@ -816,6 +925,7 @@ export default function InstitutionProfileEditorScreen({ navigation, route }: an
               onDataChange={setSectionDraftData}
               onPickSingleImage={handlePickSingleImage}
               onPickSectionBackgroundImage={handlePickSectionBackgroundImage}
+              onRemoveSectionBackgroundImage={handleRemoveSectionBackgroundImage}
               onPickGalleryImage={handlePickGalleryImage}
               palette={palette}
               typography={typography}

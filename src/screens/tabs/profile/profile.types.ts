@@ -5,6 +5,9 @@ export type ProfilePayload = {
     display_name?: string;
     avatar_url?: string | null;
     phone?: string | null;
+    phone_country_code?: string | null;
+    phone_number?: string | null;
+    country?: string | null;
     email?: string | null;
   };
   profile: {
@@ -94,6 +97,9 @@ export type PickedImage = { uri: string; name: string; type: string };
 
 export type DraftProfile = {
   display_name: string;
+  country_code: string;
+  phone_number: string;
+  languages: string[];
   headline: string;
   bio: string;
   industry: string;

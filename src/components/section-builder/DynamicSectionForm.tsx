@@ -41,7 +41,7 @@ const TypeSpecificFields = ({
   data,
   onChange,
   onPickSingleImage,
-  onPickSectionBackgroundImage,
+  onPickSectionBackgroundImage: _onPickSectionBackgroundImage,
   onPickGalleryImage,
   palette,
   typography,

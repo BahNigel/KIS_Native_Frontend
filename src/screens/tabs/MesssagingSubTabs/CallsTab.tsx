@@ -6,7 +6,6 @@ import {
   StyleSheet,
   FlatList,
   Pressable,
-  ActivityIndicator,
 } from 'react-native';
 import { KISIcon } from '@/constants/kisIcons';
 import Skeleton from '@/components/common/Skeleton';

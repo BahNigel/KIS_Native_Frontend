@@ -1,8 +1,7 @@
 // src/screens/tabs/PartnersScreen.tsx
 import React, { useCallback, useEffect } from 'react';
-import { Alert, DeviceEventEmitter, View, useWindowDimensions } from 'react-native';
+import { Alert, DeviceEventEmitter, useWindowDimensions } from 'react-native';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
-import { useKISTheme } from '../../theme/useTheme';
 import { useAuth } from '../../../App';
 import PartnerLayout from './partners/PartnerLayout';
 import { normalizePartnerRole } from '@/components/partners/settings/partnerSettingsData';
@@ -36,7 +35,6 @@ import type { PartnerOrganizationApp } from '@/screens/tabs/partners/hooks/usePa
 
 export default function PartnersScreen({ setHidNav, onOpenInfo }: any) {
   const navigation = useNavigation<any>();
-  const { palette } = useKISTheme();
   const { setAuth } = useAuth();
   const { width, height } = useWindowDimensions();
   const rootNavigation =
@@ -100,7 +98,6 @@ export default function PartnersScreen({ setHidNav, onOpenInfo }: any) {
     toggleMessagesPane,
     closeMessagesPane,
     openMessagesPane,
-    animateMessagesPane,
     panHandlers,
   } = useMessagesPane(width, setHidNav);
   useEffect(() => {

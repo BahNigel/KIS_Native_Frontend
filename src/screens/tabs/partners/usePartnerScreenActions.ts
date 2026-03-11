@@ -1,5 +1,5 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Alert } from 'react-native';
+import { clearAuthTokens } from '@/security/authStorage';
 
 type Params = {
   isReadOnly: boolean;
@@ -70,7 +70,7 @@ export const usePartnerScreenActions = ({
 
   const onLogout = async () => {
     try {
-      await AsyncStorage.multiRemove(['access_token', 'refresh_token']);
+      await clearAuthTokens();
       setAuth(false);
     } catch (e: any) {
       Alert.alert('Logout error', e?.message ?? 'Could not log out.');

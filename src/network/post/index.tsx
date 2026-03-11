@@ -4,6 +4,7 @@ import apiService from '../../services/apiService';
 import { setCache } from '../cache';
 import { CacheTypes } from '../cacheKeys';
 import type { ApiResult, HeadersInit } from '../types';
+import { getAccessToken } from '@/security/authStorage';
 
 const sanitizeFileData = (obj: any): any => {
   if (Array.isArray(obj)) return obj.map(sanitizeFileData);
@@ -30,7 +31,7 @@ export const postRequest = async (
   try {
     // if (!(await isOnline())) throw new Error('No internet connection.');
 
-    const token = await AsyncStorage.getItem('access_token');
+    const token = await getAccessToken();
     const deviceId = await AsyncStorage.getItem('device_id');
 
     // 🔑 Robust FormData detection for React Native

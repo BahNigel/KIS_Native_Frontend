@@ -49,7 +49,7 @@ export default function OrganizationAppScreen() {
   const app = params.app;
 
   const resolvedLink = useMemo(() => resolveBackendAssetUrl(app.link ?? ''), [app.link]);
-  const partnerId = params.partnerId ?? app.partner_id;
+  const partnerId = params.partnerId ?? app.partner_id ?? null;
   const dataScope = useMemo(
     () =>
       Array.isArray(app.metadata?.dataAccess) && app.metadata.dataAccess.length
@@ -96,7 +96,7 @@ export default function OrganizationAppScreen() {
     });
   }, [resolvedLink]);
 
-  const typeLabel = TYPE_LABELS[app.type] ?? 'Organization app';
+  const typeLabel = TYPE_LABELS[String(app.type ?? '')] ?? 'Organization app';
 
   const renderContent = () => {
     if (app.type === 'external') {

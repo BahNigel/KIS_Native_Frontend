@@ -1,6 +1,5 @@
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
-  Animated,
   Alert,
   FlatList,
   Image,
@@ -388,12 +387,58 @@ export default function UpdatesTab({ searchTerm = '', onOpenChat }: UpdatesTabPr
     }
   }, [recordingMs]);
 
-  const stopTimer = () => {
+  const stopTimer = useCallback(() => {
     if (timerRef.current) {
       clearInterval(timerRef.current);
       timerRef.current = null;
     }
-  };
+  }, []);
+
+  const stopMediaFallback = useCallback(() => {
+    if (mediaFallbackRef.current) {
+      clearInterval(mediaFallbackRef.current);
+      mediaFallbackRef.current = null;
+    }
+  }, []);
+
+  const openViewer = useCallback((userId: string) => {
+    const target = statuses.find((u) => u.id === userId);
+    if (!target || target.items.length === 0) return;
+    const lastViewed = viewedMap[userId] ?? 0;
+    setViewerUserId(userId);
+    setViewerIndex(Math.min(lastViewed, target.items.length - 1));
+    setViewerOpen(true);
+  }, [statuses, viewedMap]);
+
+  const closeViewer = useCallback(() => {
+    stopTimer();
+    if (viewerUserId) {
+      setViewedMap((prev) => ({
+        ...prev,
+        [viewerUserId]: viewerIndex,
+      }));
+    }
+    setViewerOpen(false);
+    setViewerUserId(null);
+    setViewerIndex(0);
+    setViewerProgress(0);
+  }, [stopTimer, viewerIndex, viewerUserId]);
+
+  const handleNext = useCallback(() => {
+    if (!activeUser) return;
+    if (viewerIndex + 1 < activeUser.items.length) {
+      setViewerIndex((prev) => prev + 1);
+    } else {
+      const currentIdx = statuses.findIndex((u) => u.id === activeUser.id);
+      const nextUser = currentIdx >= 0 ? statuses[currentIdx + 1] : null;
+      if (nextUser && nextUser.items.length > 0) {
+        setViewerUserId(nextUser.id);
+        setViewerIndex(0);
+      } else {
+        closeViewer();
+      }
+    }
+  }, [activeUser, closeViewer, statuses, viewerIndex]);
 
   const startTimer = useCallback(() => {
     stopTimer();
@@ -412,14 +457,7 @@ export default function UpdatesTab({ searchTerm = '', onOpenChat }: UpdatesTabPr
         handleNext();
       }
     }, 80);
-  }, [activeUser, currentItem]);
-
-  const stopMediaFallback = useCallback(() => {
-    if (mediaFallbackRef.current) {
-      clearInterval(mediaFallbackRef.current);
-      mediaFallbackRef.current = null;
-    }
-  }, []);
+  }, [activeUser, currentItem, handleNext, isMediaItem, stopTimer]);
 
   const startMediaFallback = useCallback(() => {
     stopMediaFallback();
@@ -439,52 +477,13 @@ export default function UpdatesTab({ searchTerm = '', onOpenChat }: UpdatesTabPr
     }, 120);
   }, [currentItem, handleNext, stopMediaFallback]);
 
-  const openViewer = (userId: string) => {
-    const target = statuses.find((u) => u.id === userId);
-    if (!target || target.items.length === 0) return;
-    const lastViewed = viewedMap[userId] ?? 0;
-    setViewerUserId(userId);
-    setViewerIndex(Math.min(lastViewed, target.items.length - 1));
-    setViewerOpen(true);
-  };
-
   React.useEffect(() => {
     if (!pendingOpenUserId) return;
     const target = statuses.find((u) => u.id === pendingOpenUserId);
     if (!target || target.items.length === 0) return;
     openViewer(pendingOpenUserId);
     setPendingOpenUserId(null);
-  }, [pendingOpenUserId, statuses]);
-
-  const closeViewer = () => {
-    stopTimer();
-    if (viewerUserId) {
-      setViewedMap((prev) => ({
-        ...prev,
-        [viewerUserId]: viewerIndex,
-      }));
-    }
-    setViewerOpen(false);
-    setViewerUserId(null);
-    setViewerIndex(0);
-    setViewerProgress(0);
-  };
-
-  function handleNext() {
-    if (!activeUser) return;
-    if (viewerIndex + 1 < activeUser.items.length) {
-      setViewerIndex((prev) => prev + 1);
-    } else {
-      const currentIdx = statuses.findIndex((u) => u.id === activeUser.id);
-      const nextUser = currentIdx >= 0 ? statuses[currentIdx + 1] : null;
-      if (nextUser && nextUser.items.length > 0) {
-        setViewerUserId(nextUser.id);
-        setViewerIndex(0);
-      } else {
-        closeViewer();
-      }
-    }
-  }
+  }, [openViewer, pendingOpenUserId, statuses]);
 
   const handlePrev = () => {
     if (!activeUser) return;
@@ -511,7 +510,16 @@ export default function UpdatesTab({ searchTerm = '', onOpenChat }: UpdatesTabPr
       stopTimer();
       stopMediaFallback();
     };
-  }, [viewerOpen, viewerIndex, currentItem?.id, startTimer]);
+  }, [
+    viewerOpen,
+    viewerIndex,
+    currentItem?.id,
+    isMediaItem,
+    startMediaFallback,
+    startTimer,
+    stopMediaFallback,
+    stopTimer,
+  ]);
 
   React.useEffect(() => {
     if (!viewerOpen || !currentItem?.id) return;

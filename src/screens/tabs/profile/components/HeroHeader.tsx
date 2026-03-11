@@ -13,7 +13,7 @@ export default function HeroHeader({
   headline,
   tierName,
   completion,
-  onEdit,
+  onEdit: _onEdit,
 }: {
   coverUrl?: string | null;
   avatarUrl?: string | null;
@@ -22,7 +22,7 @@ export default function HeroHeader({
   headline: string;
   tierName: string;
   completion: number;
-  onEdit: ()=>void
+  onEdit: () => void;
 }) {
   const { palette } = useKISTheme();
   const hasCover = !!coverUrl;

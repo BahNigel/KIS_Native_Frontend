@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   Animated,
@@ -151,20 +151,20 @@ export default function PartnerCoursesPanel({
     extrapolate: 'clamp',
   });
 
-  const loadCourses = async () => {
+  const loadCourses = useCallback(async () => {
     if (!partnerId) return;
     const res = await getRequest(`${ROUTES.bible.courses}?partner=${partnerId}`, {
       errorMessage: 'Unable to load courses.',
     });
     const payload = res?.data?.results ?? res?.data ?? [];
     setCourses(Array.isArray(payload) ? payload : []);
-  };
+  }, [partnerId]);
 
   useEffect(() => {
     if (isOpen) {
       loadCourses();
     }
-  }, [isOpen, partnerId]);
+  }, [isOpen, loadCourses]);
 
   useEffect(() => {
     if (!isCcPartner && courseForm.is_bible_course) {

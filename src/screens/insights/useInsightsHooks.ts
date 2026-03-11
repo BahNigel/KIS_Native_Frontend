@@ -27,7 +27,7 @@ export const useInsights = (target: string) => {
     try {
       const payload = await fetchDashboardInsights(target, timeRange);
       setData(payload);
-    } catch (err) {
+    } catch {
       setError('Unable to load insights.');
     } finally {
       setLoading(false);
@@ -62,7 +62,7 @@ export const useNotificationsSummary = () => {
     try {
       const summary = await fetchNotificationsSummary(10);
       setItems(summary);
-    } catch (err) {
+    } catch {
       setError('Unable to load notifications.');
     } finally {
       setLoading(false);
@@ -92,7 +92,7 @@ export const useTiersSummary = () => {
     try {
       const payload = await fetchTiersSummary();
       setSummary(payload);
-    } catch (err) {
+    } catch {
       setError('Unable to load tiers summary.');
     } finally {
       setLoading(false);
@@ -122,7 +122,7 @@ export const usePartnerCampaigns = () => {
     try {
       const campaigns = await fetchPartnerCampaigns();
       setItems(campaigns);
-    } catch (err) {
+    } catch {
       setError('Unable to load campaigns.');
     } finally {
       setLoading(false);
@@ -152,7 +152,7 @@ export const useMarketplaceProducts = () => {
     try {
       const products = await fetchMarketplaceProducts();
       setItems(products);
-    } catch (err) {
+    } catch {
       setError('Unable to load marketplace products.');
     } finally {
       setLoading(false);

@@ -76,7 +76,10 @@ export default function EducationV2DiscoverPage({
   const [receiptUrl, setReceiptUrl] = useState<string | null>(null);
 
   const heroContent = data?.heroCourse ?? null;
-  const continueLearning = data?.continueLearning ?? [];
+  const continueLearning = useMemo(
+    () => data?.continueLearning ?? [],
+    [data?.continueLearning],
+  );
   const progressMap = useMemo(() => {
     const map: Record<string, EducationProgress> = {};
     continueLearning.forEach((progress) => {

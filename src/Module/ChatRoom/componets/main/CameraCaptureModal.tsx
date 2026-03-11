@@ -9,7 +9,6 @@ import {
   StyleSheet,
   Alert,
   ScrollView,
-  Platform,
   TextInput,
 } from 'react-native';
 
@@ -52,7 +51,7 @@ export const CameraCaptureModal: React.FC<CameraCaptureModalProps> = ({
   const [editedAssets, setEditedAssets] = useState<ImagePickerAsset[] | null>(null);
 
   const [selectedAssetIndex, setSelectedAssetIndex] = useState<number | null>(null);
-  const [galleryAssets, setGalleryAssets] = useState<ImagePickerAsset[]>([]);
+  const [_galleryAssets, setGalleryAssets] = useState<ImagePickerAsset[]>([]);
   const [cameraType, setCameraType] = useState<'back' | 'front'>('back');
   const [isFlashOn, setIsFlashOn] = useState(false);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);

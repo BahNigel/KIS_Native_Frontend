@@ -40,10 +40,10 @@ const POLL_INTERVAL_MS = 15000;
 
 export const StickerBackgroundRemovalScreen: React.FC<
   StickerBackgroundRemovalScreenProps
-> = ({ palette, originalUri, originalBase64, onDone, onCancel }) => {
+> = ({ palette, originalUri, originalBase64: _originalBase64, onDone, onCancel }) => {
   const [workingUri, setWorkingUri] = useState<string>(originalUri);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [jobId, setJobId] = useState<string | null>(null);
+  const [_jobId, setJobId] = useState<string | null>(null);
   const [jobStatus, setJobStatus] = useState<JobStatus>('IDLE');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [hasResult, setHasResult] = useState(false);

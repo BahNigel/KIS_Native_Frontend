@@ -40,7 +40,9 @@ const healthRoutes = {
   wallet: {
     me: `${API_BASE_URL}/api/v1/wallet/me/`,
     ledger: `${API_BASE_URL}/api/v1/wallet/ledger/`,
+    ledgerEntry: (id: string) => `${API_BASE_URL}/api/v1/wallet/ledger/${id}/`,
     transactions: `${API_BASE_URL}/api/v1/wallet/transactions/`,
+    transaction: (id: string) => `${API_BASE_URL}/api/v1/wallet/transactions/${id}/`,
     billingHistory: `${API_BASE_URL}/api/v1/wallet/billing-history/`,
     subscription: `${API_BASE_URL}/api/v1/wallet/subscription/`,
     subscriptionCancel: `${API_BASE_URL}/api/v1/wallet/subscription-cancel/`,
@@ -124,16 +126,41 @@ const healthRoutes = {
     financial: (id: string) => `${API_BASE_URL}/api/v1/health-dashboard/institutions/${id}/financial/`,
     compliance: (id: string) => `${API_BASE_URL}/api/v1/health-dashboard/institutions/${id}/compliance/`,
     profileEditor: (id: string) => `${API_BASE_URL}/api/v1/health-dashboard/institutions/${id}/profile-editor/`,
+    landingPage: (id: string) => `${API_BASE_URL}/api/v1/health-dashboard/institutions/${id}/landing-page/`,
     availability: (id: string) => `${API_BASE_URL}/api/v1/health-dashboard/institutions/${id}/availability/`,
   },
   healthOps: {
-    walletMe: `${API_BASE_URL}/api/v1/health-ops/wallet/me/`,
-    walletTransactions: `${API_BASE_URL}/api/v1/health-ops/wallet/transactions/`,
+    walletMe: `${API_BASE_URL}/api/v1/wallet/me/`,
+    walletTransactions: `${API_BASE_URL}/api/v1/wallet/ledger/`,
+    institutionServices: (institutionId: string) =>
+      `${API_BASE_URL}/api/v1/health-ops/institutions/${encodeURIComponent(institutionId)}/services/`,
+    serviceEngineMappings: (serviceId: string) =>
+      `${API_BASE_URL}/api/v1/health-ops/services/${encodeURIComponent(serviceId)}/engines/`,
+    serviceEngineMappingsReorder: (serviceId: string) =>
+      `${API_BASE_URL}/api/v1/health-ops/services/${encodeURIComponent(serviceId)}/engines/reorder/`,
+    serviceEngineMapping: (serviceId: string, mappingId: string) =>
+      `${API_BASE_URL}/api/v1/health-ops/services/${encodeURIComponent(serviceId)}/engines/${encodeURIComponent(mappingId)}/`,
+    serviceVideoItems: (serviceId: string, mappingId: string) =>
+      `${API_BASE_URL}/api/v1/health-ops/services/${encodeURIComponent(serviceId)}/engines/${encodeURIComponent(mappingId)}/video-items/`,
+    serviceVideoItem: (serviceId: string, mappingId: string, itemId: string) =>
+      `${API_BASE_URL}/api/v1/health-ops/services/${encodeURIComponent(serviceId)}/engines/${encodeURIComponent(mappingId)}/video-items/${encodeURIComponent(itemId)}/`,
+    managedItems: (institutionId: string, engineKey: string) =>
+      `${API_BASE_URL}/api/v1/health-ops/institutions/${encodeURIComponent(institutionId)}/managed-items/${encodeURIComponent(engineKey)}/`,
+    managedItem: (institutionId: string, engineKey: string, itemId: string) =>
+      `${API_BASE_URL}/api/v1/health-ops/institutions/${encodeURIComponent(institutionId)}/managed-items/${encodeURIComponent(engineKey)}/${encodeURIComponent(itemId)}/`,
     workflowStart: `${API_BASE_URL}/api/v1/health-ops/engine-sessions/start/`,
     workflowStep: (workflowSessionId: string) =>
       `${API_BASE_URL}/api/v1/health-ops/engine-sessions/${encodeURIComponent(workflowSessionId)}/step/`,
     workflowResume: (workflowSessionId: string) =>
       `${API_BASE_URL}/api/v1/health-ops/engine-sessions/${encodeURIComponent(workflowSessionId)}/resume/`,
+    engineSessionVideoItems: (engineSessionId: string) =>
+      `${API_BASE_URL}/api/v1/health-ops/engine-sessions/${encodeURIComponent(engineSessionId)}/video-items/`,
+    engineSessionVideoItemProgress: (engineSessionId: string, itemId: string) =>
+      `${API_BASE_URL}/api/v1/health-ops/engine-sessions/${encodeURIComponent(engineSessionId)}/video-items/${encodeURIComponent(itemId)}/progress/`,
+    engineSessionVideoItemLike: (engineSessionId: string, itemId: string) =>
+      `${API_BASE_URL}/api/v1/health-ops/engine-sessions/${encodeURIComponent(engineSessionId)}/video-items/${encodeURIComponent(itemId)}/like/`,
+    engineSessionVideoItemComments: (engineSessionId: string, itemId: string) =>
+      `${API_BASE_URL}/api/v1/health-ops/engine-sessions/${encodeURIComponent(engineSessionId)}/video-items/${encodeURIComponent(itemId)}/comments/`,
     appointmentConfig: (serviceId: string) =>
       `${API_BASE_URL}/api/v1/health-ops/services/${encodeURIComponent(serviceId)}/appointment/config/`,
     appointmentSlots: (serviceId: string) =>

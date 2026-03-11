@@ -25,7 +25,7 @@ export const fieldLabels: Record<string, string> = {
 
 export const visibilityOptions = [
   { value: 'public', label: 'Public' },
-  { value: 'contacts', label: 'Contacts (allowlist)' },
+  { value: 'contacts', label: 'Contacts only (mutual)' },
   { value: 'custom', label: 'Custom list' },
   { value: 'private', label: 'Only me' },
 ];
@@ -40,4 +40,13 @@ export const paymentProviders = [
   { value: 'flutterwave', label: 'Flutterwave' },
   { value: 'mobilemoney_mtn', label: 'MTN MoMo' },
   { value: 'mobilemoney_orange', label: 'Orange Money' },
+];
+
+export const popularLanguages = [
+  'English',
+  'Mandarin Chinese',
+  'Hindi',
+  'Spanish',
+  'French',
+  'German',
 ];

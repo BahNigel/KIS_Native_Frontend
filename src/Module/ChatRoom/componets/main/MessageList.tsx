@@ -240,7 +240,7 @@ export const MessageList: React.FC<MessageListProps> = ({
         setTimeout(() => {
           suppressAutoScrollRef.current = false;
         }, 800);
-      } catch (e) {
+      } catch {
         const approximateItemHeight = 72;
         suppressAutoScrollRef.current = true;
         isAtBottomRef.current = false;
@@ -426,7 +426,7 @@ export const MessageList: React.FC<MessageListProps> = ({
           justifyContent: isOutgoing ? 'flex-end' : 'flex-start',
         }}
       >
-        {attachments.map((att, index) => {
+        {attachments.map((att, _index) => {
           const key = att.key;
           const uri = att.uri;
           const mime = att.mime;

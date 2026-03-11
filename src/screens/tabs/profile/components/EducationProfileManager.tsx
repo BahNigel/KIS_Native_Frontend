@@ -633,7 +633,7 @@ export default function EducationProfileManager({ initialProfileId = null }: Pro
             <KISButton
               key={role.id}
               size="xs"
-              variant={selectedRoleId === role.id ? 'solid' : 'outline'}
+              variant={selectedRoleId === role.id ? 'primary' : 'outline'}
               title={`${role.name} (${role.assignments?.length ?? 0})`}
               onPress={() => setSelectedRoleId(role.id)}
             />

@@ -19,6 +19,7 @@ export type BroadcastSourceMeta = {
 export type BroadcastFeedItem = {
   id: string;
   source_type: string;
+  source_id?: string;
   title?: string;
   text?: string;
   styled_text?: { text?: string } | null;
@@ -29,6 +30,10 @@ export type BroadcastFeedItem = {
     display_name?: string;
     avatar_url?: string;
     id?: string;
+    profile_id?: string;
+    bio?: string;
+    headline?: string;
+    summary?: string;
   };
   created_at?: string;
   broadcasted_at?: string;

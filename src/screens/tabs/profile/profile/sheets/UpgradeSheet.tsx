@@ -1,13 +1,13 @@
 // src/screens/tabs/profile/profile/sheets/UpgradeSheet.tsx
 import React from 'react';
-import { Linking, Pressable, Text, View } from 'react-native';
+import { Image, Linking, Pressable, Text, View } from 'react-native';
 import { useKISTheme } from '@/theme/useTheme';
 import KISButton from '@/constants/KISButton';
 import KISText from '@/components/common/KISText';
 import { KISIcon } from '@/constants/kisIcons';
 import { styles } from '../../profile.styles';
-import { formatMoney } from '../../profile.utils';
 import { tierMetaFor } from '../tierMeta';
+import kisCoin from '../../../../../assets/KIS-Coin.png';
 
 const PARTNER_PRO_HIGHLIGHTS = [
   'Unlimited partner organizations, automation, and integrations',
@@ -15,6 +15,15 @@ const PARTNER_PRO_HIGHLIGHTS = [
   'Priority partner webhooks, automation rules, and fraud insights',
   'Partner-grade studio routing for broadcasts, lessons, and market drops',
 ];
+const CENTS_PER_KISC = 10000;
+
+const toKiscAmount = (amountCents: unknown, withSign = false) => {
+  const cents = Number(amountCents);
+  if (!Number.isFinite(cents)) return '0.000 KISC';
+  const sign = withSign && cents < 0 ? '-' : '';
+  const kisc = (Math.abs(cents) / CENTS_PER_KISC).toFixed(3);
+  return `${sign}${kisc} KISC`;
+};
 
 export default function UpgradeSheet(props: {
   tiers: any[];
@@ -22,12 +31,14 @@ export default function UpgradeSheet(props: {
   saving: boolean;
   onUpgrade: (tierId: string) => void;
   subscription?: any;
-  billingHistory?: { transactions?: any[]; ledger?: any[] };
+  billingHistory?: { transactions?: any[]; ledger?: any[]; invoice_pdf_url?: string | null };
   usage?: Record<string, any>;
   onCancel?: (immediate?: boolean) => void;
   onResume?: () => void;
   onDowngrade?: (tierId: string) => void;
   onRetry?: (txRef: string) => void;
+  onDeleteTransaction?: (transactionId: string) => void;
+  deletingTransactionId?: string | null;
 }) {
   const { palette } = useKISTheme();
   const {
@@ -42,6 +53,8 @@ export default function UpgradeSheet(props: {
     onResume,
     onDowngrade,
     onRetry,
+    onDeleteTransaction,
+    deletingTransactionId,
   } = props;
 
   const currentKey = String(accountTier?.id ?? accountTier?.name ?? '');
@@ -54,13 +67,43 @@ export default function UpgradeSheet(props: {
   const transactions = billingHistory?.transactions ?? [];
   const tierLimits = accountTier?.features_json ?? {};
 
+  const toTransactionCounterparty = (tx: any) => {
+    const counterparty = tx?.meta?.counterparty || tx?.meta?.recipient || {};
+    const name = String(
+      tx?.counterparty_name ||
+      tx?.meta?.recipient_name ||
+      counterparty?.name ||
+      '',
+    ).trim();
+    const phone = String(
+      tx?.counterparty_phone ||
+      tx?.meta?.recipient_phone ||
+      counterparty?.phone ||
+      '',
+    ).trim();
+    if (!name && !phone) return '';
+    return name && phone ? `${name} (${phone})` : name || phone;
+  };
+
   const formatStorage = (valueMb: number | null) => {
-    if (!valueMb || Number.isNaN(valueMb)) return '0 MB';
+    if (valueMb === null || valueMb === undefined || Number.isNaN(valueMb)) return '0 MB';
+    if (valueMb < 0) return '0 MB';
     if (valueMb >= 1024) return `${(valueMb / 1024).toFixed(1)} GB`;
     return `${Math.round(valueMb)} MB`;
   };
-
-  console.log('Transactions:', transactions);
+  const formatLimit = (value: any) => {
+    if (value === null || value === undefined || value === '') return 'Unlimited';
+    if (typeof value === 'string') {
+      const cleaned = value.trim();
+      if (!cleaned) return 'Unlimited';
+      if (cleaned.toLowerCase() === 'unlimited') return 'Unlimited';
+      return cleaned;
+    }
+    if (typeof value === 'boolean') return value ? 'Included' : 'Not included';
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return String(value);
+    return String(numeric);
+  };
 
   const resolveUsage = (key: string, fallbackKeys: string[] = []) => {
     const direct = usage?.[key];
@@ -74,13 +117,13 @@ export default function UpgradeSheet(props: {
 
   const usageItems = [
     { label: 'Communities', usageKey: 'communities', limitKey: 'communities' },
-    { label: 'Groups', usageKey: 'groups', limitKey: 'groups' },
-    { label: 'Channels', usageKey: 'channels', limitKey: 'channels' },
+    { label: 'Groups / community', usageKey: 'groups', limitKey: 'groups_per_community' },
+    { label: 'Channels', usageKey: 'channels', limitKey: 'channels_create' },
     {
       label: 'Storage used',
       usageKey: 'storage_mb',
       usageAlt: ['storage_bytes', 'storage_used_mb'],
-      limitKey: 'storage_gb',
+      limitKey: 'media_storage_mb',
       format: 'storage',
     },
   ];
@@ -129,7 +172,7 @@ export default function UpgradeSheet(props: {
           Compare plans
         </Text>
         <Text style={{ color: palette.subtext, fontSize: 12 }}>
-          Pick a tier that fits your growth. Upgrades apply instantly after payment.
+          Pick a tier that fits your growth. Upgrades apply instantly after KIS Coin confirmation.
         </Text>
       </View>
 
@@ -225,11 +268,11 @@ export default function UpgradeSheet(props: {
             const limitLabel =
               row.format === 'storage'
                 ? hasLimit
-                  ? formatStorage(Number(limitRaw) * 1024)
+                  ? String(limitRaw).toLowerCase() === 'unlimited'
+                    ? 'Unlimited'
+                    : formatStorage(Number(limitRaw))
                   : 'Unlimited'
-                : hasLimit
-                ? String(limitRaw)
-                : 'Unlimited';
+                : formatLimit(limitRaw);
             const usageLabel =
               row.format === 'storage'
                 ? formatStorage(Number(row.usageValue))
@@ -304,9 +347,13 @@ export default function UpgradeSheet(props: {
                     )}
                   </View>
 
-                  <Text style={[styles.tierPrice, { color: palette.text }]}>
-                    ${formatMoney(tier.price_cents || 0)}/mo
-                  </Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <Image source={kisCoin} style={{ width: 16, height: 16 }} />
+                    <Text style={[styles.tierPrice, { color: palette.text }]}>
+                      {toKiscAmount(tier.price_cents)}
+                    </Text>
+                    <Text style={[styles.tierTagline, { color: palette.subtext, marginTop: 0 }]}>/mo</Text>
+                  </View>
 
                   {!!meta.highlight && (
                     <Text style={[styles.tierHighlight, { color: palette.primaryStrong }]}>{meta.highlight}</Text>
@@ -386,9 +433,20 @@ export default function UpgradeSheet(props: {
                 <KISText preset="body" weight="700" style={{ color: palette.text }}>
                   {tx.meta?.intent === 'tier_upgrade' ? 'Upgrade payment' : tx.kind || 'Payment'}
                 </KISText>
-                <KISText preset="helper" color={palette.subtext}>
-                  {tx.status || 'pending'} · ${formatMoney(tx.amount_cents || 0)}
-                </KISText>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 1 }}>
+                  <KISText preset="helper" color={palette.subtext}>
+                    {tx.status || 'pending'} ·
+                  </KISText>
+                  <Image source={kisCoin} style={{ width: 12, height: 12 }} />
+                  <KISText preset="helper" color={palette.subtext}>
+                    {toKiscAmount(tx.amount_cents, true)}
+                  </KISText>
+                </View>
+                {toTransactionCounterparty(tx) ? (
+                  <KISText preset="helper" color={palette.subtext} style={{ marginTop: 2 }}>
+                    Receiver: {toTransactionCounterparty(tx)}
+                  </KISText>
+                ) : null}
               </View>
               <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
                 {tx.receipt_pdf_url ? (
@@ -412,6 +470,15 @@ export default function UpgradeSheet(props: {
                     size="xs"
                     variant="ghost"
                     onPress={() => onRetry?.(tx.tx_ref)}
+                  />
+                ) : null}
+                {tx.id && onDeleteTransaction ? (
+                  <KISButton
+                    title={deletingTransactionId === String(tx.id) ? 'Deleting...' : 'Delete'}
+                    size="xs"
+                    variant="ghost"
+                    onPress={() => onDeleteTransaction(String(tx.id))}
+                    disabled={deletingTransactionId === String(tx.id)}
                   />
                 ) : null}
               </View>

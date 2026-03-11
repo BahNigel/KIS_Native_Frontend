@@ -20,6 +20,7 @@ const authRoutes = {
     updateProfile: `${API_BASE_URL}/user-info/update/`,
     preferences: `${API_BASE_URL}/privacy-settings/`,
     detail: (id: string) => `${API_BASE_URL}/api/v1/users/${id}/`,
+    resolveHandle: `${API_BASE_URL}/api/v1/users/resolve-handle/`,
   },
   profiles: {
     me: `${API_BASE_URL}/api/v1/profiles/me/`,
@@ -42,6 +43,11 @@ const authRoutes = {
   profileShowcases: {
     list: `${API_BASE_URL}/api/v1/profile-showcases/`,
     detail: (id: string) => `${API_BASE_URL}/api/v1/profile-showcases/${id}/`,
+  },
+  profileLanguages: {
+    list: `${API_BASE_URL}/api/v1/profile-languages/`,
+    detail: (id: string) => `${API_BASE_URL}/api/v1/profile-languages/${id}/`,
+    sync: `${API_BASE_URL}/api/v1/profile-languages/sync/`,
   },
   profileItems: {
     experiences: `${API_BASE_URL}/api/v1/experiences/`,

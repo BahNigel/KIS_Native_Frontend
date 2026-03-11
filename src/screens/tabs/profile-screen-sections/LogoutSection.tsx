@@ -8,7 +8,7 @@ type Props = {
   onLogout: () => void;
 };
 
-export default function LogoutSection({ palette, onLogout }: Props) {
+export default function LogoutSection({ palette: _palette, onLogout }: Props) {
   return (
     <View style={{ gap: 12 }}>
       <KISButton title="Log Out" onPress={onLogout} variant="outline" />

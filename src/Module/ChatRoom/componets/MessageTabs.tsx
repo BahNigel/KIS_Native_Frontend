@@ -165,7 +165,15 @@ export function ChatsTab({
       if (!Number.isNaN(bTs)) return 1;
       return String(a.id).localeCompare(String(b.id));
     });
-  }, [normalizedChats, activeQuick, customRules, search, conversationMeta]);
+  }, [
+    normalizedChats,
+    activeQuick,
+    customRules,
+    search,
+    conversationMeta,
+    communityByConversationId,
+    communityGroupConversationIds,
+  ]);
 
   /* ------------------------------------------------------------
    * CHAT SELECTION HANDLING

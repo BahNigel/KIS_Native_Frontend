@@ -229,7 +229,7 @@ export default function HealthInstitutionManagementScreen({ route, navigation }:
         ? result.profile.institutions
         : [];
       setInstitutions(list);
-      const match = list.find((inst) => inst.id === initialParams.id);
+      const match = list.find((inst: any) => inst.id === initialParams.id);
       if (match) {
         setForm((prev) => ({
           ...prev,

@@ -28,6 +28,14 @@ type CreateInstitutionDashboardPayload = {
   institutionId: string;
   type: HealthDashboardInstitutionType;
 };
+
+export type InstitutionLandingPageRecord = {
+  exists: boolean;
+  isPublished: boolean;
+  draft: Partial<InstitutionProfileEditorDraft>;
+  raw: Record<string, unknown>;
+};
+
 let healthDashboardApiUnavailable = false;
 let uploadBlockedUntil = 0;
 const PROFILE_EDITOR_CACHE_PREFIX = 'kis_health_dashboard_profile_editor_v1:';
@@ -55,6 +63,40 @@ const createEmptyAnalyticsBundle = () => ({
   topPatients: [],
   paymentMethodBreakdown: [],
 });
+
+const createEmptySchedulePayload = () => ({
+  today: 0,
+  upcoming: 0,
+  past: 0,
+  entries: [],
+});
+
+const createEmptyFinancialPayload = () => ({
+  totalRevenueCents: 0,
+  insuranceRevenueCents: 0,
+  directRevenueCents: 0,
+  pendingPaymentsCents: 0,
+  refundsCents: 0,
+  disputesCount: 0,
+});
+
+const createEmptyCompliancePayload = () => ({
+  auditLogCount: 0,
+  pendingCredentialReviews: 0,
+  licenseExpiringSoonCount: 0,
+  activeConsents: 0,
+  pendingDocuments: 0,
+});
+
+const createEmptyServicesPayload = () => ({
+  services: [],
+  service_availability: {},
+});
+
+const toFiniteNumber = (value: unknown, fallback = 0) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+};
 
 const parseDateOnly = (value: string): Date | null => {
   const [y, m, d] = String(value || '').split('-').map((part) => Number(part));
@@ -86,6 +128,92 @@ const readCalendarTimes = (raw: any): Record<string, string> => {
   return source as Record<string, string>;
 };
 
+const readCalendarTimeLists = (raw: any): Record<string, string[]> => {
+  const source =
+    raw?.calendar_time_lists ??
+    raw?.calendarTimeLists ??
+    raw?.day_time_lists ??
+    raw?.dayTimeLists ??
+    {};
+  if (!source || typeof source !== 'object' || Array.isArray(source)) return {};
+  const map: Record<string, string[]> = {};
+  Object.entries(source).forEach(([dateKey, value]) => {
+    const normalized = normalizeTimeList(value);
+    if (!normalized.length) return;
+    map[dateKey] = normalized;
+  });
+  return map;
+};
+
+const toModeToken = (value: unknown) =>
+  String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, '_');
+
+const isAllDayValue = (value: unknown) => {
+  const mode = toModeToken(value);
+  return mode === 'all_day' || mode === 'allday' || mode === 'full_day';
+};
+
+const normalizeTimeList = (value: unknown): string[] => {
+  const isTimeText = (entry: string) => /^\d{2}:\d{2}$/.test(entry);
+  if (Array.isArray(value)) {
+    return Array.from(
+      new Set(
+        value
+          .map((entry) => String(entry || '').trim())
+          .filter((entry) => isTimeText(entry)),
+      ),
+    ).sort();
+  }
+  const raw = String(value || '').trim();
+  if (!raw) return [];
+  if (isAllDayValue(raw)) return [];
+  if (isTimeText(raw)) return [raw];
+  return Array.from(
+    new Set(
+      raw
+        .split(',')
+        .map((entry) => entry.trim())
+        .filter((entry) => isTimeText(entry)),
+    ),
+  ).sort();
+};
+
+const readCalendarTimeModes = (raw: any): Record<string, 'slots' | 'all_day'> => {
+  const source =
+    raw?.calendar_time_modes ??
+    raw?.calendarTimeModes ??
+    raw?.day_time_modes ??
+    raw?.dayTimeModes ??
+    {};
+  const allDayDates = Array.isArray(raw?.all_day_dates)
+    ? raw.all_day_dates
+    : Array.isArray(raw?.allDayDates)
+    ? raw.allDayDates
+    : [];
+  const legacyTimes = readCalendarTimes(raw);
+  const map: Record<string, 'slots' | 'all_day'> = {};
+  if (source && typeof source === 'object' && !Array.isArray(source)) {
+    Object.entries(source).forEach(([dateKey, value]) => {
+      map[dateKey] = isAllDayValue(value) ? 'all_day' : 'slots';
+    });
+  }
+  allDayDates.forEach((dateKey: any) => {
+    const normalized = String(dateKey || '').trim();
+    if (!normalized) return;
+    map[normalized] = 'all_day';
+  });
+  Object.entries(legacyTimes).forEach(([dateKey, value]) => {
+    if (map[dateKey]) return;
+    if (isAllDayValue(value)) {
+      map[dateKey] = 'all_day';
+    }
+  });
+  return map;
+};
+
 const parseDateTime = (dateKey: string, time: string): Date | null => {
   const date = parseDateOnly(dateKey);
   if (!date) return null;
@@ -98,10 +226,13 @@ const parseDateTime = (dateKey: string, time: string): Date | null => {
 
 const deriveScheduleSummaryFromStatuses = (
   statuses: Record<string, string>,
-  dayTimes: Record<string, string>,
+  calendar_times: Record<string, string>,
+  calendar_time_lists: Record<string, string[]> = {},
+  calendar_time_modes: Record<string, 'slots' | 'all_day'> = {},
 ) => {
   const now = new Date();
   const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const tomorrowStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
   let today = 0;
   let upcoming = 0;
   let past = 0;
@@ -110,27 +241,35 @@ const deriveScheduleSummaryFromStatuses = (
     const date = parseDateOnly(dateKey);
     if (!date) return;
 
-     const timeValue = dayTimes?.[dateKey];
-     const dateTime = timeValue ? parseDateTime(dateKey, timeValue) : null;
-     if (dateTime) {
-      if (dateTime > now) {
-        if (date.getTime() === todayStart.getTime()) {
-          today += 1;
-        } else {
-          upcoming += 1;
-        }
-      } else {
-        past += 1;
-      }
+    if (date < todayStart) {
+      past += 1;
+      return;
+    }
+    if (date >= tomorrowStart) {
+      upcoming += 1;
       return;
     }
 
-    if (date.getTime() === todayStart.getTime()) {
+    if (calendar_time_modes?.[dateKey] === 'all_day') {
       today += 1;
       return;
     }
-    if (date > todayStart) {
-      upcoming += 1;
+
+    const explicitSlots = normalizeTimeList(calendar_time_lists?.[dateKey]);
+    const slots = explicitSlots.length > 0
+      ? explicitSlots
+      : normalizeTimeList(calendar_times?.[dateKey]);
+    if (!slots.length) {
+      today += 1;
+      return;
+    }
+
+    const hasFutureSlot = slots.some((slot) => {
+      const slotDate = parseDateTime(dateKey, slot);
+      return !!slotDate && slotDate >= now;
+    });
+    if (hasFutureSlot) {
+      today += 1;
       return;
     }
     past += 1;
@@ -186,6 +325,134 @@ const resolveLocalLandingPreview = (institution: any) =>
   institution?.dashboard?.landingPreview ??
   null;
 
+const toOptionalBoolean = (value: unknown): boolean | null => {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'number' && Number.isFinite(value)) return value !== 0;
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (!normalized) return null;
+    if (['true', '1', 'yes', 'published', 'active'].includes(normalized)) return true;
+    if (['false', '0', 'no', 'unpublished', 'inactive'].includes(normalized)) return false;
+  }
+  return null;
+};
+
+const resolveLandingPublished = (...values: unknown[]): boolean => {
+  for (const value of values) {
+    const parsed = toOptionalBoolean(value);
+    if (parsed !== null) return parsed;
+  }
+  return false;
+};
+
+const resolveInstitutionLandingPublished = (source: any): boolean => {
+  if (!source || typeof source !== 'object') return false;
+  return resolveLandingPublished(
+    source?.isPublished,
+    source?.is_published,
+    source?.published,
+    source?.landing_is_published,
+    source?.landingIsPublished,
+    source?.landing_page_is_published,
+    source?.landingPageIsPublished,
+    source?.landing_page?.isPublished,
+    source?.landing_page?.is_published,
+    source?.landingPage?.isPublished,
+    source?.landingPage?.is_published,
+  );
+};
+
+const resolveLandingPagePayload = (raw: any): Record<string, unknown> => {
+  if (!raw || typeof raw !== 'object') return {};
+  const direct = raw?.landing_page ?? raw?.landingPage;
+  if (direct && typeof direct === 'object' && !Array.isArray(direct)) {
+    return direct as Record<string, unknown>;
+  }
+  const nested = raw?.data;
+  if (nested && nested !== raw && typeof nested === 'object' && !Array.isArray(nested)) {
+    const nestedDirect = nested?.landing_page ?? nested?.landingPage;
+    if (nestedDirect && typeof nestedDirect === 'object' && !Array.isArray(nestedDirect)) {
+      return nestedDirect as Record<string, unknown>;
+    }
+  }
+  return raw as Record<string, unknown>;
+};
+
+const normalizeLandingPageDraft = (raw: any): Partial<InstitutionProfileEditorDraft> => {
+  if (!raw || typeof raw !== 'object') return {};
+  const payload = resolveLandingPagePayload(raw);
+  const directDraft =
+    payload?.draft ??
+    payload?.profile_editor ??
+    payload?.profileEditor ??
+    payload?.landing_preview ??
+    payload?.landingPreview ??
+    null;
+  if (directDraft && typeof directDraft === 'object' && !Array.isArray(directDraft)) {
+    return directDraft as Partial<InstitutionProfileEditorDraft>;
+  }
+
+  const fallback: Partial<InstitutionProfileEditorDraft> = {};
+  const hero = payload?.hero;
+  if (hero && typeof hero === 'object' && !Array.isArray(hero)) {
+    fallback.hero = {
+      imageUrl: String((hero as any)?.imageUrl || (hero as any)?.image_url || ''),
+      title: String((hero as any)?.title || ''),
+      slogan: String((hero as any)?.slogan || (hero as any)?.subtitle || ''),
+      ctaLabel: String((hero as any)?.ctaLabel || (hero as any)?.cta_label || 'Book Now'),
+      ctaUrl: String((hero as any)?.ctaUrl || (hero as any)?.cta_url || ''),
+    };
+  }
+  if (typeof payload?.about === 'string') {
+    fallback.about = payload.about;
+  }
+  if (Array.isArray(payload?.gallery)) {
+    fallback.gallery = payload.gallery.map((item) => String(item || '')).filter(Boolean);
+  }
+  if (Array.isArray(payload?.sections)) {
+    fallback.sections = payload.sections as any;
+  }
+  if (payload?.contact && typeof payload.contact === 'object' && !Array.isArray(payload.contact)) {
+    fallback.contact = {
+      phone: String((payload.contact as any)?.phone || ''),
+      email: String((payload.contact as any)?.email || ''),
+      address: String((payload.contact as any)?.address || ''),
+    };
+  }
+  fallback.landingBackgroundImageUrl = String(
+    payload?.landingBackgroundImageUrl || payload?.landing_background_image_url || '',
+  );
+  fallback.landingBackgroundColorKey = String(
+    payload?.landingBackgroundColorKey || payload?.landing_background_color_key || '',
+  );
+  fallback.landingLogoUrl = String(payload?.landingLogoUrl || payload?.landing_logo_url || '');
+  return fallback;
+};
+
+const normalizeInstitutionLandingPageRecord = (raw: any): InstitutionLandingPageRecord => {
+  const payload = resolveLandingPagePayload(raw);
+  const draft = normalizeLandingPageDraft(payload);
+  const isPublished = resolveLandingPublished(
+    payload?.isPublished,
+    payload?.is_published,
+    payload?.published,
+    raw?.isPublished,
+    raw?.is_published,
+    raw?.published,
+  );
+  const withPublish = {
+    ...(draft || {}),
+    isPublished,
+  } as Partial<InstitutionProfileEditorDraft>;
+  const exists = Object.keys(payload || {}).length > 0 || Object.keys(withPublish || {}).length > 1;
+  return {
+    exists,
+    isPublished,
+    draft: withPublish,
+    raw: payload || {},
+  };
+};
+
 const hasInstitutionEditableData = (institution: any): boolean => {
   if (!institution || typeof institution !== 'object') return false;
   const landing = resolveLocalLandingPreview(institution);
@@ -207,6 +474,7 @@ const buildDraftFromInstitution = (
   const institutionType = (institution?.type || 'clinic') as HealthDashboardInstitutionType;
   const defaultServices = HEALTH_DASHBOARD_DEFAULT_SERVICES[institutionType] || [];
   const base: InstitutionProfileEditorDraft = {
+    isPublished: resolveInstitutionLandingPublished(institution),
     hero: {
       imageUrl: '',
       title: institution?.name || '',
@@ -264,6 +532,16 @@ const buildDraftFromInstitution = (
     ...base,
     ...fallback,
     ...(profileEditor || {}),
+    isPublished: resolveLandingPublished(
+      profileEditor?.isPublished,
+      profileEditor?.is_published,
+      fallback?.isPublished,
+      (fallback as any)?.is_published,
+      institution?.landing_is_published,
+      institution?.landingIsPublished,
+      institution?.landing_page_is_published,
+      institution?.landingPageIsPublished,
+    ),
     hero: {
       ...base.hero,
       ...(fallback?.hero || {}),
@@ -384,15 +662,9 @@ const writeLocalProfileEditorDraft = async (
   institutionId: string,
   updates: Partial<InstitutionProfileEditorDraft>,
 ) => {
-  const { institutions, institution, index } = await getHealthInstitutionContext(institutionId);
-  if (!institution || index < 0) {
-    return { success: false, status: 404, message: 'Institution not found in health profile.' };
-  }
-  const existingDraft =
-    institution?.profile_editor ??
-    institution?.profileEditor ??
-    institution?.dashboard?.profile_editor ??
-    institution?.dashboard?.profileEditor ??
+  const existingDraft: Partial<InstitutionProfileEditorDraft> =
+    (await readProfileEditorCache(institutionId)) ??
+    (await readLocalProfileEditorDraft(institutionId)) ??
     {};
   const nextDraft = {
     ...(existingDraft || {}),
@@ -418,113 +690,13 @@ const writeLocalProfileEditorDraft = async (
       ...(updates?.servicesVisibility || {}),
     },
   };
-  const nextInstitution = {
-    ...institution,
-    landing_preview: {
-      ...(resolveLocalLandingPreview(institution) || {}),
-      hero: {
-        ...(resolveLocalLandingPreview(institution)?.hero || {}),
-        imageUrl: nextDraft?.hero?.imageUrl || '',
-        title: nextDraft?.hero?.title || institution?.name || '',
-        slogan: nextDraft?.hero?.slogan || '',
-        ctaLabel: nextDraft?.hero?.ctaLabel || 'Book Now',
-        ctaUrl: nextDraft?.hero?.ctaUrl || '',
-      },
-      about: nextDraft?.about || '',
-      servicesOverview: Object.entries(nextDraft?.servicesVisibility || {})
-        .filter(([, enabled]) => !!enabled)
-        .map(([serviceId]) =>
-          (HEALTH_DASHBOARD_DEFAULT_SERVICES[(institution?.type || 'clinic') as HealthDashboardInstitutionType] || [])
-            .find((service) => service.id === serviceId)?.name || serviceId,
-        ),
-      gallery: Array.isArray(nextDraft?.gallery) ? nextDraft.gallery : [],
-      certifications: Array.isArray(nextDraft?.certifications) ? nextDraft.certifications : [],
-      operatingHours: Array.isArray(nextDraft?.operatingHours) ? nextDraft.operatingHours : [],
-      emergencyNotice: nextDraft?.emergencyBanner?.enabled ? nextDraft?.emergencyBanner?.message || '' : '',
-    },
-    landingPreview: {
-      ...(resolveLocalLandingPreview(institution) || {}),
-      hero: {
-        ...(resolveLocalLandingPreview(institution)?.hero || {}),
-        imageUrl: nextDraft?.hero?.imageUrl || '',
-        title: nextDraft?.hero?.title || institution?.name || '',
-        slogan: nextDraft?.hero?.slogan || '',
-        ctaLabel: nextDraft?.hero?.ctaLabel || 'Book Now',
-        ctaUrl: nextDraft?.hero?.ctaUrl || '',
-      },
-      about: nextDraft?.about || '',
-      servicesOverview: Object.entries(nextDraft?.servicesVisibility || {})
-        .filter(([, enabled]) => !!enabled)
-        .map(([serviceId]) =>
-          (HEALTH_DASHBOARD_DEFAULT_SERVICES[(institution?.type || 'clinic') as HealthDashboardInstitutionType] || [])
-            .find((service) => service.id === serviceId)?.name || serviceId,
-        ),
-      gallery: Array.isArray(nextDraft?.gallery) ? nextDraft.gallery : [],
-      certifications: Array.isArray(nextDraft?.certifications) ? nextDraft.certifications : [],
-      operatingHours: Array.isArray(nextDraft?.operatingHours) ? nextDraft.operatingHours : [],
-      emergencyNotice: nextDraft?.emergencyBanner?.enabled ? nextDraft?.emergencyBanner?.message || '' : '',
-    },
-    profile_editor: nextDraft,
-    profileEditor: nextDraft,
-    dashboard: {
-      ...(institution?.dashboard || {}),
-      landing_preview: {
-        ...(resolveLocalLandingPreview(institution) || {}),
-        hero: {
-          ...(resolveLocalLandingPreview(institution)?.hero || {}),
-          imageUrl: nextDraft?.hero?.imageUrl || '',
-          title: nextDraft?.hero?.title || institution?.name || '',
-          slogan: nextDraft?.hero?.slogan || '',
-          ctaLabel: nextDraft?.hero?.ctaLabel || 'Book Now',
-          ctaUrl: nextDraft?.hero?.ctaUrl || '',
-        },
-        about: nextDraft?.about || '',
-        servicesOverview: Object.entries(nextDraft?.servicesVisibility || {})
-          .filter(([, enabled]) => !!enabled)
-          .map(([serviceId]) =>
-            (HEALTH_DASHBOARD_DEFAULT_SERVICES[(institution?.type || 'clinic') as HealthDashboardInstitutionType] || [])
-              .find((service) => service.id === serviceId)?.name || serviceId,
-          ),
-        gallery: Array.isArray(nextDraft?.gallery) ? nextDraft.gallery : [],
-        certifications: Array.isArray(nextDraft?.certifications) ? nextDraft.certifications : [],
-        operatingHours: Array.isArray(nextDraft?.operatingHours) ? nextDraft.operatingHours : [],
-        emergencyNotice: nextDraft?.emergencyBanner?.enabled ? nextDraft?.emergencyBanner?.message || '' : '',
-      },
-      landingPreview: {
-        ...(resolveLocalLandingPreview(institution) || {}),
-        hero: {
-          ...(resolveLocalLandingPreview(institution)?.hero || {}),
-          imageUrl: nextDraft?.hero?.imageUrl || '',
-          title: nextDraft?.hero?.title || institution?.name || '',
-          slogan: nextDraft?.hero?.slogan || '',
-          ctaLabel: nextDraft?.hero?.ctaLabel || 'Book Now',
-          ctaUrl: nextDraft?.hero?.ctaUrl || '',
-        },
-        about: nextDraft?.about || '',
-        servicesOverview: Object.entries(nextDraft?.servicesVisibility || {})
-          .filter(([, enabled]) => !!enabled)
-          .map(([serviceId]) =>
-            (HEALTH_DASHBOARD_DEFAULT_SERVICES[(institution?.type || 'clinic') as HealthDashboardInstitutionType] || [])
-              .find((service) => service.id === serviceId)?.name || serviceId,
-          ),
-        gallery: Array.isArray(nextDraft?.gallery) ? nextDraft.gallery : [],
-        certifications: Array.isArray(nextDraft?.certifications) ? nextDraft.certifications : [],
-        operatingHours: Array.isArray(nextDraft?.operatingHours) ? nextDraft.operatingHours : [],
-        emergencyNotice: nextDraft?.emergencyBanner?.enabled ? nextDraft?.emergencyBanner?.message || '' : '',
-      },
-      profile_editor: nextDraft,
-      profileEditor: nextDraft,
-    },
+  await writeProfileEditorCache(institutionId, nextDraft as Partial<InstitutionProfileEditorDraft>);
+  return {
+    success: true,
+    status: 200,
+    data: { profile_editor: nextDraft },
+    message: 'Profile editor draft saved locally while API is unavailable.',
   };
-  const nextInstitutions = [...institutions];
-  nextInstitutions[index] = nextInstitution;
-  const res = await updateHealthInstitutions(nextInstitutions);
-  if (!res?.success) {
-    await writeProfileEditorCache(institutionId, nextDraft);
-    return res;
-  }
-  await writeProfileEditorCache(institutionId, nextDraft);
-  return { success: true, status: 200, data: { profile_editor: nextDraft } };
 };
 
 const readLocalAvailabilityDraft = async (institutionId: string) => {
@@ -540,28 +712,94 @@ const writeLocalAvailabilityDraft = async (
   institutionId: string,
   payload: Record<string, unknown>,
 ) => {
-  const { institutions, institution, index } = await getHealthInstitutionContext(institutionId);
-  if (!institution || index < 0) {
-    return { success: false, status: 404, message: 'Institution not found in health profile.' };
-  }
-  const existing = institution?.availability ?? institution?.dashboard?.availability ?? {};
+  const existing = await readLocalAvailabilityDraft(institutionId);
   const nextAvailability = {
     ...(existing || {}),
     ...(payload || {}),
   };
-  const nextInstitution = {
-    ...institution,
-    availability: nextAvailability,
-    dashboard: {
-      ...(institution?.dashboard || {}),
-      availability: nextAvailability,
-    },
+  return {
+    success: true,
+    status: 200,
+    data: nextAvailability,
+    message: 'Availability draft saved locally while API is unavailable.',
   };
-  const nextInstitutions = [...institutions];
-  nextInstitutions[index] = nextInstitution;
-  const res = await updateHealthInstitutions(nextInstitutions);
-  if (!res?.success) return res;
-  return { success: true, status: 200, data: nextAvailability };
+};
+
+const syncAvailabilityToHealthProfile = async (
+  institutionId: string,
+  payload: Record<string, unknown>,
+) => {
+  try {
+    const state = await fetchHealthProfileState();
+    const institutions = Array.isArray(state?.profile?.institutions) ? state.profile.institutions : [];
+    if (!institutions.length) return;
+
+    const index = institutions.findIndex(
+      (institution: any) => String(institution?.id || '').trim() === String(institutionId || '').trim(),
+    );
+    if (index < 0) return;
+
+    const currentInstitution = institutions[index] ?? {};
+    const existingAvailability =
+      (currentInstitution?.availability && typeof currentInstitution.availability === 'object'
+        ? currentInstitution.availability
+        : null) ??
+      (currentInstitution?.dashboard?.availability && typeof currentInstitution.dashboard.availability === 'object'
+        ? currentInstitution.dashboard.availability
+        : {}) ??
+      {};
+    const nextAvailability = {
+      ...(existingAvailability as Record<string, unknown>),
+      ...(payload || {}),
+    };
+
+    const normalizedAvailability = {
+      ...nextAvailability,
+      calendar_statuses:
+        nextAvailability?.calendar_statuses ??
+        nextAvailability?.calendarStatuses ??
+        nextAvailability?.date_statuses ??
+        nextAvailability?.dateStatuses ??
+        {},
+      calendar_times:
+        nextAvailability?.calendar_times ??
+        nextAvailability?.calendarTimes ??
+        nextAvailability?.date_times ??
+        nextAvailability?.dateTimes ??
+        {},
+      calendar_time_lists:
+        nextAvailability?.calendar_time_lists ??
+        nextAvailability?.calendarTimeLists ??
+        nextAvailability?.day_time_lists ??
+        nextAvailability?.dayTimeLists ??
+        {},
+      calendar_time_modes:
+        nextAvailability?.calendar_time_modes ??
+        nextAvailability?.calendarTimeModes ??
+        nextAvailability?.day_time_modes ??
+        nextAvailability?.dayTimeModes ??
+        {},
+      calendar_service_ids:
+        nextAvailability?.calendar_service_ids ??
+        nextAvailability?.calendarServiceIds ??
+        nextAvailability?.date_service_ids ??
+        nextAvailability?.dateServiceIds ??
+        {},
+    };
+
+    const nextInstitutions = [...institutions];
+    nextInstitutions[index] = {
+      ...currentInstitution,
+      availability: normalizedAvailability,
+      dashboard: {
+        ...(currentInstitution?.dashboard || {}),
+        availability: normalizedAvailability,
+      },
+    };
+    await updateHealthInstitutions(nextInstitutions);
+  } catch {
+    // Keep health-dashboard save successful even if profile sync fails transiently.
+  }
 };
 
 export const buildInitialDashboardSchema = (
@@ -802,6 +1040,80 @@ export const updateInstitutionProfileEditor = async (
   return response;
 };
 
+export const fetchInstitutionLandingPage = async (
+  institutionId: string,
+): Promise<{
+  success: boolean;
+  status?: number;
+  message?: string;
+  data?: InstitutionLandingPageRecord;
+}> => {
+  const response = await getRequest(ROUTES.healthDashboard.landingPage(institutionId));
+  if (Number(response?.status) === 404) {
+    return {
+      success: true,
+      status: 200,
+      data: {
+        exists: false,
+        isPublished: false,
+        draft: { isPublished: false },
+        raw: {},
+      },
+    };
+  }
+  if (!response?.success) {
+    return response as any;
+  }
+  return {
+    ...response,
+    data: normalizeInstitutionLandingPageRecord(response?.data ?? {}),
+  };
+};
+
+export const upsertInstitutionLandingPage = async (
+  institutionId: string,
+  updates: {
+    isPublished?: boolean;
+    draft?: Partial<InstitutionProfileEditorDraft>;
+  },
+): Promise<{
+  success: boolean;
+  status?: number;
+  message?: string;
+  data?: InstitutionLandingPageRecord;
+}> => {
+  const payload: Record<string, unknown> = {};
+  const publish = toOptionalBoolean(updates?.isPublished);
+  if (publish !== null) {
+    payload.isPublished = publish;
+    payload.is_published = publish;
+  }
+  if (updates?.draft && typeof updates.draft === 'object') {
+    payload.draft = updates.draft;
+    payload.profile_editor = updates.draft;
+  }
+
+  const patchRes = await patchRequest(ROUTES.healthDashboard.landingPage(institutionId), payload);
+  if (Number(patchRes?.status) !== 404) {
+    if (!patchRes?.success) {
+      return patchRes as any;
+    }
+    return {
+      ...patchRes,
+      data: normalizeInstitutionLandingPageRecord(patchRes?.data ?? payload),
+    };
+  }
+
+  const postRes = await postRequest(ROUTES.healthDashboard.landingPage(institutionId), payload);
+  if (!postRes?.success) {
+    return postRes as any;
+  }
+  return {
+    ...postRes,
+    data: normalizeInstitutionLandingPageRecord(postRes?.data ?? payload),
+  };
+};
+
 export const fetchInstitutionAvailability = async (institutionId: string) => {
   if (healthDashboardApiUnavailable) {
     const draft = await readLocalAvailabilityDraft(institutionId);
@@ -818,14 +1130,113 @@ export const fetchInstitutionAvailability = async (institutionId: string) => {
 
 export const updateInstitutionAvailability = async (institutionId: string, payload: Record<string, unknown>) => {
   if (healthDashboardApiUnavailable) {
-    return writeLocalAvailabilityDraft(institutionId, payload);
+    const localResult = await writeLocalAvailabilityDraft(institutionId, payload);
+    if (localResult?.success) {
+      await syncAvailabilityToHealthProfile(institutionId, payload);
+    }
+    return localResult;
   }
   const response = await patchRequest(ROUTES.healthDashboard.availability(institutionId), payload);
   if (Number(response?.status) === 404) {
     healthDashboardApiUnavailable = true;
-    return writeLocalAvailabilityDraft(institutionId, payload);
+    const localResult = await writeLocalAvailabilityDraft(institutionId, payload);
+    if (localResult?.success) {
+      await syncAvailabilityToHealthProfile(institutionId, payload);
+    }
+    return localResult;
+  }
+  if (response?.success) {
+    await syncAvailabilityToHealthProfile(institutionId, payload);
   }
   return response;
+};
+
+export const fetchInstitutionSchedule = async (institutionId: string) => {
+  if (healthDashboardApiUnavailable) {
+    return { success: true, status: 200, data: createEmptySchedulePayload() };
+  }
+  const response = await getRequest(ROUTES.healthDashboard.schedule(institutionId));
+  if (Number(response?.status) === 404) {
+    healthDashboardApiUnavailable = true;
+    return { success: true, status: 200, data: createEmptySchedulePayload() };
+  }
+  return response;
+};
+
+export const updateInstitutionSchedule = async (
+  institutionId: string,
+  payload: Record<string, unknown>,
+) => {
+  if (healthDashboardApiUnavailable) {
+    return { success: false, status: 404, message: 'Health dashboard API is unavailable.' };
+  }
+  return patchRequest(ROUTES.healthDashboard.schedule(institutionId), payload);
+};
+
+export const fetchInstitutionServices = async (institutionId: string) => {
+  if (healthDashboardApiUnavailable) {
+    return { success: true, status: 200, data: createEmptyServicesPayload() };
+  }
+  const response = await getRequest(ROUTES.healthDashboard.services(institutionId));
+  if (Number(response?.status) === 404) {
+    healthDashboardApiUnavailable = true;
+    return { success: true, status: 200, data: createEmptyServicesPayload() };
+  }
+  return response;
+};
+
+export const updateInstitutionServices = async (
+  institutionId: string,
+  payload: Record<string, unknown>,
+) => {
+  if (healthDashboardApiUnavailable) {
+    return { success: false, status: 404, message: 'Health dashboard API is unavailable.' };
+  }
+  return patchRequest(ROUTES.healthDashboard.services(institutionId), payload);
+};
+
+export const fetchInstitutionFinancial = async (institutionId: string) => {
+  if (healthDashboardApiUnavailable) {
+    return { success: true, status: 200, data: createEmptyFinancialPayload() };
+  }
+  const response = await getRequest(ROUTES.healthDashboard.financial(institutionId));
+  if (Number(response?.status) === 404) {
+    healthDashboardApiUnavailable = true;
+    return { success: true, status: 200, data: createEmptyFinancialPayload() };
+  }
+  return response;
+};
+
+export const updateInstitutionFinancial = async (
+  institutionId: string,
+  payload: Record<string, unknown>,
+) => {
+  if (healthDashboardApiUnavailable) {
+    return { success: false, status: 404, message: 'Health dashboard API is unavailable.' };
+  }
+  return patchRequest(ROUTES.healthDashboard.financial(institutionId), payload);
+};
+
+export const fetchInstitutionCompliance = async (institutionId: string) => {
+  if (healthDashboardApiUnavailable) {
+    return { success: true, status: 200, data: createEmptyCompliancePayload() };
+  }
+  const response = await getRequest(ROUTES.healthDashboard.compliance(institutionId));
+  if (Number(response?.status) === 404) {
+    healthDashboardApiUnavailable = true;
+    return { success: true, status: 200, data: createEmptyCompliancePayload() };
+  }
+  return response;
+};
+
+export const updateInstitutionCompliance = async (
+  institutionId: string,
+  payload: Record<string, unknown>,
+) => {
+  if (healthDashboardApiUnavailable) {
+    return { success: false, status: 404, message: 'Health dashboard API is unavailable.' };
+  }
+  return patchRequest(ROUTES.healthDashboard.compliance(institutionId), payload);
 };
 
 export const uploadHealthDashboardImage = async (
@@ -875,19 +1286,53 @@ export const fetchInstitutionDashboardAnalytics = async (
   let analyticsHeader = aggregated.analyticsHeader;
 
   try {
-    const availabilityRes = await fetchInstitutionAvailability(institutionId);
-    const availabilityPayload = availabilityRes?.data?.availability ?? availabilityRes?.data ?? {};
-    const calendarStatuses = readCalendarStatuses(availabilityPayload);
-    if (Object.keys(calendarStatuses).length > 0) {
-      const calendarTimes = readCalendarTimes(availabilityPayload);
-      const scheduleSummary = deriveScheduleSummaryFromStatuses(calendarStatuses, calendarTimes);
-      analyticsHeader = {
-        ...aggregated.analyticsHeader,
-        pendingSchedules: scheduleSummary.today,
-        bookingsCount: scheduleSummary.upcoming,
-        completedConsultations: scheduleSummary.past,
-      };
+    const [scheduleRes, financialRes, _complianceRes, availabilityRes] = await Promise.all([
+      fetchInstitutionSchedule(institutionId),
+      fetchInstitutionFinancial(institutionId),
+      fetchInstitutionCompliance(institutionId),
+      fetchInstitutionAvailability(institutionId),
+    ]);
+
+    const schedulePayload = scheduleRes?.data ?? {};
+    const fromSchedule = {
+      today: toFiniteNumber((schedulePayload as any)?.today, 0),
+      upcoming: toFiniteNumber((schedulePayload as any)?.upcoming, 0),
+      past: toFiniteNumber((schedulePayload as any)?.past, 0),
+    };
+    const hasScheduleValues =
+      fromSchedule.today > 0 || fromSchedule.upcoming > 0 || fromSchedule.past > 0;
+
+    let scheduleSummary = fromSchedule;
+    if (!hasScheduleValues) {
+      const availabilityPayload = availabilityRes?.data?.availability ?? availabilityRes?.data ?? {};
+      const calendarStatuses = readCalendarStatuses(availabilityPayload);
+      if (Object.keys(calendarStatuses).length > 0) {
+        const calendarTimes = readCalendarTimes(availabilityPayload);
+        const calendarTimeLists = readCalendarTimeLists(availabilityPayload);
+        const calendarTimeModes = readCalendarTimeModes(availabilityPayload);
+        scheduleSummary = deriveScheduleSummaryFromStatuses(
+          calendarStatuses,
+          calendarTimes,
+          calendarTimeLists,
+          calendarTimeModes,
+        );
+      }
     }
+
+    const financialPayload = financialRes?.data ?? {};
+    const totalRevenueCents = toFiniteNumber((financialPayload as any)?.totalRevenueCents, 0);
+
+    analyticsHeader = {
+      ...aggregated.analyticsHeader,
+      revenue: {
+        today: totalRevenueCents,
+        week: totalRevenueCents,
+        month: totalRevenueCents,
+      },
+      pendingSchedules: scheduleSummary.today,
+      bookingsCount: scheduleSummary.upcoming,
+      completedConsultations: scheduleSummary.past,
+    };
   } catch {
     analyticsHeader = aggregated.analyticsHeader;
   }

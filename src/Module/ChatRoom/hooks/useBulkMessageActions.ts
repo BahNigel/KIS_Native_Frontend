@@ -217,7 +217,10 @@ export function useBulkMessageActions({
   }, [
     exitSelectionMode,
     handleCopySelected,
+    handleDeleteForEveryone,
+    handleEditSelected,
     handlePinSelected,
+    isSingleSelection,
     canBroadcast,
     onBroadcastMessages,
     onReportMessage,

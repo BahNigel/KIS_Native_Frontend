@@ -139,7 +139,7 @@ export default function useEducationData({ q = '', activeProfileId = null }: Par
 
       const normalizedModules = profileModules
         .map((mod: any, index: number) => normalizeProfileModule(mod, index))
-        .filter((mod): mod is EducationModule => Boolean(mod));
+        .filter((mod: EducationModule | null): mod is EducationModule => Boolean(mod));
 
       const profilesPayload = profilesRes?.data?.profiles ?? {};
       const next: EducationHomePayload = {

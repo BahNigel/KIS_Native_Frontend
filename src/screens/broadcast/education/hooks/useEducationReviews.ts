@@ -41,7 +41,7 @@ export default function useEducationReviews(courseId?: string) {
         })));
         setError(null);
       } else {
-        setError(res.message);
+        setError(res.message ?? 'Unable to load reviews.');
       }
     } catch (err: any) {
       setError(err?.message ?? 'Unable to load reviews.');

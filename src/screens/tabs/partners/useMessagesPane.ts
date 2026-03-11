@@ -1,14 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   Animated,
-  GestureResponderEvent,
   PanResponder,
-  PanResponderGestureState,
 } from 'react-native';
 import { RIGHT_PEEK_WIDTH } from '@/components/partners/partnersTypes';
-
-const clamp = (value: number, min: number, max: number) =>
-  Math.min(max, Math.max(min, value));
 
 export const useMessagesPane = (
   width: number,
@@ -19,7 +14,6 @@ export const useMessagesPane = (
 
   const messagesOffsetAnim = useRef(new Animated.Value(minimizedOffset)).current;
   const offsetRef = useRef(minimizedOffset);
-  const dragStartOffsetRef = useRef(minimizedOffset);
   const messagesAnimatingRef = useRef(false);
 
   useEffect(() => {
@@ -73,13 +67,6 @@ export const useMessagesPane = (
 
   const closeMessagesPane = () => {
     animateMessagesPane(false, 0);
-  };
-
-  const snapMessagesPaneToNearest = (velocity = 0) => {
-    messagesOffsetAnim.stopAnimation((value: number) => {
-      const currentOffset = typeof value === 'number' ? value : offsetRef.current;
-      animateMessagesPane(getMessagesPaneOpen(currentOffset), velocity);
-    });
   };
 
   const panResponder = useRef(

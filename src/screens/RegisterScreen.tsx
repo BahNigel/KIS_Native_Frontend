@@ -1,5 +1,5 @@
 // src/screens/RegisterScreen.tsx
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
   Alert,
   KeyboardAvoidingView,
@@ -13,79 +13,16 @@ import {
   StatusBar,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import Geolocation from 'react-native-geolocation-service';
-import {
-  PERMISSIONS,
-  RESULTS,
-  check,
-  request,
-  openSettings,
-} from 'react-native-permissions';
-import * as RNLocalize from 'react-native-localize';
 
 import { postRequest } from '@/network/post/index';
 import KISButton from '@/constants/KISButton';
 import ROUTES from '@/network';
 import { ensureDeviceId } from '@/security/e2ee';
+import { setAuthTokens } from '@/security/authStorage';
 import { useKISTheme } from '@/theme/useTheme';
 import KISText from '@/components/common/KISText';
 import { KIS_TOKENS } from '@/theme/constants';
-
-// ---------- COUNTRY CODES ----------
-const CALLING_CODE_BY_ISO: Record<string, string> = {
-  // Africa (partial)
-  CM: '+237', NG: '+234', GH: '+233', KE: '+254', ZA: '+27', CI: '+225',
-  DZ: '+213', MA: '+212', TN: '+216', UG: '+256', RW: '+250', SN: '+221',
-  NE: '+227', TD: '+235', GA: '+241', GQ: '+240',
-  // Europe (partial)
-  FR: '+33', DE: '+49', GB: '+44', IT: '+39', ES: '+34',
-  // Americas (partial)
-  US: '+1', CA: '+1', BR: '+55', MX: '+52',
-  // Asia (partial)
-  IN: '+91', CN: '+86', JP: '+81', KR: '+82',
-  // Oceania (partial)
-  AU: '+61', NZ: '+64',
-};
-
-async function reverseGeocodeISO(lat: number, lon: number): Promise<string | undefined> {
-  try {
-    const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${encodeURIComponent(
-      lat
-    )}&lon=${encodeURIComponent(lon)}&zoom=3&addressdetails=1`;
-    const res = await fetch(url, {
-      headers: { 'User-Agent': 'KISApp/1.0 (register-screen)' },
-    });
-    const data = await res.json();
-    const cc = data?.address?.country_code;
-    return typeof cc === 'string' ? cc.toUpperCase() : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-async function getLocationPermission(): Promise<boolean> {
-  const perm =
-    Platform.OS === 'ios'
-      ? PERMISSIONS.IOS.LOCATION_WHEN_IN_USE
-      : PERMISSIONS.ANDROID.ACCESS_FINE_LOCATION;
-
-  let status = await check(perm);
-  if (status === RESULTS.DENIED) status = await request(perm);
-  if (status === RESULTS.GRANTED || status === RESULTS.LIMITED) return true;
-
-  if (status === RESULTS.BLOCKED) {
-    Alert.alert(
-      'Location Disabled',
-      'Please enable location permission in Settings to auto-detect your country.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Open Settings', onPress: () => openSettings() },
-      ]
-    );
-  }
-  return false;
-}
+import { useAuth } from '../../App';
 
 const createStyles = (tokens: typeof KIS_TOKENS) =>
   StyleSheet.create({
@@ -147,6 +84,7 @@ const createStyles = (tokens: typeof KIS_TOKENS) =>
       borderRadius: tokens.radius.md,
       paddingHorizontal: tokens.spacing.md,
       paddingVertical: Platform.select({ ios: 12, android: 10 }),
+      minWidth: 128,
     },
     phoneInput: {
       flex: 1,
@@ -179,6 +117,11 @@ const createStyles = (tokens: typeof KIS_TOKENS) =>
 
 export default function RegisterScreen({ navigation }: any) {
   const { palette, tokens, tone } = useKISTheme();
+  const {
+    countryISO: detectedCountryISO,
+    callingCode: detectedCallingCode,
+    locationReady,
+  } = useAuth();
   const styles = useMemo(() => createStyles(tokens), [tokens]);
   const inputStyle = useMemo(
     () => ({
@@ -195,47 +138,23 @@ export default function RegisterScreen({ navigation }: any) {
   const [regPassword, setRegPassword] = useState('');
   const [regPassword2, setRegPassword2] = useState('');
 
-  // geo / region
-  const [countryISO, setCountryISO] = useState<string>('US');
-  const [callingCode, setCallingCode] = useState<string>(CALLING_CODE_BY_ISO['US']);
-
   // ui
   const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      const allowed = await getLocationPermission();
-      if (allowed) {
-        await new Promise<void>((resolve) => {
-          Geolocation.getCurrentPosition(
-            async (pos) => {
-              if (cancelled) return resolve();
-              const iso = await reverseGeocodeISO(pos.coords.latitude, pos.coords.longitude);
-              if (!cancelled && iso) {
-                setCountryISO(iso);
-                setCallingCode(CALLING_CODE_BY_ISO[iso] ?? CALLING_CODE_BY_ISO['US']);
-              }
-              resolve();
-            },
-            () => resolve(),
-            { enableHighAccuracy: true, timeout: 10000, maximumAge: 10000 }
-          );
-        });
-      }
-      if (!cancelled) {
-        setCountryISO((prev) => {
-          if (prev && prev !== 'US') return prev;
-          const deviceRegion = RNLocalize.getCountry() || 'US';
-          setCallingCode(CALLING_CODE_BY_ISO[deviceRegion] ?? CALLING_CODE_BY_ISO['US']);
-          return deviceRegion;
-        });
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
+  const onChangeRegPhone = useCallback((value: string) => {
+    const digits = String(value || '').replace(/[^\d]/g, '').slice(0, 14);
+    setRegPhone(digits);
   }, []);
+
+  const countryISO = useMemo(
+    () => String(detectedCountryISO || 'CM').trim().toUpperCase() || 'CM',
+    [detectedCountryISO],
+  );
+
+  const callingCode = useMemo(() => {
+    const digits = String(detectedCallingCode || '+237').replace(/[^\d]/g, '').slice(0, 4);
+    return digits ? `+${digits}` : '+237';
+  }, [detectedCallingCode]);
 
   // validators
   const passwordValid = (pwd: string) => {
@@ -251,19 +170,27 @@ export default function RegisterScreen({ navigation }: any) {
     const cleaned = regPhone.trim().replace(/[^\d]/g, '');
     return cleaned.length >= 6;
   }, [regPhone]);
+  const countryCodeValid = useMemo(
+    () => callingCode.replace(/[^\d]/g, '').length > 0,
+    [callingCode]
+  );
   const passwordsMatch = regPassword.length > 0 && regPassword === regPassword2;
 
   const registerReady =
-    phoneValid && passwordValid(regPassword) && passwordsMatch && !loading;
-
-  const buildPhoneE164 = (national: string) =>
-    `${callingCode}${national.replace(/[^\d]/g, '')}`;
+    !!locationReady &&
+    countryCodeValid &&
+    phoneValid &&
+    passwordValid(regPassword) &&
+    passwordsMatch &&
+    !loading;
 
   const persistTokensIfAny = async (payload: any) => {
     try {
       const d = payload?.data || payload || {};
-      if (d?.access) await AsyncStorage.setItem('access_token', d.access);
-      if (d?.refresh) await AsyncStorage.setItem('refresh_token', d.refresh);
+      await setAuthTokens({
+        accessToken: d?.access ?? null,
+        refreshToken: d?.refresh ?? null,
+      });
     } catch {}
   };
 
@@ -284,13 +211,25 @@ export default function RegisterScreen({ navigation }: any) {
 
   const onRegister = async () => {
     try {
+      if (!locationReady) {
+        Alert.alert('Location required', 'Enable device location to continue.');
+        return;
+      }
       setLoading(true);
 
-      const phoneE164 = buildPhoneE164(regPhone);
+      const normalizedPhoneNumber = regPhone.replace(/[^\d]/g, '');
+      const normalizedCountryDigits = callingCode.replace(/[^\d]/g, '');
+      const normalizedCountryCode = normalizedCountryDigits ? `+${normalizedCountryDigits}` : '';
+      if (!normalizedCountryCode) {
+        return Alert.alert('Registration failed', 'Country code is required.');
+      }
+      const phoneE164 = `${normalizedCountryCode}${normalizedPhoneNumber}`;
 
       const deviceId = await ensureDeviceId();
       const payload: Record<string, any> = {
         phone: phoneE164,
+        phone_country_code: normalizedCountryCode,
+        phone_number: normalizedPhoneNumber,
         password: regPassword,
         password2: regPassword2,
         country: countryISO,
@@ -357,27 +296,6 @@ export default function RegisterScreen({ navigation }: any) {
       setLoading(false);
     }
   };
-
-  const PhonePrefix = () => (
-    <View
-      style={[
-        styles.prefixBox,
-        {
-          borderColor: palette.inputBorder,
-          backgroundColor: palette.surface,
-        },
-      ]}
-      accessible
-      accessibilityLabel={`Country ${countryISO}, code ${callingCode}`}
-    >
-      <KISText preset="title" color={palette.text}>
-        {countryISO}
-      </KISText>
-      <KISText preset="title" color={palette.text}>
-        {callingCode}
-      </KISText>
-    </View>
-  );
 
   const handleBack = () => {
     if (navigation?.canGoBack?.()) {
@@ -446,10 +364,27 @@ export default function RegisterScreen({ navigation }: any) {
               Phone
             </KISText>
             <View style={styles.phoneRow}>
-              <PhonePrefix />
+              <View
+                style={[
+                  styles.prefixBox,
+                  {
+                    borderColor: palette.inputBorder,
+                    backgroundColor: palette.surface,
+                  },
+                ]}
+                accessible
+                accessibilityLabel={`Country ${countryISO}, code ${callingCode}`}
+              >
+                <KISText preset="title" color={palette.text}>
+                  {countryISO}
+                </KISText>
+                <KISText preset="title" color={palette.text}>
+                  {callingCode}
+                </KISText>
+              </View>
               <TextInput
                 value={regPhone}
-                onChangeText={setRegPhone}
+                onChangeText={onChangeRegPhone}
                 autoCapitalize="none"
                 keyboardType="phone-pad"
                 placeholder="6xx xxx xxx"
@@ -556,7 +491,7 @@ export default function RegisterScreen({ navigation }: any) {
             />
           </View>
 
-          {/* Country is auto-detected; show read-only but you can make it editable if desired */}
+          {/* Country is auto-detected from device location */}
           <View style={styles.field}>
             <KISText preset="label" color={palette.text}>
               Country

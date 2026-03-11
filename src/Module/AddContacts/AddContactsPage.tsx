@@ -50,7 +50,7 @@ import {
   CONVERSATION_CACHE_KEY,
   CONVERSATION_CACHE_TYPE,
 } from '../ChatRoom/normalizeConversation';
-import { getCache, setCache } from '@/network/cache';
+import { getCache } from '@/network/cache';
 
 export type AddContactsPageProps = {
   onClose: () => void;
@@ -127,7 +127,7 @@ const sendSmsInvite = async (contact: KISContact) => {
       return;
     }
     await Linking.openURL(url);
-  } catch (e) {
+  } catch {
     Alert.alert('Error', 'Could not open SMS app.');
   }
 };
@@ -150,7 +150,7 @@ const sendWhatsAppInvite = async (contact: KISContact) => {
       return;
     }
     await Linking.openURL(url);
-  } catch (e) {
+  } catch {
     Alert.alert('Error', 'Could not open WhatsApp.');
   }
 };
@@ -163,21 +163,6 @@ type Mode =
   | 'addChannel'
   | 'selectGroupMembers'
   | 'selectCommunityMembers';
-
-/**
- * Resolve participant backend user id from conversation participant object.
- * (Kept for future use if you want to match by user id instead of phone.)
- */
-const resolveParticipantUserId = (participant: any): string | null => {
-  if (!participant) return null;
-
-  if (participant.user_id != null) return String(participant.user_id);
-  if (participant.userId != null) return String(participant.userId);
-
-  if (participant.id != null) return String(participant.id);
-
-  return null;
-};
 
 /* -------------------------------------------------------------------------- */
 /*  CACHE: FIND EXISTING DIRECT CONVERSATION FOR THIS CONTACT                 */

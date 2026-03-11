@@ -9,7 +9,7 @@ import {
   Text,
   View,
 } from 'react-native';
-import { useNavigation, useRoute } from '@react-navigation/native';
+import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
 import ROUTES from '@/network';
@@ -38,10 +38,7 @@ const pickAttachmentUrl = (attachment: any): string | undefined => {
 };
 
 export default function BroadcastDetailScreen() {
-  const route = useRoute<{
-    params: FeedsStackParamList['BroadcastDetail'] & { item?: BroadcastItem };
-    name: string;
-  }>();
+  const route = useRoute<RouteProp<FeedsStackParamList, 'BroadcastDetail'>>();
   const navigation = useNavigation<NativeStackNavigationProp<FeedsStackParamList, 'BroadcastDetail'>>();
   const { palette } = useKISTheme();
 
@@ -76,7 +73,7 @@ export default function BroadcastDetailScreen() {
         throw new Error(response?.message ?? 'Could not react');
       }
       DeviceEventEmitter.emit(REACTION_EVENT, { id: broadcastId, delta: 1 });
-    } catch (err: any) {
+    } catch {
       setBroadcastItem((prev) =>
         prev
           ? {

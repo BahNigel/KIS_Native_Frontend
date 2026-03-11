@@ -47,6 +47,24 @@ const getTopTrendingFeeds = (items: BroadcastFeedItem[], limit = 20) => {
     .slice(0, limit);
 };
 
+const mergeById = (primary: BroadcastFeedItem[], secondary: BroadcastFeedItem[]) => {
+  const out: BroadcastFeedItem[] = [];
+  const seen = new Set<string>();
+  for (const row of primary) {
+    const id = String(row?.id ?? '').trim();
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    out.push(row);
+  }
+  for (const row of secondary) {
+    const id = String(row?.id ?? '').trim();
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    out.push(row);
+  }
+  return out;
+};
+
 const isHealthcareFeedItem = (item: BroadcastFeedItem | null | undefined) => {
   if (!item) return false;
   const sourceType = String(item.source_type ?? '').toLowerCase();
@@ -54,13 +72,141 @@ const isHealthcareFeedItem = (item: BroadcastFeedItem | null | undefined) => {
   return sourceType === 'healthcare' || sourceMetaType === 'healthcare';
 };
 
-const mapProfileFeedToBroadcastItem = (entry: any): BroadcastFeedItem => {
+const normalizeAuthorFromItem = (item: any) => {
+  const author = item?.author && typeof item.author === 'object' ? item.author : {};
+  const metadata = item?.metadata && typeof item.metadata === 'object' ? item.metadata : {};
+  const fallbackUser =
+    (item?.user && typeof item.user === 'object' ? item.user : null) ??
+    (item?.broadcasted_by && typeof item.broadcasted_by === 'object' ? item.broadcasted_by : null) ??
+    (metadata?.author && typeof metadata.author === 'object' ? metadata.author : null) ??
+    (metadata?.user && typeof metadata.user === 'object' ? metadata.user : null) ??
+    null;
+
+  const authorId =
+    author?.id ??
+    fallbackUser?.id ??
+    metadata?.author_id ??
+    metadata?.authorId ??
+    item?.broadcasted_by_id ??
+    item?.creator_id ??
+    item?.creatorId ??
+    null;
+  const authorProfileId =
+    author?.profile_id ??
+    author?.profileId ??
+    fallbackUser?.profile_id ??
+    fallbackUser?.profileId ??
+    fallbackUser?.profile?.id ??
+    metadata?.author_profile_id ??
+    metadata?.authorProfileId ??
+    metadata?.profile_id ??
+    item?.profile?.id ??
+    null;
+  const displayName =
+    author?.display_name ??
+    author?.displayName ??
+    author?.name ??
+    fallbackUser?.display_name ??
+    fallbackUser?.displayName ??
+    fallbackUser?.name ??
+    fallbackUser?.username ??
+    metadata?.author_display_name ??
+    metadata?.authorName ??
+    metadata?.author_name ??
+    null;
+  const avatarUrl =
+    author?.avatar_url ??
+    author?.avatarUrl ??
+    author?.avatar ??
+    fallbackUser?.avatar_url ??
+    fallbackUser?.avatarUrl ??
+    fallbackUser?.avatar ??
+    fallbackUser?.profile?.avatar_url ??
+    fallbackUser?.profile?.avatarUrl ??
+    fallbackUser?.profile?.avatar ??
+    item?.profile?.avatar_url ??
+    item?.profile?.avatarUrl ??
+    item?.profile?.avatar ??
+    metadata?.author_avatar_url ??
+    metadata?.authorAvatarUrl ??
+    metadata?.author_avatar ??
+    metadata?.avatar_url ??
+    null;
+  const bio =
+    author?.bio ??
+    fallbackUser?.bio ??
+    metadata?.author_bio ??
+    metadata?.authorBio ??
+    null;
+
+  const nextAuthor: Record<string, any> = {
+    ...(author || {}),
+  };
+  if (authorId) nextAuthor.id = String(authorId);
+  if (authorProfileId) nextAuthor.profile_id = String(authorProfileId);
+  if (displayName && String(displayName).trim()) nextAuthor.display_name = String(displayName).trim();
+  if (avatarUrl && String(avatarUrl).trim()) nextAuthor.avatar_url = String(avatarUrl).trim();
+  if (bio && String(bio).trim()) nextAuthor.bio = String(bio).trim();
+  return Object.keys(nextAuthor).length ? nextAuthor : undefined;
+};
+
+const normalizeFeedItem = (item: BroadcastFeedItem): BroadcastFeedItem => ({
+  ...item,
+  author: normalizeAuthorFromItem(item),
+});
+
+const mapProfileFeedToBroadcastItem = (entry: any, owner?: any): BroadcastFeedItem => {
   const attachments = ([] as any[])
     .concat(entry.attachment ? [entry.attachment] : [])
     .concat(Array.isArray(entry.attachments) ? entry.attachments : [])
     .filter(Boolean);
 
   const timestamp = entry.created_at ?? entry.updated_at ?? new Date().toISOString();
+  const authorIdRaw =
+    entry?.author?.id ??
+    entry?.author_id ??
+    entry?.user?.id ??
+    entry?.user_id ??
+    owner?.id ??
+    owner?.user_id ??
+    null;
+  const authorDisplayName =
+    entry?.author?.display_name ??
+    entry?.author_name ??
+    entry?.user?.display_name ??
+    entry?.user?.name ??
+    owner?.display_name ??
+    owner?.name ??
+    owner?.username ??
+    entry?.display_name ??
+    '';
+  const authorProfileId =
+    entry?.author?.profile_id ??
+    entry?.author?.profileId ??
+    entry?.profile?.id ??
+    entry?.profile_id ??
+    owner?.profile?.id ??
+    owner?.profile_id ??
+    null;
+  const authorAvatar =
+    entry?.author?.avatar_url ??
+    entry?.author?.avatarUrl ??
+    entry?.author?.avatar ??
+    entry?.user?.avatar_url ??
+    entry?.user?.avatarUrl ??
+    owner?.avatar_url ??
+    owner?.avatarUrl ??
+    owner?.avatar ??
+    entry?.avatar_url ??
+    entry?.avatarUrl ??
+    null;
+  const authorBio =
+    entry?.author?.bio ??
+    entry?.profile?.bio ??
+    entry?.user?.bio ??
+    owner?.bio ??
+    entry?.summary ??
+    '';
 
   return {
     id: `profile-${entry.id}`,
@@ -74,10 +220,17 @@ const mapProfileFeedToBroadcastItem = (entry: any): BroadcastFeedItem => {
     attachments,
     reaction_count: entry.reaction_count ?? 0,
     comment_count: entry.comment_count ?? 0,
+    author: {
+      id: authorIdRaw ? String(authorIdRaw) : undefined,
+      profile_id: authorProfileId ? String(authorProfileId) : undefined,
+      display_name: String(authorDisplayName || '').trim() || 'KIS user',
+      avatar_url: authorAvatar ? String(authorAvatar) : undefined,
+      bio: String(authorBio || '').trim() || undefined,
+    },
     source: {
       type: 'broadcast_profile',
-      id: 'main',
-      name: 'My broadcast feed',
+      id: String(entry?.profile_id ?? entry?.broadcast_profile_id ?? 'main'),
+      name: entry?.profile_name ?? entry?.broadcast_profile_name ?? 'Broadcast profile',
       is_subscribed: true,
       allow_subscribe: false,
       can_open: true,
@@ -98,17 +251,28 @@ export default function useFeedsData({ q = '', code = null }: Params) {
 
   const paramsKey = useMemo(() => `${q}::${code ?? ''}`, [q, code]);
 
-  const fetchProfileFeeds = useCallback(async () => {
+  const fetchDjangoBroadcastFeeds = useCallback(async () => {
     try {
       const res = await getRequest(ROUTES.broadcasts.list, {
         errorMessage: 'Unable to load broadcast profiles.',
       });
       if (!res?.success) return [];
+
+      const apiPayload = res?.data ?? {};
+      const apiPage = normalizePaginated<BroadcastFeedItem>(apiPayload);
+      const apiResults = (apiPage.results ?? []).map((item) => normalizeFeedItem(item));
+
       const profile = res.data?.profiles?.broadcast_feed;
+      const owner =
+        profile?.owner ??
+        profile?.user ??
+        res.data?.user ??
+        null;
       const feeds = Array.isArray(profile?.feeds) ? profile.feeds : [];
-      return feeds.map(mapProfileFeedToBroadcastItem);
+      const profileFeeds = feeds.map((entry: any) => mapProfileFeedToBroadcastItem(entry, owner));
+      return mergeById(apiResults, profileFeeds);
     } catch (error) {
-      console.warn('[useFeedsData] profile feeds failed', error);
+      console.warn('[useFeedsData] django broadcasts failed', error);
       return [];
     }
   }, []);
@@ -117,15 +281,19 @@ export default function useFeedsData({ q = '', code = null }: Params) {
     setLoading(true);
     const url = `${FEEDS_ENDPOINT}${buildQuery({ q, code })}`;
     try {
-      const [res, profileFeeds] = await Promise.all([
+      const [res, djangoFeeds] = await Promise.all([
         getRequest(url, { errorMessage: 'Unable to load feeds.' }),
-        fetchProfileFeeds(),
+        fetchDjangoBroadcastFeeds(),
       ]);
       if (!mountedRef.current) return;
       const payload = res?.data ?? res;
       const page = normalizePaginated<BroadcastFeedItem>(payload);
-      const nonHealthcareResults = (page.results ?? []).filter((item) => !isHealthcareFeedItem(item));
-      const nextItems = [...profileFeeds, ...nonHealthcareResults];
+      const normalizedResults = (page.results ?? []).map((item) => normalizeFeedItem(item));
+      const nonHealthcareResults = normalizedResults.filter((item) => !isHealthcareFeedItem(item));
+      const nextItems = mergeById(
+        djangoFeeds.filter((item) => !isHealthcareFeedItem(item)),
+        nonHealthcareResults,
+      );
       setItems(nextItems);
       const topTrending = getTopTrendingFeeds(nextItems);
       setTrendingFeeds(topTrending);
@@ -136,7 +304,7 @@ export default function useFeedsData({ q = '', code = null }: Params) {
         setLoading(false);
       }
     }
-  }, [code, fetchProfileFeeds, q]);
+  }, [code, fetchDjangoBroadcastFeeds, q]);
 
   const refreshAll = useCallback(async () => {
     setRefreshing(true);
@@ -161,7 +329,8 @@ export default function useFeedsData({ q = '', code = null }: Params) {
     setItems((prev) => {
       const have = new Set(prev.map((x) => x.id));
       const merged = [...prev];
-      const nonHealthcareResults = (page.results ?? []).filter((item) => !isHealthcareFeedItem(item));
+      const normalizedResults = (page.results ?? []).map((item) => normalizeFeedItem(item));
+      const nonHealthcareResults = normalizedResults.filter((item) => !isHealthcareFeedItem(item));
       for (const it of nonHealthcareResults) {
         if (!have.has(it.id)) merged.push(it);
       }

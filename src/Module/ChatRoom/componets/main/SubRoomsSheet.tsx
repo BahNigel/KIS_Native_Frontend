@@ -24,7 +24,7 @@ type SubRoomsSheetProps = {
 export const SubRoomsSheet: React.FC<SubRoomsSheetProps> = ({
   visible,
   onClose,
-  parentRoomId,
+  parentRoomId: _parentRoomId,
   subRooms,
   palette,
 }) => {

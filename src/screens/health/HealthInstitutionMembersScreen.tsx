@@ -212,12 +212,20 @@ export default function HealthInstitutionMembersScreen({ route, navigation }: Pr
   const [editingRoleMemberId, setEditingRoleMemberId] = useState('');
   const [institutions, setInstitutions] = useState<any[]>([]);
   const [members, setMembers] = useState<HealthInstitutionMember[]>([]);
+  const [, setMemberAuditLogs] = useState<
+    Array<{
+      id: string;
+      at: string;
+      actorUserId?: string;
+      action: string;
+      memberName: string;
+      fromRole?: string;
+      toRole?: string;
+    }>
+  >([]);
   const [selectedRole, setSelectedRole] = useState<InstitutionRole>('staff');
   const [membershipOpen, setMembershipOpen] = useState(false);
   const [membershipDiscountPercent, setMembershipDiscountPercent] = useState(10);
-  const [memberAuditLogs, setMemberAuditLogs] = useState<
-    Array<{ id: string; at: string; actorUserId?: string; action: string; memberName: string; fromRole?: string; toRole?: string }>
-  >([]);
 
   const institution = institutions.find((item: any) => String(item?.id) === String(institutionId));
   const ownerContact = (institution as any)?.owner_contact || (institution as any)?.ownerContact || {};
@@ -251,10 +259,9 @@ export default function HealthInstitutionMembersScreen({ route, navigation }: Pr
     if (!ROLE_PERMISSIONS[actorRole]?.members) return false;
     if (targetRole === 'owner') return nextRole === 'owner';
     if (nextRole === 'owner') return false;
-    if (String(target.userId || '') === String(currentUserId) && targetRole === 'owner' && nextRole !== 'owner') return false;
     if (ROLE_RANK[nextRole] > ROLE_RANK[actorRole]) return false;
     return true;
-  }, [actorRole, currentUserId]);
+  }, [actorRole]);
 
   const getAssignableRolesForMember = useCallback((target: HealthInstitutionMember): MemberRole[] => {
     const candidates: MemberRole[] = ['admin', 'manager', 'staff', 'analyst', 'member', 'unassigned'];
@@ -320,12 +327,6 @@ export default function HealthInstitutionMembersScreen({ route, navigation }: Pr
       setMembershipOpen(!!isOpen);
       setMembershipDiscountPercent(clampMembershipDiscount(discount));
 
-      const logs = Array.isArray((currentInstitution as any)?.member_audit_logs)
-        ? (currentInstitution as any).member_audit_logs
-        : Array.isArray((currentInstitution as any)?.memberAuditLogs)
-        ? (currentInstitution as any).memberAuditLogs
-        : [];
-      setMemberAuditLogs(logs);
     } catch (error: any) {
       Alert.alert('Institution members', error?.message || 'Unable to load institution members.');
     } finally {
@@ -582,8 +583,6 @@ export default function HealthInstitutionMembersScreen({ route, navigation }: Pr
         open: membershipOpen,
         discountPercent: clampMembershipDiscount(membershipDiscountPercent),
       },
-      member_audit_logs: memberAuditLogs.slice(0, 250),
-      memberAuditLogs: memberAuditLogs.slice(0, 250),
       employees: members.map((member) => ({
         id: member.id,
         user_id: member.userId,
@@ -619,7 +618,6 @@ export default function HealthInstitutionMembersScreen({ route, navigation }: Pr
     institutionId,
     institutions,
     loadState,
-    memberAuditLogs,
     members,
     membershipDiscountPercent,
     membershipOpen,
@@ -837,25 +835,6 @@ export default function HealthInstitutionMembersScreen({ route, navigation }: Pr
                 disabled={saving}
               />
               <KISButton title="Back" variant="outline" onPress={() => navigation.goBack()} disabled={saving} />
-            </View>
-          </View>
-
-          <View style={{ marginTop: spacing.md, borderRadius: spacing.lg, padding: spacing.md, backgroundColor: palette.card, ...borders.card }}>
-            <Text style={{ ...typography.h3, color: palette.text }}>Audit Trail</Text>
-            <Text style={{ ...typography.body, color: palette.subtext, marginTop: spacing.xs }}>Recent member role and access changes.</Text>
-            <View style={{ marginTop: spacing.sm, gap: spacing.xs }}>
-              {memberAuditLogs.slice(0, 8).map((log) => (
-                <View key={log.id} style={{ borderRadius: spacing.sm, borderWidth: 1, borderColor: palette.divider, backgroundColor: palette.surface, padding: spacing.sm }}>
-                  <Text style={{ ...typography.label, color: palette.text }}>{log.action}</Text>
-                  <Text style={{ ...typography.body, color: palette.subtext }}>{log.memberName}</Text>
-                  <Text style={{ ...typography.caption, color: palette.subtext }}>
-                    {log.fromRole ? `from ${log.fromRole}` : ''} {log.toRole ? `to ${log.toRole}` : ''}
-                  </Text>
-                </View>
-              ))}
-              {memberAuditLogs.length === 0 ? (
-                <Text style={{ ...typography.body, color: palette.subtext }}>No audit records yet.</Text>
-              ) : null}
             </View>
           </View>
         </ScrollView>

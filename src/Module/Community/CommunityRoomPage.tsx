@@ -5,7 +5,6 @@ import {
   StyleSheet,
   FlatList,
   Pressable,
-  ActivityIndicator,
 } from 'react-native';
 import { useKISTheme } from '@/theme/useTheme';
 import ROUTES from '@/network';

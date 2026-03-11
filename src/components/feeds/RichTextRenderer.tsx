@@ -1,6 +1,8 @@
 import React from 'react';
 import { Text, View, StyleSheet, ViewStyle, TextStyle, StyleProp } from 'react-native';
 import { useKISTheme } from '@/theme/useTheme';
+import { useGlobalProfilePreview } from '@/components/profile/GlobalProfilePreviewProvider';
+import { splitTextByKisHandles } from '@/utils/kisHandle';
 
 type RichTextMark = {
   type: string;
@@ -113,17 +115,45 @@ const computeMarkStyle = (marks: RichTextMark[] = []): TextStyle => {
   return style;
 };
 
-const renderInline = (nodes: RichTextNode[] = []) =>
+const renderInline = (
+  nodes: RichTextNode[] = [],
+  options: { openProfileByHandle: (handle: string) => Promise<boolean>; linkColor: string },
+) =>
   nodes.map((node, index) => {
     if (node.type === 'text') {
+      const markStyle = computeMarkStyle(node.marks);
+      const text = String(node.text ?? '');
+      const segments = splitTextByKisHandles(text);
       return (
-        <Text key={`inline-${index}`} style={computeMarkStyle(node.marks)}>
-          {node.text}
+        <Text key={`inline-${index}`} style={markStyle}>
+          {segments.map((segment, segmentIndex) => {
+            if (segment.type === 'text') return segment.value;
+            return (
+              <Text
+                key={`inline-${index}-handle-${segmentIndex}`}
+                style={{
+                  color: options.linkColor,
+                  fontWeight: '700',
+                  textDecorationLine: 'underline',
+                }}
+                suppressHighlighting
+                onPress={() => {
+                  void options.openProfileByHandle(segment.handle);
+                }}
+              >
+                {segment.value}
+              </Text>
+            );
+          })}
         </Text>
       );
     }
     if (node.content) {
-      return <React.Fragment key={`inline-fragment-${index}`}>{renderInline(node.content)}</React.Fragment>;
+      return (
+        <React.Fragment key={`inline-fragment-${index}`}>
+          {renderInline(node.content, options)}
+        </React.Fragment>
+      );
     }
     return null;
   });
@@ -132,15 +162,21 @@ const renderListItem = (
   item: RichTextNode,
   index: number,
   bullet: string,
+  options: { openProfileByHandle: (handle: string) => Promise<boolean>; linkColor: string },
   align?: TextStyle['textAlign'],
 ) => (
   <View key={`list-item-${index}`} style={styles.listItem}>
     <Text style={[styles.listBullet, align ? { textAlign: align } : {}]}>{bullet}</Text>
-    <View style={{ flex: 1 }}>{renderInline(item.content ?? [])}</View>
+    <View style={{ flex: 1 }}>{renderInline(item.content ?? [], options)}</View>
   </View>
 );
 
-const renderBlock = (node: RichTextNode, index: number, theme: ReturnType<typeof useKISTheme>) => {
+const renderBlock = (
+  node: RichTextNode,
+  index: number,
+  theme: ReturnType<typeof useKISTheme>,
+  options: { openProfileByHandle: (handle: string) => Promise<boolean>; linkColor: string },
+) => {
   const textAlign =
     (node.attrs?.textAlign as TextStyle['textAlign']) ?? 'left';
   const blockStyle: TextStyle = { textAlign };
@@ -164,7 +200,7 @@ const renderBlock = (node: RichTextNode, index: number, theme: ReturnType<typeof
     case 'paragraph':
       return (
         <Text key={`block-${index}`} style={[styles.paragraph, blockStyle, { color: theme.palette.text }]}>
-          {renderInline(node.content ?? [])}
+          {renderInline(node.content ?? [], options)}
         </Text>
       );
     case 'heading':
@@ -180,19 +216,19 @@ const renderBlock = (node: RichTextNode, index: number, theme: ReturnType<typeof
             blockStyle,
           ]}
         >
-          {renderInline(node.content ?? [])}
+          {renderInline(node.content ?? [], options)}
         </Text>
       );
     case 'blockquote':
       return (
         <View key={`block-${index}`} style={styles.blockquote}>
-          <Text style={[styles.blockquoteText, blockStyle]}>{renderInline(node.content ?? [])}</Text>
+          <Text style={[styles.blockquoteText, blockStyle]}>{renderInline(node.content ?? [], options)}</Text>
         </View>
       );
     case 'code_block':
       return (
         <View key={`block-${index}`} style={styles.codeBlock}>
-          <Text style={styles.codeText}>{renderInline(node.content ?? [])}</Text>
+          <Text style={styles.codeText}>{renderInline(node.content ?? [], options)}</Text>
         </View>
       );
     case 'horizontal_rule':
@@ -201,14 +237,14 @@ const renderBlock = (node: RichTextNode, index: number, theme: ReturnType<typeof
       return (
         <View key={`block-${index}`} style={styles.list}>
           {(node.content ?? []).map((item, idx) =>
-            renderListItem(item, idx, `${idx + 1}.`, textAlign),
+            renderListItem(item, idx, `${idx + 1}.`, options, textAlign),
           )}
         </View>
       );
     case 'bullet_list':
       return (
         <View key={`block-${index}`} style={styles.list}>
-          {(node.content ?? []).map((item, idx) => renderListItem(item, idx, '•', textAlign))}
+          {(node.content ?? []).map((item, idx) => renderListItem(item, idx, '•', options, textAlign))}
         </View>
       );
     case 'task_list':
@@ -217,7 +253,7 @@ const renderBlock = (node: RichTextNode, index: number, theme: ReturnType<typeof
           {(node.content ?? []).map((item, idx) => (
             <View key={`task-${idx}`} style={styles.taskItem}>
               <Text style={styles.taskBullet}>◻</Text>
-              <View style={{ flex: 1 }}>{renderInline(item.content ?? [])}</View>
+              <View style={{ flex: 1 }}>{renderInline(item.content ?? [], options)}</View>
             </View>
           ))}
         </View>
@@ -225,36 +261,70 @@ const renderBlock = (node: RichTextNode, index: number, theme: ReturnType<typeof
     default:
       return (
         <Text key={`block-${index}`} style={[styles.paragraph, blockStyle, { color: theme.palette.text }]}>
-          {renderInline(node.content ?? [])}
+          {renderInline(node.content ?? [], options)}
         </Text>
       );
   }
 };
 
-const renderDoc = (doc: RichTextDoc | undefined, theme: ReturnType<typeof useKISTheme>) => {
+const renderDoc = (
+  doc: RichTextDoc | undefined,
+  theme: ReturnType<typeof useKISTheme>,
+  options: { openProfileByHandle: (handle: string) => Promise<boolean>; linkColor: string },
+) => {
   if (!doc || doc.type !== 'doc') {
     return null;
   }
-  return doc.content?.map((node, index) => renderBlock(node, index, theme)) ?? null;
+  return doc.content?.map((node, index) => renderBlock(node, index, theme, options)) ?? null;
 };
 
 export default function RichTextRenderer({ doc, value, fallback, style }: Props) {
   const theme = useKISTheme();
+  const { openProfileByHandle } = useGlobalProfilePreview();
   const normalizedDoc =
     doc ??
     (value && typeof value === 'object' && (value as RichTextDoc).type === 'doc'
       ? (value as RichTextDoc)
       : undefined);
   const fallbackText = fallback ?? (typeof value === 'string' ? value : undefined);
+  const rendererOptions = {
+    openProfileByHandle,
+    linkColor: theme.palette.primaryStrong,
+  };
   if (!normalizedDoc || !normalizedDoc.content?.length) {
     if (!fallbackText) {
       return null;
     }
+    const fallbackSegments = splitTextByKisHandles(fallbackText);
     return (
-      <Text style={[styles.paragraph, { color: theme.palette.text }, style]}>{fallbackText}</Text>
+      <Text style={[styles.paragraph, { color: theme.palette.text }, style]}>
+        {fallbackSegments.map((segment, segmentIndex) => {
+          if (segment.type === 'text') return segment.value;
+          return (
+            <Text
+              key={`fallback-handle-${segmentIndex}`}
+              style={{
+                color: theme.palette.primaryStrong,
+                fontWeight: '700',
+                textDecorationLine: 'underline',
+              }}
+              suppressHighlighting
+              onPress={() => {
+                void openProfileByHandle(segment.handle);
+              }}
+            >
+              {segment.value}
+            </Text>
+          );
+        })}
+      </Text>
     );
   }
-  return <View style={style as StyleProp<ViewStyle>}>{renderDoc(normalizedDoc, theme)}</View>;
+  return (
+    <View style={style as StyleProp<ViewStyle>}>
+      {renderDoc(normalizedDoc, theme, rendererOptions)}
+    </View>
+  );
 }
 
 const styles = StyleSheet.create({

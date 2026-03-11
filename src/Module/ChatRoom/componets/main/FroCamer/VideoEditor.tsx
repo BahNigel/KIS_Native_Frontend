@@ -42,7 +42,7 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({
   onClose,
   onSaveAsset,
   onGoPrev,
-  onGoNext,
+  onGoNext: _onGoNext,
   onDoneAll,
 }) => {
   const playerRef = useRef<any>(null);

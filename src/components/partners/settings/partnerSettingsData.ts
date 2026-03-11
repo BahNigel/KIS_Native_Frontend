@@ -39,11 +39,9 @@ export const normalizePartnerRole = (
 export const canAccessFeature = (role: PartnerRole, feature: PartnerFeature) =>
   feature.access.includes(role);
 
-const owners = ['owner'] as PartnerRole[];
 const admins = ['owner', 'admin'] as PartnerRole[];
 const managers = ['owner', 'admin', 'manager'] as PartnerRole[];
 const analysts = ['owner', 'admin', 'manager', 'analyst'] as PartnerRole[];
-const everyone = ['owner', 'admin', 'manager', 'analyst', 'member'] as PartnerRole[];
 
 export const PARTNER_SETTINGS_SECTIONS: PartnerSettingsSection[] = [
   {

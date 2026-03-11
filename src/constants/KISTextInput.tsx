@@ -1,5 +1,5 @@
 // src/components/KISTextInput.tsx
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
   TextInput,
   View,
@@ -149,9 +149,6 @@ export default function KISTextInput({
   const wrapPaddingHorizontal = layout?.paddingHorizontal ?? preset.px;
   const wrapPaddingVertical = layout?.paddingVertical ?? preset.py;
 
-  const inputPaddingVertical = layout?.inputPaddingVertical ?? preset.inputPy;
-  const inputPaddingHorizontal = layout?.inputPaddingHorizontal ?? 0;
-
   const isBordered = layout?.bordered !== false;
 
   const wrapRadius = layout?.borderRadius ?? tokens.radius?.lg ?? 16;
@@ -210,12 +207,12 @@ export default function KISTextInput({
     !right &&
     (rest.editable ?? true) !== false;
 
-  const handleClear = (e: GestureResponderEvent) => {
+  const handleClear = useCallback((e: GestureResponderEvent) => {
     if (typeof onChangeText === 'function' && !(rest as any).readOnly) {
       onChangeText('');
     }
     if (typeof onClear === 'function') onClear(e);
-  };
+  }, [onChangeText, onClear, rest]);
 
   const RightAdornment = useMemo(() => {
     if (loading) {
@@ -273,7 +270,16 @@ export default function KISTextInput({
     }
 
     return null;
-  }, [loading, secure, secureTextEntry, right, palette.subtext, showClear]);
+  }, [
+    loading,
+    secure,
+    secureTextEntry,
+    right,
+    palette.subtext,
+    palette.text,
+    showClear,
+    handleClear,
+  ]);
 
   const resolvedPlaceholderTextColor = placeholderTextColor ?? palette.subtext;
 

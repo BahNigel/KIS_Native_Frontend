@@ -135,6 +135,7 @@ export type InstitutionDashboardSchema = {
 };
 
 export type InstitutionProfileEditorDraft = {
+  isPublished?: boolean;
   hero: LandingHeroSection;
   about: string;
   gallery: string[];

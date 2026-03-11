@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { Text, View } from 'react-native';
 import { useKISTheme } from '@/theme/useTheme';
 import KISButton from '@/constants/KISButton';
 import { EducationModule } from '@/screens/broadcast/education/api/education.types';

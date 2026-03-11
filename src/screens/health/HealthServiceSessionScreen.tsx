@@ -15,8 +15,6 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import LinearGradient from 'react-native-linear-gradient';
 import KISButton from '@/constants/KISButton';
 import { KISIcon, type KISIconName } from '@/constants/kisIcons';
-import ROUTES from '@/network';
-import { postRequest } from '@/network/post';
 import {
   cancelAppointmentBooking,
   fetchAppointmentBooking,
@@ -88,12 +86,19 @@ import {
   updateHealthOpsMessagingStep,
 } from '@/services/healthOpsClinicalService';
 import {
+  createEngineSessionVideoItemComment,
   endHealthOpsVideoSession,
+  fetchEngineSessionVideoItemComments,
+  fetchEngineSessionVideoItems,
   fetchHealthOpsVideoSession,
   type HealthOpsVideoStepKey,
+  likeEngineSessionVideoItem,
   startHealthOpsVideoSession,
+  unlikeEngineSessionVideoItem,
+  updateEngineSessionVideoItemProgress,
   updateHealthOpsVideoStep,
 } from '@/services/healthOpsVideoService';
+import { fetchHealthOpsWorkflowSession } from '@/services/healthOpsWorkflowService';
 import {
   getHealthThemeBorders,
   getHealthThemeColors,
@@ -106,7 +111,8 @@ type Props = NativeStackScreenProps<RootStackParamList, 'HealthServiceSession'>;
 
 const toMoney = (cents?: number) => {
   if (!Number.isFinite(Number(cents))) return 'Not set';
-  return `$${(Number(cents) / 100).toLocaleString()}`;
+  const kisc = Number(cents) / 10000;
+  return `${kisc.toFixed(3).replace(/\.?0+$/, '')} KISC`;
 };
 
 const toKisc = (micro?: number) => {
@@ -224,8 +230,12 @@ const BILLING_STEP_META: Array<{
   subtitle: string;
 }> = [
   { key: 'review_charges', label: 'Review Charges', subtitle: 'Review line items and insurance offsets.' },
-  { key: 'select_payment_method', label: 'Select Payment Method', subtitle: 'Choose provider and method.' },
-  { key: 'authorize_payment', label: 'Authorize Payment', subtitle: 'Authorize and confirm payment.' },
+  {
+    key: 'select_payment_method',
+    label: 'Confirm KIS Wallet',
+    subtitle: 'Use your profile KIS Coin wallet as the payment source.',
+  },
+  { key: 'authorize_payment', label: 'Authorize Wallet Payment', subtitle: 'Authorize and confirm wallet debit.' },
   { key: 'issue_receipt', label: 'Issue Receipt', subtitle: 'Generate invoice and receipt.' },
 ];
 
@@ -370,6 +380,95 @@ const HEALTH_OPS_ENGINE_FLOW: Array<{
   },
 ];
 
+const ENGINE_CODE_TO_FLOW_KEY: Record<string, HealthOpsEngineFlowKey> = {
+  appointment: 'appointment',
+  video: 'video',
+  secure_messaging: 'messaging',
+  ehr_records: 'clinical',
+  lab_order: 'clinical',
+  imaging_order: 'clinical',
+  admission_bed: 'admission',
+  emergency_dispatch: 'emergency',
+  pharmacy_fulfillment: 'pharmacy',
+  payment_billing: 'billing',
+  home_logistics: 'home_logistics',
+  wellness_program: 'wellness',
+  notification_reminder: 'reminder',
+};
+
+const FLOW_KEY_ALIAS: Record<string, HealthOpsEngineFlowKey> = {
+  appointment: 'appointment',
+  video: 'video',
+  messaging: 'messaging',
+  secure_messaging: 'messaging',
+  'secure-messaging': 'messaging',
+  clinical: 'clinical',
+  lab: 'clinical',
+  lab_order: 'clinical',
+  'lab-order': 'clinical',
+  imaging_order: 'clinical',
+  'imaging-order': 'clinical',
+  ehr_records: 'clinical',
+  'ehr-records': 'clinical',
+  admission: 'admission',
+  admission_bed: 'admission',
+  'admission-bed': 'admission',
+  surgery: 'admission',
+  emergency: 'emergency',
+  emergency_dispatch: 'emergency',
+  'emergency-dispatch': 'emergency',
+  pharmacy: 'pharmacy',
+  prescription: 'pharmacy',
+  pharmacy_fulfillment: 'pharmacy',
+  'pharmacy-fulfillment': 'pharmacy',
+  billing: 'billing',
+  payment: 'billing',
+  payment_billing: 'billing',
+  'payment-billing': 'billing',
+  logistics: 'home_logistics',
+  home_logistics: 'home_logistics',
+  'home-logistics': 'home_logistics',
+  wellness: 'wellness',
+  wellness_program: 'wellness',
+  'wellness-program': 'wellness',
+  reminder: 'reminder',
+  notification_reminder: 'reminder',
+  'notification-reminder': 'reminder',
+};
+
+const normalizeFlowKeyToken = (value: unknown): HealthOpsEngineFlowKey | null => {
+  const raw = String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[\s/]+/g, '_')
+    .replace(/[^a-z0-9_-]/g, '')
+    .replace(/_+/g, '_')
+    .replace(/-+/g, '-')
+    .replace(/^[_-]+|[_-]+$/g, '');
+  if (!raw) return null;
+  if (FLOW_KEY_ALIAS[raw]) return FLOW_KEY_ALIAS[raw];
+
+  const dashed = raw.replace(/_/g, '-');
+  if (FLOW_KEY_ALIAS[dashed]) return FLOW_KEY_ALIAS[dashed];
+
+  const stripped = raw.replace(/(_engine|-engine)$/, '');
+  if (FLOW_KEY_ALIAS[stripped]) return FLOW_KEY_ALIAS[stripped];
+  const strippedDashed = stripped.replace(/_/g, '-');
+  if (FLOW_KEY_ALIAS[strippedDashed]) return FLOW_KEY_ALIAS[strippedDashed];
+  return null;
+};
+
+const formatSecondsRemaining = (seconds?: number | null) => {
+  if (typeof seconds !== 'number' || !Number.isFinite(seconds) || seconds <= 0) return '';
+  const total = Math.max(0, Math.floor(seconds));
+  const days = Math.floor(total / 86400);
+  const hours = Math.floor((total % 86400) / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  if (days > 0) return `${days}d ${hours}h left`;
+  if (hours > 0) return `${hours}h ${minutes}m left`;
+  return `${minutes}m left`;
+};
+
 export default function HealthServiceSessionScreen({ route, navigation }: Props) {
   const {
     institutionId,
@@ -382,6 +481,7 @@ export default function HealthServiceSessionScreen({ route, navigation }: Props)
     serviceId,
     serviceName,
     serviceDescription,
+    configuredEngineFlowKeys,
     statusLabel,
     dateKey,
     timeValue,
@@ -396,12 +496,26 @@ export default function HealthServiceSessionScreen({ route, navigation }: Props)
   const borders = getHealthThemeBorders(palette);
   const typography = HEALTH_THEME_TYPOGRAPHY;
 
-  const cleanBookingId = String(appointmentBookingId || '').trim();
+  const initialSessionSource: 'broadcasts' | 'health_ops' = sessionSource === 'health_ops' ? 'health_ops' : 'broadcasts';
+  const initialBookingId = String(appointmentBookingId || '').trim();
+  // `sessionId` can be a legacy broadcast session id (e.g. `session-...`), not a health-ops workflow id.
+  // Only trust explicit `workflowSessionId` for health-ops runtime calls.
+  const initialWorkflowSessionId = String(workflowSessionId || '').trim();
+
+  const [resolvedSessionSource, setResolvedSessionSource] = useState<'broadcasts' | 'health_ops'>(initialSessionSource);
+  const [resolvedBookingId, setResolvedBookingId] = useState(initialBookingId);
+  const [resolvedWorkflowSessionId, setResolvedWorkflowSessionId] = useState(initialWorkflowSessionId);
+  const [workflowContextLoading, setWorkflowContextLoading] = useState(false);
+  const [workflowContextError, setWorkflowContextError] = useState('');
+  const [workflowContextResolvedOnce, setWorkflowContextResolvedOnce] = useState(false);
+
+  const cleanBookingId = String(resolvedBookingId || '').trim();
   const cleanServiceId = String(serviceId || '').trim();
-  const cleanWorkflowSessionId = String(workflowSessionId || sessionId || '').trim();
+  const cleanWorkflowSessionId = String(resolvedWorkflowSessionId || '').trim();
 
   const [busy, setBusy] = useState(false);
-  const [sessionStatus, setSessionStatus] = useState<'started' | 'completed'>('started');
+  const [workflowRuntimeLoading, setWorkflowRuntimeLoading] = useState(false);
+  const [workflowRuntime, setWorkflowRuntime] = useState<any | null>(null);
   const [viewerWalletMicro, setViewerWalletMicro] = useState<number | null>(null);
   const [appointmentLoading, setAppointmentLoading] = useState(false);
   const [appointmentError, setAppointmentError] = useState('');
@@ -410,6 +524,11 @@ export default function HealthServiceSessionScreen({ route, navigation }: Props)
   const [videoBusy, setVideoBusy] = useState(false);
   const [videoError, setVideoError] = useState('');
   const [videoSession, setVideoSession] = useState<any | null>(null);
+  const [videoItemsLoading, setVideoItemsLoading] = useState(false);
+  const [videoItemsError, setVideoItemsError] = useState('');
+  const [videoItems, setVideoItems] = useState<any[]>([]);
+  const [videoCommentsByItem, setVideoCommentsByItem] = useState<Record<string, any[]>>({});
+  const [videoCommentDraftByItem, setVideoCommentDraftByItem] = useState<Record<string, string>>({});
   const [videoEngineMapped, setVideoEngineMapped] = useState<boolean | null>(null);
   const [messagingLoading, setMessagingLoading] = useState(false);
   const [messagingBusy, setMessagingBusy] = useState(false);
@@ -486,10 +605,14 @@ export default function HealthServiceSessionScreen({ route, navigation }: Props)
   const [reminderNextRunDraft, setReminderNextRunDraft] = useState('');
   const [reminderNoteDraft, setReminderNoteDraft] = useState('');
   const [activeEngineKey, setActiveEngineKey] = useState<HealthOpsEngineFlowKey>('appointment');
-  const isHealthOpsSession = sessionSource === 'health_ops' || !!cleanBookingId || !!appointmentBooking;
-
-  console.log('HealthServiceSessionScreen params1', route.params);
-  console.log('HealthServiceSessionScreen appointmentBooking', cleanBookingId, appointmentBooking);
+  const hasWorkflowRuntimeEngines =
+    Array.isArray(workflowRuntime?.engines) && workflowRuntime.engines.length > 0;
+  const isHealthOpsSession =
+    resolvedSessionSource === 'health_ops' ||
+    !!cleanWorkflowSessionId ||
+    !!cleanBookingId ||
+    !!appointmentBooking ||
+    hasWorkflowRuntimeEngines;
   const appointmentStatus = String(appointmentBooking?.status || '').trim().toLowerCase();
   const appointmentCanMutate = appointmentStatus === 'booked';
   const videoSessionId = String(videoSession?.id || '').trim();
@@ -592,33 +715,139 @@ export default function HealthServiceSessionScreen({ route, navigation }: Props)
     () => (Array.isArray(reminderDeliveryEvents) ? reminderDeliveryEvents.slice(-8) : []),
     [reminderDeliveryEvents],
   );
+  const runtimeEngines = useMemo(
+    () => (Array.isArray(workflowRuntime?.engines) ? workflowRuntime.engines : []),
+    [workflowRuntime],
+  );
+  const runtimeByFlowKey = useMemo(() => {
+    const out = new Map<HealthOpsEngineFlowKey, any>();
+    runtimeEngines.forEach((row: any) => {
+      const engineCode = String(row?.engine_code || '').trim().toLowerCase();
+      const flowKey = ENGINE_CODE_TO_FLOW_KEY[engineCode];
+      if (flowKey && !out.has(flowKey)) {
+        out.set(flowKey, row);
+      }
+    });
+    return out;
+  }, [runtimeEngines]);
+  const configuredFlowKeysFromRoute = useMemo(() => {
+    if (!Array.isArray(configuredEngineFlowKeys) || configuredEngineFlowKeys.length <= 0) {
+      return [] as HealthOpsEngineFlowKey[];
+    }
+    const seen = new Set<HealthOpsEngineFlowKey>();
+    const ordered: HealthOpsEngineFlowKey[] = [];
+    configuredEngineFlowKeys.forEach((token) => {
+      const key = normalizeFlowKeyToken(token);
+      if (!key || seen.has(key)) return;
+      seen.add(key);
+      ordered.push(key);
+    });
+    return ordered;
+  }, [configuredEngineFlowKeys]);
+  const effectiveEngineFlow = useMemo(() => {
+    if (runtimeByFlowKey.size > 0) {
+      const configuredKeySet =
+        configuredFlowKeysFromRoute.length > 0 ? new Set<HealthOpsEngineFlowKey>(configuredFlowKeysFromRoute) : null;
+      const rows: Array<{ key: HealthOpsEngineFlowKey; title: string; subtitle: string; icon: KISIconName }> = [];
+      runtimeByFlowKey.forEach((_value, flowKey) => {
+        if (configuredKeySet && !configuredKeySet.has(flowKey)) {
+          return;
+        }
+        const meta = HEALTH_OPS_ENGINE_FLOW.find((row) => row.key === flowKey);
+        if (meta) rows.push(meta);
+      });
+      rows.sort((a, b) => {
+        const left = Number(runtimeByFlowKey.get(a.key)?.execution_order || 0);
+        const right = Number(runtimeByFlowKey.get(b.key)?.execution_order || 0);
+        return left - right;
+      });
+      if (rows.length > 0) return rows;
+    }
+
+    if (configuredFlowKeysFromRoute.length > 0) {
+      const order = new Map<HealthOpsEngineFlowKey, number>();
+      configuredFlowKeysFromRoute.forEach((key, index) => {
+        order.set(key, index);
+      });
+      const rows = HEALTH_OPS_ENGINE_FLOW.filter((row) => order.has(row.key));
+      rows.sort((a, b) => Number(order.get(a.key) || 0) - Number(order.get(b.key) || 0));
+      if (rows.length > 0) return rows;
+    }
+
+    return [HEALTH_OPS_ENGINE_FLOW[0]];
+  }, [configuredFlowKeysFromRoute, runtimeByFlowKey]);
   const activeEngineIndex = Math.max(
     0,
-    HEALTH_OPS_ENGINE_FLOW.findIndex((engine) => engine.key === activeEngineKey),
+    effectiveEngineFlow.findIndex((engine) => engine.key === activeEngineKey),
   );
-  const activeEngineMeta = HEALTH_OPS_ENGINE_FLOW[activeEngineIndex] ?? HEALTH_OPS_ENGINE_FLOW[0];
-  const flowProgressPercent = Math.round(((activeEngineIndex + 1) / HEALTH_OPS_ENGINE_FLOW.length) * 100);
+  const activeEngineMeta = effectiveEngineFlow[activeEngineIndex] ?? effectiveEngineFlow[0] ?? HEALTH_OPS_ENGINE_FLOW[0];
+  const completedEngineCount = useMemo(
+    () =>
+      effectiveEngineFlow.filter((engine) => String(runtimeByFlowKey.get(engine.key)?.state || '') === 'completed').length,
+    [effectiveEngineFlow, runtimeByFlowKey],
+  );
+  const flowProgressPercent =
+    effectiveEngineFlow.length > 0 ? Math.round((completedEngineCount / effectiveEngineFlow.length) * 100) : 0;
   const hasPreviousEngine = activeEngineIndex > 0;
-  const hasNextEngine = activeEngineIndex < HEALTH_OPS_ENGINE_FLOW.length - 1;
+  const hasNextEngine = activeEngineIndex < effectiveEngineFlow.length - 1;
+  const activeEngineRuntime = runtimeByFlowKey.get(activeEngineMeta.key) || null;
+  const activeEngineState = String(activeEngineRuntime?.state || '').toLowerCase();
+  const activeEngineTimeLeft = formatSecondsRemaining(activeEngineRuntime?.remaining_seconds);
+  const nextEngineMeta = hasNextEngine ? effectiveEngineFlow[activeEngineIndex + 1] : null;
+  const nextEngineState = String((nextEngineMeta ? runtimeByFlowKey.get(nextEngineMeta.key) : null)?.state || '').toLowerCase();
+  const nextEngineBlocked = nextEngineState === 'locked' || nextEngineState === 'expired';
+  const videoEngineRuntime = runtimeByFlowKey.get('video') || null;
+  const videoEngineSessionId = String(videoEngineRuntime?.engine_session_id || '').trim();
+
+  const openEngineFlow = useCallback(
+    (flowKey: HealthOpsEngineFlowKey) => {
+      const runtimeRow = runtimeByFlowKey.get(flowKey);
+      const state = String(runtimeRow?.state || '').toLowerCase();
+      if (state === 'locked') {
+        Alert.alert('Engine locked', 'Complete previous required engines first.');
+        return;
+      }
+      if (state === 'expired') {
+        Alert.alert('Engine expired', 'This engine access window has expired.');
+        return;
+      }
+      setActiveEngineKey(flowKey);
+    },
+    [runtimeByFlowKey],
+  );
 
   const goToPreviousEngine = useCallback(() => {
     if (!hasPreviousEngine) return;
-    const previous = HEALTH_OPS_ENGINE_FLOW[activeEngineIndex - 1];
-    if (previous) setActiveEngineKey(previous.key);
-  }, [activeEngineIndex, hasPreviousEngine]);
+    const previous = effectiveEngineFlow[activeEngineIndex - 1];
+    if (previous) openEngineFlow(previous.key);
+  }, [activeEngineIndex, effectiveEngineFlow, hasPreviousEngine, openEngineFlow]);
 
   const goToNextEngine = useCallback(() => {
     if (!hasNextEngine) return;
-    const next = HEALTH_OPS_ENGINE_FLOW[activeEngineIndex + 1];
-    if (next) setActiveEngineKey(next.key);
-  }, [activeEngineIndex, hasNextEngine]);
+    const next = effectiveEngineFlow[activeEngineIndex + 1];
+    if (next) openEngineFlow(next.key);
+  }, [activeEngineIndex, effectiveEngineFlow, hasNextEngine, openEngineFlow]);
 
   useEffect(() => {
     if (!isHealthOpsSession) return;
-    if (!HEALTH_OPS_ENGINE_FLOW.some((engine) => engine.key === activeEngineKey)) {
-      setActiveEngineKey('appointment');
+    if (!effectiveEngineFlow.some((engine) => engine.key === activeEngineKey)) {
+      setActiveEngineKey(effectiveEngineFlow[0]?.key || 'appointment');
     }
-  }, [activeEngineKey, isHealthOpsSession]);
+  }, [activeEngineKey, effectiveEngineFlow, isHealthOpsSession]);
+
+  useEffect(() => {
+    if (!isHealthOpsSession) return;
+    const currentEngineSessionId = String(workflowRuntime?.current_engine_session_id || '').trim();
+    if (!currentEngineSessionId) return;
+    const currentRuntime = runtimeEngines.find(
+      (row: any) => String(row?.engine_session_id || '').trim() === currentEngineSessionId,
+    );
+    const currentCode = String(currentRuntime?.engine_code || '').trim().toLowerCase();
+    const nextFlowKey = ENGINE_CODE_TO_FLOW_KEY[currentCode];
+    if (nextFlowKey && effectiveEngineFlow.some((engine) => engine.key === nextFlowKey)) {
+      setActiveEngineKey(nextFlowKey);
+    }
+  }, [effectiveEngineFlow, isHealthOpsSession, runtimeEngines, workflowRuntime]);
 
   const featureRows = useMemo(
     () =>
@@ -640,6 +869,195 @@ export default function HealthServiceSessionScreen({ route, navigation }: Props)
         appointmentStatus ? `Booking status: ${appointmentStatus.toUpperCase()}` : '',
       ].filter(Boolean),
     [appointmentBooking, appointmentStatus],
+  );
+
+  const resolveWorkflowContext = useCallback(
+    async ({ quiet = false }: { quiet?: boolean } = {}) => {
+      if (cleanWorkflowSessionId || !cleanServiceId) return;
+      if (!quiet) setWorkflowContextLoading(true);
+      try {
+        const start = await startHealthServiceSession({
+          institutionId,
+          cardId,
+          serviceId: cleanServiceId,
+          date: dateKey,
+          time: timeValue,
+          ownerPreview,
+        });
+        if (!start?.success) {
+          throw new Error(start?.message || 'Unable to prepare workflow context.');
+        }
+
+        const nextWorkflowSessionId = String(start?.data?.session?.id || '').trim();
+        const nextBookingId = String(start?.data?.booking?.id || '').trim();
+        const nextSource =
+          String(start?.source || '').trim().toLowerCase() === 'health_ops' || !!nextWorkflowSessionId || !!nextBookingId
+            ? 'health_ops'
+            : 'broadcasts';
+        const booking = start?.data?.booking;
+
+        if (nextWorkflowSessionId) {
+          setResolvedWorkflowSessionId(nextWorkflowSessionId);
+        }
+        if (nextBookingId) {
+          setResolvedBookingId(nextBookingId);
+        }
+        if (booking && typeof booking === 'object') {
+          setAppointmentBooking(booking);
+          setAppointmentError('');
+        }
+        setResolvedSessionSource(nextSource);
+        setWorkflowContextError('');
+      } catch (error: any) {
+        const message = error?.message || 'Unable to prepare workflow context.';
+        setWorkflowContextError(message);
+        if (!quiet) {
+          Alert.alert('Service session', message);
+        }
+      } finally {
+        if (!quiet) setWorkflowContextLoading(false);
+      }
+    },
+    [cardId, cleanServiceId, cleanWorkflowSessionId, dateKey, institutionId, ownerPreview, timeValue],
+  );
+
+  useEffect(() => {
+    // Avoid re-booking/upgrade attempts for sessions that already came from legacy broadcast mode.
+    if (initialSessionSource !== 'health_ops') return;
+    if (cleanWorkflowSessionId || workflowContextResolvedOnce || !cleanServiceId) return;
+    setWorkflowContextResolvedOnce(true);
+    setWorkflowContextLoading(true);
+    resolveWorkflowContext({ quiet: true }).finally(() => {
+      setWorkflowContextLoading(false);
+    });
+  }, [cleanServiceId, cleanWorkflowSessionId, initialSessionSource, resolveWorkflowContext, workflowContextResolvedOnce]);
+
+  const loadWorkflowRuntime = useCallback(
+    async ({ quiet = false }: { quiet?: boolean } = {}) => {
+      if (!isHealthOpsSession || !cleanWorkflowSessionId) return;
+      if (!quiet) setWorkflowRuntimeLoading(true);
+      try {
+        const response = await fetchHealthOpsWorkflowSession(cleanWorkflowSessionId);
+        if (!response?.success) {
+          throw new Error(response?.message || 'Unable to load workflow runtime.');
+        }
+        const session = response?.data?.session || response?.session;
+        const runtime = session?.runtime && typeof session.runtime === 'object' ? session.runtime : null;
+        setWorkflowRuntime(runtime);
+      } catch (error: any) {
+        if (!quiet) {
+          Alert.alert('Workflow', error?.message || 'Unable to load workflow runtime.');
+        }
+      } finally {
+        if (!quiet) setWorkflowRuntimeLoading(false);
+      }
+    },
+    [cleanWorkflowSessionId, isHealthOpsSession],
+  );
+
+  useEffect(() => {
+    if (!isHealthOpsSession || !cleanWorkflowSessionId) return;
+    loadWorkflowRuntime().catch(() => undefined);
+    const timer = setInterval(() => {
+      loadWorkflowRuntime({ quiet: true }).catch(() => undefined);
+    }, 15000);
+    return () => clearInterval(timer);
+  }, [cleanWorkflowSessionId, isHealthOpsSession, loadWorkflowRuntime]);
+
+  const loadVideoItems = useCallback(
+    async ({ quiet = false }: { quiet?: boolean } = {}) => {
+      if (!videoEngineSessionId) return;
+      if (!quiet) setVideoItemsLoading(true);
+      try {
+        const response = await fetchEngineSessionVideoItems(videoEngineSessionId);
+        if (!response?.success) {
+          throw new Error(response?.message || 'Unable to load video items.');
+        }
+        const rows = Array.isArray(response?.data?.results) ? response.data.results : [];
+        setVideoItems(rows);
+        setVideoItemsError('');
+      } catch (error: any) {
+        const message = error?.message || 'Unable to load video items.';
+        setVideoItemsError(message);
+        if (!quiet) {
+          Alert.alert('Video Engine', message);
+        }
+      } finally {
+        if (!quiet) setVideoItemsLoading(false);
+      }
+    },
+    [videoEngineSessionId],
+  );
+
+  useEffect(() => {
+    if (!videoEngineSessionId) {
+      setVideoItems([]);
+      return;
+    }
+    loadVideoItems().catch(() => undefined);
+  }, [loadVideoItems, videoEngineSessionId]);
+
+  const markVideoItemWatched = useCallback(
+    async (itemId: string, watchedSeconds?: number) => {
+      if (!videoEngineSessionId || !itemId) return;
+      const response = await updateEngineSessionVideoItemProgress(videoEngineSessionId, itemId, {
+        isCompleted: true,
+        watchedSeconds: typeof watchedSeconds === 'number' ? watchedSeconds : undefined,
+      });
+      if (!response?.success) {
+        throw new Error(response?.message || 'Unable to update video progress.');
+      }
+      await Promise.all([
+        loadVideoItems({ quiet: true }),
+        loadWorkflowRuntime({ quiet: true }),
+      ]);
+    },
+    [loadVideoItems, loadWorkflowRuntime, videoEngineSessionId],
+  );
+
+  const toggleVideoItemLike = useCallback(
+    async (item: any) => {
+      if (!videoEngineSessionId) return;
+      const itemId = String(item?.id || '').trim();
+      if (!itemId) return;
+      const viewerLiked = !!item?.viewer_liked;
+      const response = viewerLiked
+        ? await unlikeEngineSessionVideoItem(videoEngineSessionId, itemId)
+        : await likeEngineSessionVideoItem(videoEngineSessionId, itemId);
+      if (!response?.success) {
+        throw new Error(response?.message || 'Unable to update video like.');
+      }
+      await loadVideoItems({ quiet: true });
+    },
+    [loadVideoItems, videoEngineSessionId],
+  );
+
+  const loadVideoItemComments = useCallback(
+    async (itemId: string) => {
+      if (!videoEngineSessionId || !itemId) return;
+      const response = await fetchEngineSessionVideoItemComments(videoEngineSessionId, itemId);
+      if (!response?.success) {
+        throw new Error(response?.message || 'Unable to load comments.');
+      }
+      const rows = Array.isArray(response?.data?.results) ? response.data.results : [];
+      setVideoCommentsByItem((prev) => ({ ...prev, [itemId]: rows }));
+    },
+    [videoEngineSessionId],
+  );
+
+  const addVideoItemComment = useCallback(
+    async (itemId: string) => {
+      if (!videoEngineSessionId || !itemId) return;
+      const draft = String(videoCommentDraftByItem[itemId] || '').trim();
+      if (!draft) return;
+      const response = await createEngineSessionVideoItemComment(videoEngineSessionId, itemId, draft);
+      if (!response?.success) {
+        throw new Error(response?.message || 'Unable to post comment.');
+      }
+      setVideoCommentDraftByItem((prev) => ({ ...prev, [itemId]: '' }));
+      await Promise.all([loadVideoItemComments(itemId), loadVideoItems({ quiet: true })]);
+    },
+    [loadVideoItemComments, loadVideoItems, videoCommentDraftByItem, videoEngineSessionId],
   );
 
   const loadAppointmentBooking = useCallback(
@@ -1875,12 +2293,24 @@ export default function HealthServiceSessionScreen({ route, navigation }: Props)
       }
       setBillingBusy(true);
       try {
+        const nextPayload: Record<string, any> = {
+          source: 'mobile_app',
+          completed_at: new Date().toISOString(),
+        };
+        if (stepKey === 'select_payment_method') {
+          nextPayload.payment_provider = 'kis_wallet';
+          nextPayload.payment_method = 'wallet_balance';
+        }
+        if (stepKey === 'authorize_payment') {
+          const payableMicro = Math.max(0, Math.floor(Number(billingSession?.payable_amount_micro || 0)));
+          nextPayload.payment_provider = 'kis_wallet';
+          nextPayload.payment_method = 'wallet_balance';
+          nextPayload.amount_paid_micro = payableMicro;
+          nextPayload.amount_paid_kisc = toKisc(payableMicro);
+        }
         const response = await updateHealthOpsBillingStep(billingSessionId, stepKey, {
           isCompleted: true,
-          payload: {
-            source: 'mobile_app',
-            completed_at: new Date().toISOString(),
-          },
+          payload: nextPayload,
         });
         if (!response?.success) {
           throw new Error(response?.message || 'Unable to update billing step.');
@@ -1896,7 +2326,7 @@ export default function HealthServiceSessionScreen({ route, navigation }: Props)
         setBillingBusy(false);
       }
     },
-    [billingSessionId],
+    [billingSession?.payable_amount_micro, billingSessionId],
   );
 
   const finishBillingSession = useCallback(
@@ -2684,97 +3114,6 @@ export default function HealthServiceSessionScreen({ route, navigation }: Props)
     }
   }, [cleanBookingId]);
 
-  const completeSession = async () => {
-    if (isHealthOpsSession) {
-      Alert.alert('Service session', 'This appointment is managed by the backend workflow. Use the appointment actions below.');
-      return;
-    }
-    if (busy || sessionStatus === 'completed') return;
-    setBusy(true);
-    try {
-      let currentSessionId = String(sessionId || '').trim();
-      if (!currentSessionId) {
-        const start = await startHealthServiceSession({
-          institutionId,
-          cardId,
-          serviceId,
-          date: dateKey,
-          time: timeValue,
-          ownerPreview,
-        });
-        if (!start?.success) {
-          if (Number(start?.status) === 402) {
-            const requiredMicro = Number(start?.data?.required_micro || 0);
-            const availableMicro = Number(start?.data?.available_micro || 0);
-            if (requiredMicro > 0 || availableMicro > 0) {
-              Alert.alert(
-                'Insufficient KIS balance',
-                `You need ${toKisc(requiredMicro)} KISC but you only have ${toKisc(availableMicro)} KISC.`,
-              );
-            } else {
-              Alert.alert('Insufficient KIS balance', 'Your KIS Coin balance is too low for this service.');
-            }
-            return;
-          }
-          throw new Error(start?.message || 'Unable to start this session.');
-        }
-
-        if (String(start?.source || '').trim().toLowerCase() === 'health_ops') {
-          const booking = start?.data?.booking;
-          if (booking && typeof booking === 'object') {
-            setAppointmentBooking(booking);
-            setAppointmentError('');
-          }
-          Alert.alert('Service session', 'Appointment is managed by backend workflow. Use the appointment actions below.');
-          return;
-        }
-
-        const sessions = Array.isArray(start?.data?.service_sessions) ? start.data.service_sessions : [];
-        const session = sessions.find(
-          (item: any) =>
-            String(item?.card_id || item?.cardId || '') === String(cardId) &&
-            String(item?.status || '') === 'started',
-        );
-        currentSessionId = String(session?.id || '');
-      }
-      if (!currentSessionId) throw new Error('Session could not be started.');
-
-      const complete = await postRequest(ROUTES.broadcasts.healthCards(institutionId), {
-        action: 'complete_service_session',
-        sessionId: currentSessionId,
-      });
-      if (!complete?.success) {
-        if (Number(complete?.status) === 402) {
-          const requiredMicro = Number(complete?.data?.required_micro || 0);
-          const availableMicro = Number(complete?.data?.available_micro || 0);
-          if (requiredMicro > 0 || availableMicro > 0) {
-            Alert.alert(
-              'Insufficient KIS balance',
-              `You need ${toKisc(requiredMicro)} KISC but you only have ${toKisc(availableMicro)} KISC.`,
-            );
-          } else {
-            Alert.alert('Insufficient KIS balance', 'Your KIS Coin balance is too low for this service.');
-          }
-          return;
-        }
-        throw new Error(complete?.message || 'Unable to complete this session.');
-      }
-
-      const nextWalletMicro = Number(complete?.data?.viewer?.wallet_micro);
-      if (Number.isFinite(nextWalletMicro)) setViewerWalletMicro(nextWalletMicro);
-      setSessionStatus('completed');
-      if (ownerPreview) {
-        Alert.alert('Session completed', 'Owner preview flow completed. No KIS Coins were charged.');
-      } else {
-        Alert.alert('Session completed', 'Payment was deducted from your KIS wallet and sent to the institution owner.');
-      }
-    } catch (error: any) {
-      Alert.alert('Service session', error?.message || 'Unable to complete this session.');
-    } finally {
-      setBusy(false);
-    }
-  };
-
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: palette.background }}>
       <LinearGradient colors={[palette.gradientStart, palette.gradientEnd]} style={{ flex: 1 }}>
@@ -2806,13 +3145,13 @@ export default function HealthServiceSessionScreen({ route, navigation }: Props)
                 </Text>
               ))}
             </View>
-            {workflowSessionId ? (
+            {cleanWorkflowSessionId ? (
               <Text style={{ ...typography.caption, color: palette.subtext, marginTop: spacing.sm }}>
-                Workflow session: {workflowSessionId}
+                Workflow session: {cleanWorkflowSessionId}
               </Text>
             ) : null}
             <Text style={{ ...typography.caption, color: palette.subtext, marginTop: 4 }}>
-              Session status: {(isHealthOpsSession ? appointmentStatus || 'booked' : sessionStatus).toUpperCase()}
+              Session status: {(appointmentStatus || activeEngineState || 'started').toUpperCase()}
             </Text>
             {ownerPreview ? (
               <Text style={{ ...typography.caption, color: palette.accentPrimary, marginTop: 4 }}>
@@ -2821,22 +3160,53 @@ export default function HealthServiceSessionScreen({ route, navigation }: Props)
             ) : null}
             {viewerWalletMicro !== null ? (
               <Text style={{ ...typography.caption, color: palette.subtext, marginTop: 4 }}>
-                Remaining KIS: {toKisc(viewerWalletMicro)} KISC
+                Remaining KISC: {toKisc(viewerWalletMicro)} KISC
               </Text>
             ) : null}
           </View>
 
-          {isHealthOpsSession ? (
-            <View style={{ marginTop: spacing.md, borderRadius: spacing.lg, padding: spacing.md, backgroundColor: palette.card, ...borders.card }}>
+          <View style={{ marginTop: spacing.md, borderRadius: spacing.lg, padding: spacing.md, backgroundColor: palette.card, ...borders.card }}>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                 <Text style={{ ...typography.h3, color: palette.text }}>Engine Workflow</Text>
                 <Text style={{ ...typography.caption, color: palette.subtext }}>
-                  {activeEngineIndex + 1}/{HEALTH_OPS_ENGINE_FLOW.length}
+                  {activeEngineIndex + 1}/{effectiveEngineFlow.length}
                 </Text>
               </View>
+              {!isHealthOpsSession ? (
+                <Text style={{ ...typography.caption, color: palette.subtext, marginTop: 4 }}>
+                  Workflow runtime is not linked for this session yet. This service is currently running legacy mode.
+                </Text>
+              ) : null}
+              {!cleanWorkflowSessionId ? (
+                <View style={{ marginTop: 4, gap: spacing.xs }}>
+                  <Text style={{ ...typography.caption, color: palette.subtext }}>
+                    {workflowContextLoading
+                      ? 'Preparing workflow context...'
+                      : workflowContextError || 'Workflow context is not linked yet for this service session.'}
+                  </Text>
+                  <KISButton
+                    title={workflowContextLoading ? 'Preparing...' : 'Retry Workflow Setup'}
+                    size="xs"
+                    variant="outline"
+                    onPress={() => {
+                      resolveWorkflowContext().catch(() => undefined);
+                    }}
+                    disabled={workflowContextLoading || !cleanServiceId || initialSessionSource !== 'health_ops'}
+                  />
+                </View>
+              ) : null}
               <Text style={{ ...typography.body, color: palette.subtext, marginTop: spacing.xs }}>
                 Current engine: {activeEngineMeta.title}
               </Text>
+              {activeEngineState ? (
+                <Text style={{ ...typography.caption, color: palette.subtext, marginTop: 2 }}>
+                  State: {activeEngineState.toUpperCase()}
+                  {activeEngineTimeLeft ? ` • ${activeEngineTimeLeft}` : ''}
+                </Text>
+              ) : null}
+              {workflowRuntimeLoading ? (
+                <Text style={{ ...typography.caption, color: palette.subtext, marginTop: 2 }}>Refreshing workflow...</Text>
+              ) : null}
 
               <View
                 style={{
@@ -2864,24 +3234,36 @@ export default function HealthServiceSessionScreen({ route, navigation }: Props)
                 showsHorizontalScrollIndicator={false}
                 contentContainerStyle={{ marginTop: spacing.sm, gap: spacing.xs }}
               >
-                {HEALTH_OPS_ENGINE_FLOW.map((engine, index) => {
+                {effectiveEngineFlow.map((engine, index) => {
                   const isActive = engine.key === activeEngineKey;
-                  const isPassed = index < activeEngineIndex;
+                  const runtimeRow = runtimeByFlowKey.get(engine.key);
+                  const state = String(runtimeRow?.state || '').toLowerCase();
+                  const isPassed = state === 'completed' || index < activeEngineIndex;
+                  const isLocked = state === 'locked';
+                  const isExpired = state === 'expired';
+                  const timeLeft = formatSecondsRemaining(runtimeRow?.remaining_seconds);
                   return (
                     <TouchableOpacity
                       key={engine.key}
-                      onPress={() => setActiveEngineKey(engine.key)}
+                      onPress={() => {
+                        openEngineFlow(engine.key);
+                      }}
                       style={{
                         minWidth: 140,
                         borderRadius: 14,
                         borderWidth: 1,
+                        opacity: isLocked ? 0.55 : 1,
                         borderColor: isActive
                           ? `${palette.accentPrimary}AA`
+                          : isExpired
+                            ? '#D64B4B'
                           : isPassed
                             ? `${palette.accentPrimary}55`
                             : palette.divider,
                         backgroundColor: isActive
                           ? `${palette.accentPrimary}20`
+                          : isExpired
+                            ? 'rgba(214, 75, 75, 0.14)'
                           : isPassed
                             ? `${palette.accentPrimary}12`
                             : palette.surface,
@@ -2912,7 +3294,7 @@ export default function HealthServiceSessionScreen({ route, navigation }: Props)
                         </Text>
                       </View>
                       <Text style={{ ...typography.caption, color: palette.subtext, marginTop: 4 }} numberOfLines={1}>
-                        {engine.subtitle}
+                        {isExpired ? 'Expired' : isLocked ? 'Locked' : timeLeft || engine.subtitle}
                       </Text>
                     </TouchableOpacity>
                   );
@@ -2929,15 +3311,14 @@ export default function HealthServiceSessionScreen({ route, navigation }: Props)
                 <KISButton
                   title={
                     hasNextEngine
-                      ? `Next: ${HEALTH_OPS_ENGINE_FLOW[activeEngineIndex + 1]?.title || 'Engine'}`
+                      ? `Next: ${effectiveEngineFlow[activeEngineIndex + 1]?.title || 'Engine'}`
                       : 'Final Engine Reached'
                   }
                   onPress={goToNextEngine}
-                  disabled={!hasNextEngine}
+                  disabled={!hasNextEngine || nextEngineBlocked}
                 />
               </View>
             </View>
-          ) : null}
 
           {isHealthOpsSession && activeEngineKey === 'appointment' ? (
             <View style={{ marginTop: spacing.md, borderRadius: spacing.lg, padding: spacing.md, backgroundColor: palette.card, ...borders.card }}>
@@ -3136,6 +3517,146 @@ export default function HealthServiceSessionScreen({ route, navigation }: Props)
                       </View>
                     );
                   })}
+                </View>
+              ) : null}
+
+              {videoEngineMapped !== false ? (
+                <View style={{ marginTop: spacing.md, gap: spacing.sm }}>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <Text style={{ ...typography.h3, color: palette.text }}>Video Content</Text>
+                    <KISButton
+                      title={videoItemsLoading ? 'Loading...' : 'Reload'}
+                      size="xs"
+                      variant="outline"
+                      onPress={() => {
+                        loadVideoItems().catch(() => undefined);
+                      }}
+                      disabled={videoItemsLoading || !videoEngineSessionId}
+                    />
+                  </View>
+
+                  {videoItemsError ? (
+                    <Text style={{ ...typography.caption, color: '#EF4444' }}>
+                      {videoItemsError}
+                    </Text>
+                  ) : null}
+
+                  {videoItemsLoading ? (
+                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                      <ActivityIndicator size="small" color={palette.accentPrimary} />
+                      <Text style={{ ...typography.caption, color: palette.subtext, marginLeft: spacing.xs }}>
+                        Loading video items...
+                      </Text>
+                    </View>
+                  ) : null}
+
+                  {videoItems.map((item: any) => {
+                    const itemId = String(item?.id || '').trim();
+                    const comments = Array.isArray(videoCommentsByItem[itemId]) ? videoCommentsByItem[itemId] : [];
+                    const commentDraft = String(videoCommentDraftByItem[itemId] || '');
+                    const itemCompleted = !!item?.viewer_completed;
+                    return (
+                      <View
+                        key={itemId || String(item?.title || 'video-item')}
+                        style={{
+                          borderWidth: 1,
+                          borderColor: itemCompleted ? `${palette.accentPrimary}66` : palette.divider,
+                          borderRadius: 12,
+                          padding: spacing.sm,
+                          backgroundColor: itemCompleted ? `${palette.accentPrimary}11` : palette.surface,
+                          gap: spacing.xs,
+                        }}
+                      >
+                        <Text style={{ ...typography.label, color: palette.text }}>
+                          {String(item?.title || 'Video item')}
+                        </Text>
+                        <Text style={{ ...typography.caption, color: palette.subtext }}>
+                          {String(item?.description || '') || 'No description'}
+                        </Text>
+                        <Text style={{ ...typography.caption, color: palette.subtext }}>
+                          {itemCompleted ? 'Completed' : 'Not completed'} • {Number(item?.likes_count || 0)} likes •{' '}
+                          {Number(item?.comments_count || 0)} comments
+                        </Text>
+                        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs }}>
+                          <KISButton
+                            title={item?.viewer_liked ? 'Unlike' : 'Like'}
+                            size="xs"
+                            variant="outline"
+                            onPress={() => {
+                              toggleVideoItemLike(item).catch(() => undefined);
+                            }}
+                            disabled={!videoEngineSessionId}
+                          />
+                          <KISButton
+                            title={itemCompleted ? 'Watched' : 'Mark Watched'}
+                            size="xs"
+                            onPress={() => {
+                              markVideoItemWatched(itemId, Number(item?.duration_seconds || 0)).catch(() => undefined);
+                            }}
+                            disabled={!videoEngineSessionId || itemCompleted}
+                          />
+                          <KISButton
+                            title="Load Comments"
+                            size="xs"
+                            variant="outline"
+                            onPress={() => {
+                              loadVideoItemComments(itemId).catch(() => undefined);
+                            }}
+                            disabled={!videoEngineSessionId}
+                          />
+                        </View>
+
+                        {comments.length > 0 ? (
+                          <View style={{ gap: 4 }}>
+                            {comments.slice(-3).map((comment: any, commentIndex: number) => (
+                              <Text
+                                key={String(comment?.id || `${itemId}-comment-${commentIndex}`)}
+                                style={{ ...typography.caption, color: palette.subtext }}
+                              >
+                                {String(comment?.body || '')}
+                              </Text>
+                            ))}
+                          </View>
+                        ) : null}
+
+                        <TextInput
+                          value={commentDraft}
+                          onChangeText={(text) =>
+                            setVideoCommentDraftByItem((prev) => ({
+                              ...prev,
+                              [itemId]: text,
+                            }))
+                          }
+                          placeholder="Write comment"
+                          placeholderTextColor={palette.subtext}
+                          style={{
+                            borderWidth: 1,
+                            borderColor: palette.divider,
+                            borderRadius: 10,
+                            color: palette.text,
+                            paddingHorizontal: spacing.sm,
+                            paddingVertical: spacing.xs,
+                            backgroundColor: palette.cardAccent,
+                          }}
+                        />
+                        <KISButton
+                          title="Post Comment"
+                          size="xs"
+                          variant="outline"
+                          onPress={() => {
+                            addVideoItemComment(itemId).catch(() => undefined);
+                          }}
+                          disabled={!videoEngineSessionId || !commentDraft.trim()}
+                        />
+                      </View>
+                    );
+                  })}
+
+                  {!videoItemsLoading && videoItems.length === 0 ? (
+                    <Text style={{ ...typography.caption, color: palette.subtext }}>
+                      No video content has been added for this engine yet.
+                    </Text>
+                  ) : null}
                 </View>
               ) : null}
 
@@ -4109,11 +4630,13 @@ export default function HealthServiceSessionScreen({ route, navigation }: Props)
                     Payable: {toKisc(Number(billingSession?.payable_amount_micro || 0))} KISC
                   </Text>
                   <Text style={{ ...typography.caption, color: palette.subtext }}>
-                    Provider: {String(billingSession?.payment_provider || '').trim() || 'Not set'}
+                    Payment source: KIS Coin wallet (profile account)
                   </Text>
-                  <Text style={{ ...typography.caption, color: palette.subtext }}>
-                    Payment ref: {String(billingSession?.payment_reference || '').trim() || 'Not set'}
-                  </Text>
+                  {String(billingSession?.payment_reference || '').trim() ? (
+                    <Text style={{ ...typography.caption, color: palette.subtext }}>
+                      Payment ref: {String(billingSession?.payment_reference || '').trim()}
+                    </Text>
+                  ) : null}
                 </View>
               ) : null}
 
@@ -4831,7 +5354,7 @@ export default function HealthServiceSessionScreen({ route, navigation }: Props)
           {isHealthOpsSession ? (
             <View style={{ marginTop: spacing.md, borderRadius: spacing.lg, padding: spacing.md, backgroundColor: palette.card, ...borders.card }}>
               <Text style={{ ...typography.caption, color: palette.subtext }}>
-                Engine {activeEngineIndex + 1} of {HEALTH_OPS_ENGINE_FLOW.length}
+                Engine {activeEngineIndex + 1} of {effectiveEngineFlow.length}
               </Text>
               <View style={{ marginTop: spacing.xs, gap: spacing.xs }}>
                 <KISButton
@@ -4843,7 +5366,7 @@ export default function HealthServiceSessionScreen({ route, navigation }: Props)
                 <KISButton
                   title={
                     hasNextEngine
-                      ? `Continue to ${HEALTH_OPS_ENGINE_FLOW[activeEngineIndex + 1]?.title || 'Next'}`
+                      ? `Continue to ${effectiveEngineFlow[activeEngineIndex + 1]?.title || 'Next'}`
                       : 'You are on the final engine'
                   }
                   onPress={goToNextEngine}
@@ -4853,17 +5376,6 @@ export default function HealthServiceSessionScreen({ route, navigation }: Props)
             </View>
           ) : null}
 
-          {!isHealthOpsSession ? (
-            <View style={{ marginTop: spacing.md }}>
-              <KISButton
-                title={busy ? 'Processing...' : sessionStatus === 'completed' ? 'Session Completed' : 'Complete Session'}
-                onPress={() => {
-                  completeSession().catch(() => undefined);
-                }}
-                disabled={busy || sessionStatus === 'completed'}
-              />
-            </View>
-          ) : null}
         </ScrollView>
       </LinearGradient>
     </SafeAreaView>

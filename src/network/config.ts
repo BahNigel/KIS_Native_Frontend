@@ -11,7 +11,6 @@ const CHAT_PORT = 4000;
 
 const emulatorHost = Platform.OS === 'android' ? '10.0.2.2' : '127.0.0.1';
 const host = USE_EMULATOR ? emulatorHost : LAN_IP;
-console.log('KIS host =', host);
 
 export const API_BASE_URL = `http://${host}:${API_PORT}`;
 export const CHAT_BASE_URL = `http://${host}:${CHAT_PORT}`;

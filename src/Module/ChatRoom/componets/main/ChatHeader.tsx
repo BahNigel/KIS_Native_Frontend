@@ -1,6 +1,6 @@
 // src/screens/chat/components/ChatHeader.tsx
 
-import React, { useMemo } from 'react';
+import React from 'react';
 import { View, Text, Pressable, Image } from 'react-native';
 
 import type { Chat } from '../../messagesUtils';
@@ -84,16 +84,6 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
     (chat?.isDirect
       ? directConversationAvatar(chat?.participants ?? [], currentUserId)
       : null);
-
-  const initials = useMemo(() => {
-    if (!title) return '?';
-    return title
-      .split(' ')
-      .map((p) => p[0])
-      .join('')
-      .slice(0, 2)
-      .toUpperCase();
-  }, [title]);
 
   const headerStatusText = statusText ?? 'online';
 
