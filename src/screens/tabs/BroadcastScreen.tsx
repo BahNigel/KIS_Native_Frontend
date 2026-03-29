@@ -138,6 +138,7 @@ export default function BroadcastScreen() {
             </View>
           ) : null}
         </View>
+        {console.log('Rendering BroadcastScreen with activeMainTab:', activeMainTab, 'searchTerm:', searchTerm, 'currentFilter:', currentFilter)}
 
         <View style={{ paddingHorizontal: 12 }}>
           {activeMainTab === 'feeds' && (

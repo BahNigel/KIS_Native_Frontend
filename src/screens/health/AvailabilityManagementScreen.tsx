@@ -37,6 +37,10 @@ import {
   type ServiceDefinition,
   type HealthDashboardInstitutionType,
 } from '@/features/health-dashboard/models';
+import {
+  sanitizeServiceEngineFields,
+  sanitizeServiceList,
+} from '@/features/health-dashboard/serviceCatalogPolicy';
 
 const isSupportedType = (value: string): value is HealthDashboardInstitutionType =>
   HEALTH_DASHBOARD_INSTITUTION_TYPES.includes(value as HealthDashboardInstitutionType);
@@ -365,7 +369,7 @@ const normalizeServiceRow = (raw: any, index: number): ServiceDefinition | null 
   const name = String(raw.name ?? raw.title ?? raw.label ?? '').trim();
   if (!name) return null;
   const description = String(raw.description ?? raw.summary ?? '').trim();
-  return {
+  return sanitizeServiceEngineFields({
     id,
     name,
     description,
@@ -375,7 +379,13 @@ const normalizeServiceRow = (raw: any, index: number): ServiceDefinition | null 
       : Number.isFinite(Number(raw.base_price_cents))
       ? Number(raw.base_price_cents)
       : undefined,
-  };
+    mediumIds: Array.isArray(raw.mediumIds ?? raw.medium_ids)
+      ? (raw.mediumIds ?? raw.medium_ids).map((item: any) => String(item || '').trim()).filter(Boolean)
+      : [],
+    mediumNames: Array.isArray(raw.mediumNames ?? raw.medium_names)
+      ? (raw.mediumNames ?? raw.medium_names).map((item: any) => String(item || '').trim()).filter(Boolean)
+      : [],
+  });
 };
 
 const normalizeHealthOpsServiceRow = (raw: any, index: number): ServiceDefinition | null => {
@@ -404,13 +414,23 @@ const normalizeHealthOpsServiceRow = (raw: any, index: number): ServiceDefinitio
   const basePriceCents = Number.isFinite(baseCostMicro)
     ? Math.max(0, Math.round(baseCostMicro / 10))
     : undefined;
-  return {
+  return sanitizeServiceEngineFields({
     id,
     name,
     description,
     active: source.is_active !== false && source.active !== false,
     basePriceCents,
-  };
+    mediumIds: Array.isArray(source.mediumIds ?? source.medium_ids ?? source.engineIds ?? source.engine_ids)
+      ? (source.mediumIds ?? source.medium_ids ?? source.engineIds ?? source.engine_ids)
+          .map((item: any) => String(item || '').trim())
+          .filter(Boolean)
+      : [],
+    mediumNames: Array.isArray(source.mediumNames ?? source.medium_names ?? source.engineNames ?? source.engine_names)
+      ? (source.mediumNames ?? source.medium_names ?? source.engineNames ?? source.engine_names)
+          .map((item: any) => String(item || '').trim())
+          .filter(Boolean)
+      : [],
+  });
 };
 
 const prettifyServiceId = (value: string) =>
@@ -684,7 +704,7 @@ export default function AvailabilityManagementScreen({ navigation, route }: any)
         });
       });
 
-      const catalog = Array.from(catalogMap.values());
+      const catalog = sanitizeServiceList(Array.from(catalogMap.values()));
       const activeServiceIdSet = new Set(
         catalog
           .filter((service) => service.active !== false)

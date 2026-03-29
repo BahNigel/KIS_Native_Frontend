@@ -131,6 +131,14 @@ const MARKET_TABS: { id: MarketTabId; label: string; icon: string }[] = [
   { id: 'lessons', label: 'Lessons', icon: 'book' },
 ];
 
+const normalizeEmployeeSlots = (value: string) => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 1) {
+    return '1';
+  }
+  return String(Math.floor(parsed));
+};
+
 export default function MarketStudioSection({
   profile,
   canUseMarket,
@@ -138,6 +146,20 @@ export default function MarketStudioSection({
   initialTab = 'feed',
 }: Props) {
   const { palette } = useKISTheme();
+  const normalizedProfileUserId = useMemo(() => {
+    const id = profile?.user?.id;
+    return id ? String(id) : null;
+  }, [profile?.user?.id]);
+
+  const isShopOwnedByUser = useCallback(
+    (owner?: string | null) => {
+      if (!normalizedProfileUserId || !owner) {
+        return false;
+      }
+      return normalizedProfileUserId === String(owner);
+    },
+    [normalizedProfileUserId],
+  );
 
   const [shops, setShops] = useState<any[]>([]);
   const [products, setProducts] = useState<any[]>([]);
@@ -145,18 +167,16 @@ export default function MarketStudioSection({
 
   const [shopForm, setShopForm] = useState({
     name: '',
-    slug: '',
     description: '',
+    employeeSlots: '1',
   });
 
   const [productForm, setProductForm] = useState({
     name: '',
     price: '',
     currency: 'USD',
+    stock: '',
     description: '',
-    inventory_type: 'PHYSICAL',
-    stock_qty: '0',
-    imagePreview: '',
   });
 
   const [activeShopId, setActiveShopId] = useState<string | null>(null);
@@ -209,7 +229,7 @@ export default function MarketStudioSection({
   const editingProduct = editingProductId ? products.find((product) => product.id === editingProductId) ?? null : null;
 
   const resetShopForm = () => {
-    setShopForm({ name: '', slug: '', description: '' });
+    setShopForm({ name: '', description: '', employeeSlots: '1' });
     setEditingShopId(null);
     setShopImage(null);
     setShopImagePreview('');
@@ -220,10 +240,8 @@ export default function MarketStudioSection({
       name: '',
       price: '',
       currency: 'USD',
+      stock: '',
       description: '',
-      inventory_type: 'PHYSICAL',
-      stock_qty: '0',
-      imagePreview: '',
     });
     setEditingProductId(null);
     setProductImage(null);
@@ -293,7 +311,6 @@ export default function MarketStudioSection({
     if (!picked) return;
     setProductImage(picked);
     setProductImagePreview(asset?.uri || '');
-    setProductForm((prev) => ({ ...prev, imagePreview: asset?.uri || '' }));
   }, []);
 
   useEffect(() => {
@@ -318,8 +335,8 @@ export default function MarketStudioSection({
     if (editingShop && editingShopId) {
       setShopForm({
         name: editingShop.name,
-        slug: editingShop.slug,
         description: editingShop.description || '',
+        employeeSlots: String(editingShop.employee_slots ?? 1),
       });
       setShopImagePreview(editingShop.image_url || '');
       setShopImage(null);
@@ -333,9 +350,7 @@ export default function MarketStudioSection({
         price: String(editingProduct.price),
         currency: editingProduct.currency || 'USD',
         description: editingProduct.description || '',
-        inventory_type: editingProduct.inventory_type || 'PHYSICAL',
-        stock_qty: String(editingProduct.stock_qty ?? 0),
-        imagePreview: editingProduct.image_url || '',
+        stock: String(editingProduct.stock_qty ?? 0),
       });
       setProductImage(null);
       setProductImagePreview(editingProduct.image_url || '');
@@ -343,8 +358,8 @@ export default function MarketStudioSection({
   }, [editingProduct, editingProductId]);
 
   const handleShopSubmit = useCallback(async () => {
-    if (!shopForm.name || !shopForm.slug) {
-      Alert.alert('Market', 'Shop name and slug are required.');
+    if (!shopForm.name?.trim()) {
+      Alert.alert('Market', 'Shop name is required.');
       return;
     }
     if (!isEditingShop && !canCreateShop) {
@@ -354,7 +369,7 @@ export default function MarketStudioSection({
 
     const shopData = new FormData();
     shopData.append('name', shopForm.name.trim());
-    shopData.append('slug', shopForm.slug.toLowerCase());
+    shopData.append('employee_slots', normalizeEmployeeSlots(shopForm.employeeSlots));
     shopData.append('description', shopForm.description.trim());
 
     if (shopImage) {
@@ -382,7 +397,7 @@ export default function MarketStudioSection({
   }, [shopForm, isEditingShop, editingShopId, canCreateShop, loadMarket, shopImage]);
 
   const handleProductSubmit = useCallback(async () => {
-    if (!productForm.name || !productForm.price) {
+    if (!productForm.name?.trim() || !productForm.price?.trim()) {
       Alert.alert('Market', 'Product name and price are required.');
       return;
     }
@@ -405,14 +420,12 @@ export default function MarketStudioSection({
 
     const form = new FormData();
     form.append('shop', targetShopId);
-    form.append('sku', `${targetShopId}-${Date.now()}`);
-    form.append('name', productForm.name);
-    form.append('slug', `${productForm.name}`.toLowerCase().replace(/\s+/g, '-'));
-    form.append('description', productForm.description);
-    form.append('price', productForm.price);
-    form.append('currency', productForm.currency);
-    form.append('inventory_type', productForm.inventory_type);
-    form.append('stock_qty', String(Number(productForm.stock_qty || 0)));
+    form.append('name', productForm.name.trim());
+    form.append('description', productForm.description.trim());
+    form.append('price', productForm.price.trim());
+    form.append('currency', (productForm.currency || 'USD').trim() || 'USD');
+    const stockQty = Math.max(0, Number(productForm.stock || 0));
+    form.append('stock_qty', String(Number.isFinite(stockQty) ? Math.floor(stockQty) : 0));
 
     if (productImage) {
       form.append(
@@ -451,13 +464,18 @@ export default function MarketStudioSection({
   };
 
   const handleDeleteShop = useCallback(
-    async (shopId: string) => {
+    async (shopId: string, shopOwner?: string | null) => {
+      if (!shopId) return;
+      if (!isShopOwnedByUser(shopOwner)) {
+        Alert.alert('Delete shop', 'Only the shop owner can delete this shop.');
+        return;
+      }
       const res = await deleteRequest(`${ROUTES.commerce.shops}${shopId}/`, {
         errorMessage: 'Unable to delete shop.',
       });
       if (res?.success) loadMarket();
     },
-    [loadMarket],
+    [isShopOwnedByUser, loadMarket],
   );
 
   const handleDeleteProduct = useCallback(
@@ -475,8 +493,8 @@ export default function MarketStudioSection({
     setEditingShopId(shop.id);
     setShopForm({
       name: shop.name,
-      slug: shop.slug,
       description: shop.description || '',
+      employeeSlots: String(shop.employee_slots ?? 1),
     });
   }, []);
 
@@ -488,9 +506,7 @@ export default function MarketStudioSection({
       price: String(product.price),
       currency: product.currency || 'USD',
       description: product.description || '',
-      inventory_type: product.inventory_type || 'PHYSICAL',
-      stock_qty: String(product.stock_qty ?? 0),
-      imagePreview: product.image_url || '',
+      stock: String(product.stock_qty ?? 0),
     });
   }, []);
 
@@ -860,17 +876,23 @@ export default function MarketStudioSection({
                 <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
                   <KISButton title="Select" size="sm" onPress={() => setActiveShopId(shop.id)} />
                   <KISButton title="Edit" size="sm" variant="secondary" onPress={() => handleShopEdit(shop)} />
-                  <KISButton
-                    title="Delete"
-                    size="sm"
-                    variant="secondary"
-                    onPress={() =>
-                      Alert.alert('Delete shop', 'Remove this shop and all its listings?', [
-                        { text: 'Cancel', style: 'cancel' },
-                        { text: 'Delete', style: 'destructive', onPress: () => handleDeleteShop(shop.id) },
-                      ])
-                    }
-                  />
+                  {isShopOwnedByUser(shop.owner) && (
+                    <KISButton
+                      title="Delete"
+                      size="sm"
+                      variant="secondary"
+                      onPress={() =>
+                        Alert.alert('Delete shop', 'Remove this shop and all its listings?', [
+                          { text: 'Cancel', style: 'cancel' },
+                          {
+                            text: 'Delete',
+                            style: 'destructive',
+                            onPress: () => handleDeleteShop(shop.id, shop.owner),
+                          },
+                        ])
+                      }
+                    />
+                  )}
                 </View>
               </View>
             );
@@ -889,16 +911,17 @@ export default function MarketStudioSection({
           onChangeText={(t) => setShopForm((prev) => ({ ...prev, name: t }))}
         />
         <KISTextInput
-          label={isEditingShop ? 'Update slug' : 'Store slug'}
-          value={shopForm.slug}
-          onChangeText={(t) => setShopForm((prev) => ({ ...prev, slug: t.toLowerCase().replace(/\s+/g, '-') }))}
-        />
-        <KISTextInput
           label="Description"
           value={shopForm.description}
           onChangeText={(t) => setShopForm((prev) => ({ ...prev, description: t }))}
           multiline
           style={{ minHeight: 80 }}
+        />
+        <KISTextInput
+          label="Employee slots"
+          value={shopForm.employeeSlots}
+          onChangeText={(t) => setShopForm((prev) => ({ ...prev, employeeSlots: t.replace(/[^0-9]/g, '') }))}
+          keyboardType="numeric"
         />
 
         <View style={{ flexDirection: 'row', gap: 12, flexWrap: 'wrap' }}>
@@ -919,7 +942,7 @@ export default function MarketStudioSection({
     <Card>
       <Text style={{ color: palette.text, fontWeight: '900', fontSize: 18 }}>Products</Text>
       <Text style={{ color: palette.subtext, fontSize: 12 }}>
-        Add, edit, or delete listings for the active shop — each product can be broadcasted.
+        Add or update listings with just the essentials: name, price, stock, and story.
       </Text>
 
       <Text style={{ color: palette.subtext, fontSize: 12 }}>
@@ -927,14 +950,12 @@ export default function MarketStudioSection({
       </Text>
 
       <View style={{ marginTop: 10, gap: 10 }}>
-        <KISTextInput
-          label={isEditingProduct ? 'Edit product name' : 'Product name'}
-          value={productForm.name}
-          onChangeText={(t) => setProductForm((prev) => ({ ...prev, name: t }))}
-        />
-
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-          <KISButton title="Select product image" size="sm" onPress={pickProductImage} />
+        <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+          <KISButton
+            title={productImagePreview ? 'Change image' : isEditingProduct ? 'Upload image' : 'Add image'}
+            size="sm"
+            onPress={pickProductImage}
+          />
           {productImagePreview ? (
             <Image source={{ uri: productImagePreview }} style={{ width: 56, height: 56, borderRadius: 16, backgroundColor: palette.surface }} />
           ) : (
@@ -943,20 +964,28 @@ export default function MarketStudioSection({
         </View>
 
         <KISTextInput
-          label="Price (in credits)"
-          value={productForm.price}
-          onChangeText={(t) => setProductForm((prev) => ({ ...prev, price: t }))}
-          keyboardType="decimal-pad"
+          label={isEditingProduct ? 'Edit product name' : 'Product name'}
+          value={productForm.name}
+          onChangeText={(t) => setProductForm((prev) => ({ ...prev, name: t }))}
         />
 
-        <Text style={{ color: palette.subtext, fontSize: 11 }}>
-          Commerce settles in credits, keeping the ledger predictable.
-        </Text>
-
+        <KISTextInput
+          label="Price"
+          value={productForm.price}
+          onChangeText={(t) => setProductForm((prev) => ({ ...prev, price: t }))}
+          keyboardType="numeric"
+        />
         <KISTextInput
           label="Currency"
           value={productForm.currency}
-          onChangeText={(t) => setProductForm((prev) => ({ ...prev, currency: t.toUpperCase() }))}
+          onChangeText={(t) => setProductForm((prev) => ({ ...prev, currency: t }))}
+        />
+
+        <KISTextInput
+          label="Stock"
+          value={productForm.stock}
+          onChangeText={(t) => setProductForm((prev) => ({ ...prev, stock: t }))}
+          keyboardType="numeric"
         />
 
         <KISTextInput
@@ -967,15 +996,12 @@ export default function MarketStudioSection({
           style={{ minHeight: 80 }}
         />
 
-        <KISTextInput
-          label="Stock quantity"
-          value={productForm.stock_qty}
-          onChangeText={(t) => setProductForm((prev) => ({ ...prev, stock_qty: t }))}
-          keyboardType="number-pad"
-        />
-
         <View style={{ flexDirection: 'row', gap: 12, flexWrap: 'wrap' }}>
-          <KISButton title={isEditingProduct ? 'Update product' : 'Add product'} onPress={handleProductSubmit} disabled={!isEditingProduct && !canAddProduct} />
+          <KISButton
+            title={isEditingProduct ? 'Update product' : 'Add product'}
+            onPress={handleProductSubmit}
+            disabled={!isEditingProduct && !canAddProduct}
+          />
           {isEditingProduct && <KISButton title="Cancel" variant="secondary" size="sm" onPress={cancelProductEdit} />}
         </View>
 

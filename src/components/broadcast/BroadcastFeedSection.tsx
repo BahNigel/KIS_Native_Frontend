@@ -131,6 +131,19 @@ const resolveVideoAttachment = (item: BroadcastFeedItem) => {
   return null;
 };
 
+const isMarketBroadcast = (item: BroadcastFeedItem) => {
+  if (!item) return false;
+  const sourceType = String(item.source?.type ?? '').toLowerCase();
+  const emittedType = String(item.source_type ?? '').toLowerCase();
+  if (sourceType.includes('market') || emittedType.includes('market')) {
+    return true;
+  }
+  if (Boolean(item.product)) {
+    return true;
+  }
+  return false;
+};
+
 const extractDurationSeconds = (attachment: any) => {
   if (!attachment) return undefined;
   if (typeof attachment.duration_seconds === 'number') return attachment.duration_seconds;
@@ -488,7 +501,8 @@ export default function BroadcastFeedSection({
     } else if (mainSection === 'market') {
       items = items.filter((it) => Boolean(it.product) || it.source?.type === 'market' || it.source_type === 'market');
     } else {
-      // feed: keep all
+      // feed: filter out market posts
+      items = items.filter((it) => !isMarketBroadcast(it));
     }
 
     // For You / Following (stub until server provides following)

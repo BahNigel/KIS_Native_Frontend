@@ -16,6 +16,7 @@ import { useKISTheme } from '../theme/useTheme';
 import KISButton from '../constants/KISButton';
 import KISTextInput from '../constants/KISTextInput';
 import KISText from '@/components/common/KISText';
+import { setUserData } from '@/network/cache';
 import { postRequest } from '@/network/post/index';
 import ROUTES from '@/network';
 import { useAuth } from '../../App';
@@ -95,7 +96,7 @@ const makeStyles = (tokens: typeof KIS_TOKENS) =>
 export default function LoginScreen({ navigation }: any) {
   const { palette, tokens } = useKISTheme();
   const styles = useMemo(() => makeStyles(tokens), [tokens]);
-  const { setAuth, setPhone, countryISO, callingCode, locationReady } = useAuth();
+  const { setAuth, setPhone, setUser, countryISO, callingCode, locationReady } = useAuth();
 
   const [phoneNumber, setPhoneNumber] = useState('');
   const [password, setPassword] = useState('');
@@ -189,6 +190,9 @@ export default function LoginScreen({ navigation }: any) {
       }
 
       await persistAuth(res.data);
+      const resolvedUser = res?.data?.user ?? res?.data ?? null;
+      await setUserData(resolvedUser, res.data);
+      setUser?.(resolvedUser);
       setAuth(true); // App.tsx will switch to MainTabs
     } catch (e: any) {
       Alert.alert('Error', e?.message ?? 'Unexpected error while logging in.');
@@ -269,7 +273,6 @@ export default function LoginScreen({ navigation }: any) {
         label="Country code (auto from location)"
         value={`${activeCountryISO} ${activeCountryCode}`}
         editable={false}
-        helperText="Country code updates automatically from your device location."
       />
 
       <KISTextInput

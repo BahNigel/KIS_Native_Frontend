@@ -1,10 +1,12 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, Text, TouchableOpacity, View, Image } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Alert, Animated, Linking, Text, TouchableOpacity, View, Image } from 'react-native';
 import LinearGradient from 'react-native-linear-gradient';
 import KISButton from '@/constants/KISButton';
 import { useKISTheme } from '@/theme/useTheme';
 import { styles } from '../profile.styles';
 import coin from '../../../../assets/KIS-Coin.png';
+import { getRequest } from '@/network/get';
+import ROUTES from '@/network';
 
 const MICROS_PER_KISC = 100000;
 const CENTS_PER_KISC = 10000;
@@ -49,6 +51,68 @@ const toCounterpartyLabel = (entry: any) => {
   return `${direction}: ${identity}`;
 };
 
+const renderPendingBookings = (
+  title: string,
+  bookings: any[],
+  emptyMessage: string,
+  palette: any,
+  onOpen?: ((bookingId: string) => void) | undefined,
+) => {
+  return (
+    <View
+      style={{
+        borderRadius: 14,
+        borderWidth: 1,
+        borderColor: palette.divider,
+        backgroundColor: palette.surface,
+        padding: 12,
+      }}
+    >
+      <Text style={[styles.title, { color: palette.text, fontSize: 15 }]}>{title}</Text>
+      {bookings.length ? (
+        bookings.slice(0, 3).map((booking) => (
+          <View
+            key={booking.id || `${booking.service}-${booking.scheduled_at}`}
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              marginTop: 10,
+              borderTopColor: palette.divider,
+              borderTopWidth: 1,
+              paddingTop: 10,
+            }}
+          >
+            <View style={{ flex: 1, paddingRight: 8 }}>
+              <Text style={{ color: palette.text, fontWeight: '600' }}>
+                {booking.service_name || 'Service booking'}
+              </Text>
+              <Text style={{ color: palette.subtext, fontSize: 12 }}>
+                {booking.schedule_label || booking.scheduled_at
+                  ? new Date(booking.scheduled_at).toLocaleString()
+                  : 'Schedule pending'}
+              </Text>
+              <Text style={{ color: palette.subtext, fontSize: 11 }}>
+                {`Payment: ${(booking.payment?.payment_status ? String(booking.payment.payment_status).replace(/_/g, ' ') : 'Pending')} • Escrow: ${booking.escrow_status || 'pending'}`}
+              </Text>
+            </View>
+            {onOpen && booking.id ? (
+              <KISButton
+                title="Details"
+                size="xs"
+                variant="outline"
+                onPress={() => onOpen(String(booking.id))}
+              />
+            ) : null}
+          </View>
+        ))
+      ) : (
+        <Text style={{ color: palette.subtext, marginTop: 6 }}>{emptyMessage}</Text>
+      )}
+    </View>
+  );
+};
+
 export default function AccountCreditsCard({
   tierName,
   tierPriceCents,
@@ -67,6 +131,9 @@ export default function AccountCreditsCard({
   partnerProfilesIsUnlimited,
   onDeleteWalletEntry,
   deletingWalletEntryId,
+  pendingServicePayments = [],
+  pendingReceivePayments = [],
+  onOpenBookingDetails,
 }: {
   tierName: string;
   tierPriceCents: number;
@@ -85,6 +152,9 @@ export default function AccountCreditsCard({
   partnerProfilesIsUnlimited?: boolean;
   onDeleteWalletEntry?: (entryId: string) => void;
   deletingWalletEntryId?: string | null;
+  pendingServicePayments?: any[];
+  pendingReceivePayments?: any[];
+  onOpenBookingDetails?: (bookingId: string) => void;
 }) {
   const { palette } = useKISTheme();
   const [showHistory, setShowHistory] = useState(false);
@@ -210,11 +280,28 @@ export default function AccountCreditsCard({
         ) : null}
       </View>
 
-      <View style={[styles.partnerRow, { justifyContent: 'space-between' }]}>
+      <View style={[styles.partnerRow, { justifyContent: 'space-between' }]}> 
         <Text style={[styles.subtext, { color: palette.text }]}>Partner orgs</Text>
-        <Text style={[styles.statMeta, { color: palette.subtext }]}>
+        <Text style={[styles.statMeta, { color: palette.subtext }]}> 
           {partnerProfilesCount ?? 0}/{partnerLimitText}
         </Text>
+      </View>
+
+      <View style={{ marginTop: 12, gap: 10 }}>
+        {renderPendingBookings(
+          'Pending Service Payment',
+          pendingServicePayments,
+          'No payments are currently pending.',
+          palette,
+          onOpenBookingDetails,
+        )}
+        {renderPendingBookings(
+          'Pending Receive Payment Completion',
+          pendingReceivePayments,
+          'No pending payout completions.',
+          palette,
+          onOpenBookingDetails,
+        )}
       </View>
 
       <View style={{ marginTop: 10, gap: 8 }}>
@@ -242,9 +329,23 @@ export default function AccountCreditsCard({
                 </Text>
               </View>
               <View style={{ alignItems: 'flex-end', gap: 6 }}>
-                <Text style={[styles.subtext, { color: palette.subtext }]}>
+                <Text style={[styles.subtext, { color: palette.subtext }]}> 
                   {new Date(entry.created_at).toLocaleDateString()}
                 </Text>
+                {(entry.receipt_pdf_url || entry.receipt_url) && (
+                  <KISButton
+                    title="Receipt"
+                    size="xs"
+                    variant="outline"
+                    onPress={() => {
+                      const url = entry.receipt_pdf_url || entry.receipt_url;
+                      if (!url) return;
+                      Linking.openURL(url).catch(() => {
+                        Alert.alert('Receipt', 'Unable to open receipt.');
+                      });
+                    }}
+                  />
+                )}
                 {onDeleteWalletEntry ? (
                   <TouchableOpacity
                     onPress={() => onDeleteWalletEntry(String(entry.id || ''))}

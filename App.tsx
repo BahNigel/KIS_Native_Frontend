@@ -56,6 +56,9 @@ import InstitutionServicesCatalogScreen from './src/screens/health/InstitutionSe
 import InstitutionLandingPreviewScreen from './src/screens/health/InstitutionLandingPreviewScreen';
 import HealthInstitutionCardsScreen from './src/screens/health/HealthInstitutionCardsScreen';
 import HealthServiceSessionScreen from './src/screens/health/HealthServiceSessionScreen';
+import ShopDashboardScreen from '@/screens/market/ShopDashboardScreen';
+import ServiceBookingDetailsPage from '@/screens/market/ServiceBookingDetailsPage';
+import ServiceBookingScreen from '@/screens/market/ServiceBookingScreen';
 import { getRequest } from '@/network/get';
 import ROUTES, { NEST_API_BASE_URL } from '@/network';
 import { postRequest } from '@/network/post';
@@ -68,6 +71,7 @@ import {
   LocationCountryError,
   resolveLocationCountry,
 } from '@/services/locationCountryService';
+import { cleanIrrelevantStorage } from '@/utils/storageCleaner';
 
 type AuthCtx = {
   isAuth: boolean;
@@ -77,6 +81,8 @@ type AuthCtx = {
   countryISO?: string;
   callingCode?: string;
   refreshLocation?: (requestPermission?: boolean) => Promise<boolean>;
+  user?: any | null;
+  setUser?: (user: any | null) => void;
 };
 const AuthContext = createContext<AuthCtx>({
   isAuth: false,
@@ -85,6 +91,8 @@ const AuthContext = createContext<AuthCtx>({
   countryISO: DEFAULT_COUNTRY_ISO,
   callingCode: DEFAULT_CALLING_CODE,
   refreshLocation: async () => false,
+  user: null,
+  setUser: () => {},
 });
 export const useAuth = () => useContext(AuthContext);
 
@@ -99,6 +107,7 @@ export default function App() {
   const [isAuth, setAuth] = useState(false);
   const [load, setLoad] = useState(false);
   const [_phone, setPhone] = useState<string | null>(null);
+  const [user, setUser] = useState<any | null>(null);
   const [locationReady, setLocationReady] = useState(false);
   const [locationChecking, setLocationChecking] = useState(true);
   const [locationCountryISO, setLocationCountryISO] = useState(DEFAULT_COUNTRY_ISO);
@@ -131,7 +140,11 @@ export default function App() {
     }
   }, []);
 
-  const checkAuth = async () => {
+  useEffect(() => {
+    void cleanIrrelevantStorage();
+  }, []);
+
+  const checkAuth = useCallback(async () => {
     try {
       const token = await AsyncStorage.getItem('access_token');
       const storedPhone = await AsyncStorage.getItem('user_phone');
@@ -141,11 +154,13 @@ export default function App() {
       setPhone(storedPhone);
 
       if (!token) {
+        setUser(null);
         setAuth(false);
         return;
       }
 
       if (Date.now() < appAuthCheckBlockedUntil) {
+        setUser(null);
         setAuth(true);
         return;
       }
@@ -160,30 +175,36 @@ export default function App() {
 
         console.log('checkLogin response:', res);
 
-        const u = res?.data?.user ?? res?.data ?? {};
-        const active = res?.success && (u.is_active || u.status === 'active');
+        const u = res?.data?.user ?? res?.data ?? null;
+        const active = res?.success && (u?.is_active || u?.status === 'active');
         console.log('active from backend:', active);
 
         if (active) {
+          setUser(u);
           setAuth(true);
         } else if (Number(res?.status) === 429) {
           appAuthCheckBlockedUntil = Date.now() + AUTH_429_BACKOFF_MS;
+          setUser(u);
           setAuth(true);
         } else if (res?.success === false && res?.message === 'No internet connection.') {
           console.log('Offline but token exists — trusting local auth.');
+          setUser(u);
           setAuth(true);
         } else {
+          setUser(null);
           setAuth(false);
         }
       } catch (networkErr: any) {
         console.log('[checkAuth] network error:', networkErr?.message);
+        setUser(null);
         setAuth(true);
       }
     } catch (e: any) {
       console.log('[checkAuth] outer error:', e?.message);
+      setUser(null);
       setAuth(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     (async () => {
@@ -196,7 +217,7 @@ export default function App() {
 
       setBooting(false);
     })();
-  }, [load, syncLocationCountry]);
+  }, [load, syncLocationCountry, checkAuth]);
 
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (state) => {
@@ -273,8 +294,10 @@ export default function App() {
       countryISO: locationCountryISO,
       callingCode: locationCallingCode,
       refreshLocation: syncLocationCountry,
+      user,
+      setUser,
     }),
-    [isAuth, locationReady, locationCountryISO, locationCallingCode, syncLocationCountry],
+    [isAuth, locationReady, locationCountryISO, locationCallingCode, syncLocationCountry, user],
   );
 
   if (booting) {
@@ -385,6 +408,21 @@ export default function App() {
                   <RootStack.Screen
                     name="NotificationsDashboard"
                     component={NotificationsDashboardScreen}
+                    options={{ presentation: 'modal' }}
+                  />
+                  <RootStack.Screen
+                    name="ShopDashboard"
+                    component={ShopDashboardScreen}
+                    options={{ presentation: 'modal' }}
+                  />
+                  <RootStack.Screen
+                    name="ServiceBooking"
+                    component={ServiceBookingScreen}
+                    options={{ presentation: 'modal' }}
+                  />
+                  <RootStack.Screen
+                    name="ServiceBookingDetails"
+                    component={ServiceBookingDetailsPage}
                     options={{ presentation: 'modal' }}
                   />
                   <RootStack.Screen

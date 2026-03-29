@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { Alert, Image, Pressable, ScrollView, Text, View } from 'react-native';
 import { useKISTheme } from '@/theme/useTheme';
 import { launchImageLibrary, Asset } from 'react-native-image-picker';
@@ -23,24 +23,55 @@ const buildPickedImage = (asset: Asset | undefined, prefix: string): PickedImage
   return { uri: asset.uri, name, type: asset.type || 'image/jpeg' };
 };
 
+const normalizeEmployeeSlots = (value: string) => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 1) {
+    return '1';
+  }
+  return String(Math.floor(parsed));
+};
+
 export default function MarketShopsPage({ ownerId = null, canUseMarket = false, onUpgrade }: Props) {
   const { palette } = useKISTheme();
   const { myShops, loadingMine, createShop, updateShop, deleteShop, reloadAll } = useMarketData({
     ownerId,
     q: '',
   });
+  const normalizedOwnerId = useMemo(() => {
+    return ownerId ? String(ownerId) : null;
+  }, [ownerId]);
+  const isShopOwnedByUser = useCallback(
+    (shopOwner?: string | null) => {
+      if (!normalizedOwnerId || !shopOwner) {
+        return false;
+      }
+      return normalizedOwnerId === String(shopOwner);
+    },
+    [normalizedOwnerId],
+  );
+  const handleDeleteShop = useCallback(
+    async (shopId: string, shopOwner?: string | null) => {
+      if (!shopId) return;
+      if (!isShopOwnedByUser(shopOwner)) {
+        Alert.alert('Delete shop', 'Only the shop owner can delete this shop.');
+        return;
+      }
+      await deleteShop(shopId);
+    },
+    [deleteShop, isShopOwnedByUser],
+  );
 
   const [editing, setEditing] = useState<MarketShop | null>(null);
   const [shopImage, setShopImage] = useState<PickedImage | null>(null);
   const [shopImagePreview, setShopImagePreview] = useState<string>('');
 
-  const [form, setForm] = useState({ name: '', slug: '', description: '' });
+  const [form, setForm] = useState({ name: '', description: '', employeeSlots: '1' });
 
   const reset = () => {
     setEditing(null);
     setShopImage(null);
     setShopImagePreview('');
-    setForm({ name: '', slug: '', description: '' });
+    setForm({ name: '', description: '', employeeSlots: '1' });
   };
 
   const pickImage = async () => {
@@ -57,22 +88,22 @@ export default function MarketShopsPage({ ownerId = null, canUseMarket = false, 
     setEditing(s);
     setForm({
       name: s.name ?? '',
-      slug: s.slug ?? '',
       description: s.description ?? '',
+      employeeSlots: String(s.employee_slots ?? 1),
     });
     setShopImagePreview(s.image_url ?? '');
     setShopImage(null);
   };
 
   const submit = async () => {
-    if (!form.name.trim() || !form.slug.trim()) {
-      Alert.alert('Market', 'Shop name and slug are required.');
+    if (!form.name.trim()) {
+      Alert.alert('Market', 'Shop name is required.');
       return;
     }
 
     const fd = new FormData();
     fd.append('name', form.name.trim());
-    fd.append('slug', form.slug.trim().toLowerCase());
+    fd.append('employee_slots', normalizeEmployeeSlots(form.employeeSlots));
     fd.append('description', form.description.trim());
 
     if (shopImage) {
@@ -141,16 +172,17 @@ export default function MarketShopsPage({ ownerId = null, canUseMarket = false, 
             onChangeText={(t) => setForm((p) => ({ ...p, name: t }))}
           />
           <KISTextInput
-            label={editing ? 'Update slug' : 'Store slug'}
-            value={form.slug}
-            onChangeText={(t) => setForm((p) => ({ ...p, slug: t.toLowerCase().replace(/\s+/g, '-') }))}
-          />
-          <KISTextInput
             label="Description"
             value={form.description}
             onChangeText={(t) => setForm((p) => ({ ...p, description: t }))}
             multiline
             style={{ minHeight: 80 }}
+          />
+          <KISTextInput
+            label="Employee slots"
+            value={form.employeeSlots}
+            onChangeText={(t) => setForm((p) => ({ ...p, employeeSlots: t.replace(/[^0-9]/g, '') }))}
+            keyboardType="numeric"
           />
 
           <View style={{ flexDirection: 'row', gap: 10, flexWrap: 'wrap' }}>
@@ -166,36 +198,44 @@ export default function MarketShopsPage({ ownerId = null, canUseMarket = false, 
             <Text style={{ color: palette.subtext, fontWeight: '700' }}>You don’t have a shop yet.</Text>
           ) : (
             <View style={{ gap: 10 }}>
-              {myShops.map((s) => (
-                <View
-                  key={s.id}
-                  style={{ borderWidth: 2, borderColor: palette.divider, backgroundColor: palette.surface, borderRadius: 18, padding: 12, gap: 8 }}
-                >
-                  <Text style={{ color: palette.text, fontWeight: '900' }}>{s.name ?? 'Shop'}</Text>
-                  {s.description ? (
-                    <Text style={{ color: palette.subtext, fontWeight: '700', fontSize: 12 }}>{s.description}</Text>
-                  ) : null}
+              {myShops.map((s) => {
+                const isOwner = isShopOwnedByUser(s.owner);
+                return (
+                  <View
+                    key={s.id}
+                    style={{ borderWidth: 2, borderColor: palette.divider, backgroundColor: palette.surface, borderRadius: 18, padding: 12, gap: 8 }}
+                  >
+                    <Text style={{ color: palette.text, fontWeight: '900' }}>{s.name ?? 'Shop'}</Text>
+                    {s.description ? (
+                      <Text style={{ color: palette.subtext, fontWeight: '700', fontSize: 12 }}>{s.description}</Text>
+                    ) : null}
+                    <Text style={{ color: palette.subtext, fontSize: 11 }}>
+                      Employee slots: {s.employee_slots ?? 1}
+                    </Text>
 
-                  <View style={{ flexDirection: 'row', gap: 10, flexWrap: 'wrap' }}>
-                    <KISButton title="Edit" size="sm" variant="secondary" onPress={() => beginEdit(s)} />
-                    <KISButton
-                      title="Delete"
-                      size="sm"
-                      variant="secondary"
-                      onPress={() =>
-                        Alert.alert('Delete shop', 'Remove this shop and all its listings?', [
-                          { text: 'Cancel', style: 'cancel' },
-                          {
-                            text: 'Delete',
-                            style: 'destructive',
-                            onPress: async () => { await deleteShop(s.id); },
-                          },
-                        ])
-                      }
-                    />
+                    <View style={{ flexDirection: 'row', gap: 10, flexWrap: 'wrap' }}>
+                      <KISButton title="Edit" size="sm" variant="secondary" onPress={() => beginEdit(s)} />
+                      {isOwner && (
+                        <KISButton
+                          title="Delete"
+                          size="sm"
+                          variant="secondary"
+                          onPress={() =>
+                            Alert.alert('Delete shop', 'Remove this shop and all its listings?', [
+                              { text: 'Cancel', style: 'cancel' },
+                              {
+                                text: 'Delete',
+                                style: 'destructive',
+                                onPress: () => handleDeleteShop(s.id, s.owner),
+                              },
+                            ])
+                          }
+                        />
+                      )}
+                    </View>
                   </View>
-                </View>
-              ))}
+                );
+              })}
             </View>
           )}
         </View>

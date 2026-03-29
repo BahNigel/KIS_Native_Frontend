@@ -82,10 +82,22 @@ export type RootStackParamList = {
     previewHeroImageUri?: string;
     previewGalleryImageUris?: string[];
   };
+  ShopDashboard: {
+    shop: Record<string, any>;
+  };
+  ServiceBooking: {
+    serviceId: string;
+    serviceName?: string;
+  };
+  ServiceBookingDetails: {
+    bookingId: string;
+  };
   ProfileLandingEditor: {
     kind: 'market' | 'education' | 'partner';
     profileLabel?: string;
     partnerId?: string;
+    shopId?: string;
+    shopName?: string;
   };
 };
 

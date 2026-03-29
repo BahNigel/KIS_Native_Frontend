@@ -26,13 +26,21 @@ import type {
   ServiceDefinition,
 } from '@/features/health-dashboard/models';
 import { HEALTH_DASHBOARD_DEFAULT_SERVICES } from '@/features/health-dashboard/defaults';
+import {
+  blocksHealthServiceMapping,
+  filterHealthEngineNames,
+  HEALTH_ENGINE_CONTACT_NOTICE,
+  isComingSoonHealthEngineName,
+  isRemovedHealthEngineName,
+  sanitizeServiceEngineFields,
+  sanitizeServiceList,
+} from '@/features/health-dashboard/serviceCatalogPolicy';
 import { fetchHealthProfileState } from '@/services/healthProfileService';
 import {
   ensureInstitutionDashboardExists,
   fetchInstitutionServices,
   updateInstitutionServices,
 } from '@/services/healthDashboardService';
-import { startHealthServiceSession } from '@/services/healthOpsAppointmentService';
 import { nanoid } from 'nanoid/non-secure';
 import { getRequest } from '@/network/get';
 import { postRequest } from '@/network/post';
@@ -164,7 +172,7 @@ const normalizeServiceRow = (raw: any, index: number): ServiceDefinition | null 
   const description = String(raw.description ?? raw.summary ?? '').trim();
   const mediumIdsSource = raw.mediumIds ?? raw.medium_ids;
   const mediumNamesSource = raw.mediumNames ?? raw.medium_names;
-  return {
+  return sanitizeServiceEngineFields({
     id,
     name,
     description,
@@ -176,7 +184,7 @@ const normalizeServiceRow = (raw: any, index: number): ServiceDefinition | null 
       : undefined,
     mediumIds: Array.isArray(mediumIdsSource) ? mediumIdsSource.map((item: any) => String(item || '').trim()).filter(Boolean) : [],
     mediumNames: Array.isArray(mediumNamesSource) ? mediumNamesSource.map((item: any) => String(item || '').trim()).filter(Boolean) : [],
-  };
+  });
 };
 
 const normalizeHealthOpsServiceRow = (raw: any, index: number): ServiceDefinition | null => {
@@ -212,7 +220,7 @@ const normalizeHealthOpsServiceRow = (raw: any, index: number): ServiceDefinitio
     source.mediumNames ??
     source.engine_names ??
     source.engineNames;
-  return {
+  return sanitizeServiceEngineFields({
     id,
     name,
     description,
@@ -220,7 +228,7 @@ const normalizeHealthOpsServiceRow = (raw: any, index: number): ServiceDefinitio
     basePriceCents: Number.isFinite(baseCostMicro) ? Math.max(0, Math.round(baseCostMicro / 10)) : undefined,
     mediumIds: Array.isArray(mediumIdsSource) ? mediumIdsSource.map((item: any) => String(item || '').trim()).filter(Boolean) : [],
     mediumNames: Array.isArray(mediumNamesSource) ? mediumNamesSource.map((item: any) => String(item || '').trim()).filter(Boolean) : [],
-  };
+  });
 };
 
 const resolveInstitutionServices = (institution: any): ServiceDefinition[] => {
@@ -403,7 +411,7 @@ export default function InstitutionServicesCatalogScreen({ navigation, route }: 
 
       setInstitutionName(institution?.name || routeName || 'Institution');
       setInstitutionType(resolvedType);
-      setServices(Array.from(mergedMap.values()));
+      setServices(sanitizeServiceList(Array.from(mergedMap.values())));
     } catch (error: any) {
       Alert.alert('Services page', error?.message || 'Unable to load institution services.');
       const fallbackType = normalizeInstitutionType(routeType);
@@ -429,12 +437,14 @@ export default function InstitutionServicesCatalogScreen({ navigation, route }: 
       if (mediumRes?.success) {
         const rows = Array.isArray(mediumRes?.data?.results) ? mediumRes.data.results : [];
         setMediums(
-          rows.map((row: any) => ({
-            id: String(row?.id || ''),
-            name: String(row?.name || ''),
-            description: String(row?.description || ''),
-            system_flag: !!row?.system_flag,
-          })),
+          rows
+            .map((row: any) => ({
+              id: String(row?.id || ''),
+              name: String(row?.name || ''),
+              description: String(row?.description || ''),
+              system_flag: !!row?.system_flag,
+            }))
+            .filter((medium: MediumRow) => !isRemovedHealthEngineName(medium.name)),
         );
       }
       const viewer = cardsRes?.data?.viewer ?? {};
@@ -533,12 +543,22 @@ export default function InstitutionServicesCatalogScreen({ navigation, route }: 
     [institutionType],
   );
 
+  const assignableMediums = useMemo(
+    () => mediums.filter((medium) => !blocksHealthServiceMapping(medium.name)),
+    [mediums],
+  );
+
+  const hasComingSoonEngines = useMemo(
+    () => mediums.some((medium) => isComingSoonHealthEngineName(medium.name)),
+    [mediums],
+  );
+
   const serviceMediumNamesByName = useMemo(() => {
     const out = new Map<string, string[]>();
     apiServices.forEach((service) => {
-      const mediumNames = (service.medium_links || [])
+      const mediumNames = filterHealthEngineNames((service.medium_links || [])
         .map((link) => String(link?.medium?.name || '').trim())
-        .filter(Boolean);
+        .filter(Boolean));
       if (mediumNames.length > 0) {
         out.set(service.name.trim().toLowerCase(), mediumNames);
       }
@@ -548,8 +568,9 @@ export default function InstitutionServicesCatalogScreen({ navigation, route }: 
 
   const persistServices = useCallback(
     async (nextServices: ServiceDefinition[]) => {
+      const cleanedServices = sanitizeServiceList(nextServices);
       const payload = {
-        services: nextServices.map((service) => ({
+        services: cleanedServices.map((service) => ({
           id: String(service.id || '').trim(),
           name: String(service.name || '').trim(),
           description: String(service.description || '').trim(),
@@ -575,7 +596,7 @@ export default function InstitutionServicesCatalogScreen({ navigation, route }: 
             .map((row: any, index: number) => normalizeServiceRow(row, index))
             .filter(Boolean) as ServiceDefinition[]
         : [];
-      setServices(normalized.length > 0 ? normalized : nextServices);
+      setServices(normalized.length > 0 ? normalized : cleanedServices);
     },
     [institutionId],
   );
@@ -657,7 +678,7 @@ export default function InstitutionServicesCatalogScreen({ navigation, route }: 
       }
       const created = createResponse?.data?.service ?? {};
       const createdServiceId = String(created?.id || `custom_${nanoid(10)}`);
-      const selectedMediumNames = mediums
+      const selectedMediumNames = assignableMediums
         .filter((medium) => newServiceMediumIds.includes(medium.id))
         .map((medium) => medium.name);
       const next: ServiceDefinition[] = [
@@ -681,14 +702,14 @@ export default function InstitutionServicesCatalogScreen({ navigation, route }: 
     } finally {
       setSaving(false);
     }
-  }, [institutionId, loadServiceCatalog, mediums, newServiceDescription, newServiceMediumIds, newServiceName, persistServices, saving, services]);
+  }, [assignableMediums, institutionId, loadServiceCatalog, newServiceDescription, newServiceMediumIds, newServiceName, persistServices, saving, services]);
 
   const resolveServiceMediumNames = useCallback(
     (service: ServiceDefinition) => {
       if (Array.isArray(service.mediumNames) && service.mediumNames.length > 0) {
-        return service.mediumNames;
+        return filterHealthEngineNames(service.mediumNames);
       }
-      return serviceMediumNamesByName.get(service.name.trim().toLowerCase()) || [];
+      return filterHealthEngineNames(serviceMediumNamesByName.get(service.name.trim().toLowerCase()) || []);
     },
     [serviceMediumNamesByName],
   );
@@ -908,54 +929,13 @@ export default function InstitutionServicesCatalogScreen({ navigation, route }: 
       }
 
       try {
-        const start = await startHealthServiceSession({
-          institutionId,
-          cardId: candidate.id,
-          serviceId: service.id,
-          date: candidate.date,
-          time: candidate.time,
-          ownerPreview: true,
-        });
-
-        if (!start?.success) {
-          if (Number(start?.status) === 402) {
-            const requiredMicro = Number(start?.data?.required_micro || 0);
-            const availableMicro = Number(start?.data?.available_micro || 0);
-            if (requiredMicro > 0 || availableMicro > 0) {
-              Alert.alert(
-                'Insufficient KISC balance',
-                `You need ${toKisc(requiredMicro)} KISC but you only have ${toKisc(availableMicro)} KISC.`,
-              );
-            } else {
-              Alert.alert('Owner preview', 'Preview could not be started.');
-            }
-            return;
-          }
-          throw new Error(start?.message || 'Unable to start owner preview.');
-        }
-
-        const sessions = Array.isArray(start?.data?.service_sessions) ? start.data.service_sessions : [];
-        const startedSession = sessions.find(
-          (item: any) =>
-            String(item?.card_id || item?.cardId || '') === String(candidate.id) &&
-            String(item?.status || '') === 'started',
-        );
-        const legacySessionId = String(startedSession?.id || '');
-        const workflowSessionId = String(start?.data?.session?.id || '').trim();
-        const appointmentBookingId = String(start?.data?.booking?.id || '').trim();
-        const sessionSource = String(start?.source || '').trim().toLowerCase() === 'health_ops' ? 'health_ops' : 'broadcasts';
-        const sessionId = workflowSessionId || legacySessionId;
         const configuredEngineFlowKeys = resolveEngineFlowKeysFromMediumNames(resolveServiceMediumNames(service));
-
         navigation.navigate('HealthServiceSession', {
           institutionId,
           institutionType,
           institutionName,
           cardId: candidate.id,
-          sessionId: sessionId || undefined,
-          workflowSessionId: workflowSessionId || undefined,
-          appointmentBookingId: appointmentBookingId || undefined,
-          sessionSource,
+          sessionSource: 'broadcasts',
           serviceId: service.id,
           serviceName: service.name,
           serviceDescription: service.description || candidate.serviceDescription,
@@ -1108,8 +1088,11 @@ export default function InstitutionServicesCatalogScreen({ navigation, route }: 
             <Text style={{ ...typography.label, color: palette.text, marginTop: spacing.sm }}>
               Select Engines (required)
             </Text>
+            <Text style={{ ...typography.caption, color: palette.subtext, marginTop: spacing.xs }}>
+              Coming-up engines stay in the catalog, but they cannot be attached to services yet.
+            </Text>
             <View style={{ marginTop: spacing.xs, flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs }}>
-              {mediums.map((medium) => {
+              {assignableMediums.map((medium) => {
                 const selected = newServiceMediumIds.includes(medium.id);
                 return (
                   <KISButton
@@ -1147,6 +1130,25 @@ export default function InstitutionServicesCatalogScreen({ navigation, route }: 
             <Text style={{ ...typography.body, color: palette.subtext, marginTop: spacing.xs }}>
               Engines are fixed system capabilities. Creating, editing, and deleting engines is disabled.
             </Text>
+            {hasComingSoonEngines ? (
+              <View
+                style={{
+                  marginTop: spacing.sm,
+                  borderRadius: spacing.md,
+                  borderWidth: 1,
+                  borderColor: '#D97706',
+                  backgroundColor: '#FEF3C7',
+                  padding: spacing.sm,
+                }}
+              >
+                <Text style={{ ...typography.label, color: '#9A3412' }}>
+                  Some health engines are still coming up.
+                </Text>
+                <Text style={{ ...typography.body, color: '#7C2D12', marginTop: 4 }}>
+                  {HEALTH_ENGINE_CONTACT_NOTICE}
+                </Text>
+              </View>
+            ) : null}
             <View style={{ marginTop: spacing.sm }}>
               <KISButton
                 title={mediumLoading ? 'Loading engines...' : 'Reload Engines'}
@@ -1179,8 +1181,14 @@ export default function InstitutionServicesCatalogScreen({ navigation, route }: 
                       {medium.name}
                     </Text>
                     <KISButton
-                      onPress={() => setSelectedEngine(medium)}
-                      title="Manage"
+                      onPress={() => {
+                        if (isComingSoonHealthEngineName(medium.name)) {
+                          Alert.alert('Coming up', HEALTH_ENGINE_CONTACT_NOTICE);
+                          return;
+                        }
+                        setSelectedEngine(medium);
+                      }}
+                      title={isComingSoonHealthEngineName(medium.name) ? 'Coming Up' : 'Manage'}
                       variant="outline"
                     />
                   </View>
@@ -1195,6 +1203,22 @@ export default function InstitutionServicesCatalogScreen({ navigation, route }: 
                     >
                       {medium.description}
                     </Text>
+                  ) : null}
+                  {isComingSoonHealthEngineName(medium.name) ? (
+                    <View
+                      style={{
+                        marginTop: spacing.sm,
+                        borderRadius: spacing.sm,
+                        borderWidth: 1,
+                        borderColor: '#DC2626',
+                        backgroundColor: '#FEE2E2',
+                        padding: spacing.sm,
+                      }}
+                    >
+                      <Text style={{ ...typography.caption, color: '#991B1B' }}>
+                        Coming up. {HEALTH_ENGINE_CONTACT_NOTICE}
+                      </Text>
+                    </View>
                   ) : null}
                 </View>
               ))}

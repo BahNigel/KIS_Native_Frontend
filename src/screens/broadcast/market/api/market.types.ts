@@ -4,6 +4,7 @@ export type MarketShop = {
   slug?: string;
   description?: string;
   image_url?: string | null;
+  employee_slots?: number;
   owner?: string;
   verified?: boolean;
   join_policy?: 'open' | 'request' | string;
@@ -22,6 +23,23 @@ export type MarketProduct = {
   image_url?: string | null;
   is_trending?: boolean;
   badge?: 'drop' | 'limited' | 'exclusive' | string;
+  category?: MarketProductCategory;
+  images?: MarketProductImage[];
+};
+
+export type MarketProductImage = {
+  id: string;
+  image_url?: string | null;
+  order?: number;
+};
+
+export type MarketProductCategory = {
+  id: string;
+  name?: string;
+  slug?: string;
+  description?: string;
+  category_type?: 'product' | 'service' | 'both';
+  shop?: string;
 };
 
 export type MarketDrop = {

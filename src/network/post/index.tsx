@@ -59,16 +59,30 @@ export const postRequest = async (
 
     const response = await apiService.post(url, payload, headers);
     const responseData = await response.json().catch(() => ({}));
+    const unwrapPayload = (payload: any) => {
+      if (
+        payload &&
+        typeof payload === 'object' &&
+        'success' in payload &&
+        payload.success === true &&
+        'data' in payload
+      ) {
+        return payload.data ?? null;
+      }
+      return payload;
+    };
+    const successMessage = options.successMessage ?? responseData?.message ?? '';
 
     if (response.ok) {
+      const payload = unwrapPayload(responseData);
       if (options.cacheKey) {
         const cType = options.cacheType || CacheTypes.DEFAULT;
-        await setCache(cType, options.cacheKey, responseData);
+        await setCache(cType, options.cacheKey, payload);
       }
       return {
         success: true,
-        data: responseData,
-        message: options.successMessage || '',
+        data: payload,
+        message: successMessage,
       };
     }
 

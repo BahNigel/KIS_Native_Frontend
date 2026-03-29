@@ -42,10 +42,23 @@ export type HealthFormState = {
   employees: string;
 };
 
+export type ShopBusinessType = 'products' | 'services' | 'both';
+
+export type ShopStatus = 'draft' | 'active' | 'paused';
+
 export type MarketFormState = {
   id?: string;
   name: string;
-  products: string;
+  description: string;
+  employeeSlots: string;
+  status: ShopStatus;
+  featuredImage: string;
+  featuredImageFile?: {
+    uri: string;
+    name: string;
+    type: string;
+  } | null;
+  slug?: string;
 };
 
 export type EducationFormState = {

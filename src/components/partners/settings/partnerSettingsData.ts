@@ -95,7 +95,7 @@ export const PARTNER_SETTINGS_SECTIONS: PartnerSettingsSection[] = [
       {
         key: 'org_apps_bible',
         title: 'Bible app',
-        description: 'Bible experience maintained by CC for partner accounts.',
+        description: 'Bible experience maintained by KCNI for partner accounts.',
         access: admins,
       },
     ],
@@ -297,6 +297,19 @@ export const PARTNER_SETTINGS_SECTIONS: PartnerSettingsSection[] = [
       { key: 'security_center', title: 'Security Center', description: 'Security policies and incident logs.', access: admins },
       { key: 'data_exports', title: 'Data Exports', description: 'Export reports for audits.', access: admins },
       { key: 'workspace_branding', title: 'Workspace Branding', description: 'Theme and branding controls.', access: admins },
+    ],
+  },
+  {
+    key: 'kcni_complaints',
+    title: 'Complaints & disputes',
+    description: 'KCNI reviews service booking complaints and escrow releases.',
+    features: [
+      {
+        key: 'complaints',
+        title: 'Complaints',
+        description: 'Review KCNI-managed booking disputes and resolve funds.',
+        access: admins,
+      },
     ],
   },
 ];

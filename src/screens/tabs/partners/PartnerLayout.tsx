@@ -66,13 +66,14 @@ type Props = {
     integrationsPanel: any;
     automationPanel: any;
     reportsPanel: any;
-  governancePanel: any;
-  featurePanel: any;
-  orgProfilePanel: any;
-  coursesPanel: any;
-  linksPanel: any;
-  appsPanel: any;
-};
+    governancePanel: any;
+    featurePanel: any;
+    orgProfilePanel: any;
+    coursesPanel: any;
+    linksPanel: any;
+    complaintsPanel: any;
+    appsPanel: any;
+  };
   onLaunchOrganizationApp: (app: PartnerOrganizationApp) => void;
   onOpenOrganizationApps: () => void;
 };
@@ -229,6 +230,7 @@ export default function PartnerLayout({
         }}
         coursesPanel={panels.coursesPanel}
         linksPanel={panels.linksPanel}
+        complaintsPanel={panels.complaintsPanel}
       />
     </View>
   );

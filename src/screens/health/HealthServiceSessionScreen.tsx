@@ -16,14 +16,6 @@ import LinearGradient from 'react-native-linear-gradient';
 import KISButton from '@/constants/KISButton';
 import { KISIcon, type KISIconName } from '@/constants/kisIcons';
 import {
-  cancelAppointmentBooking,
-  fetchAppointmentBooking,
-  fetchAppointmentSlots,
-  getAppointmentIcsUrl,
-  rescheduleAppointmentBooking,
-  startHealthServiceSession,
-} from '@/services/healthOpsAppointmentService';
-import {
   endHealthOpsAdmissionSession,
   endHealthOpsEmergencySession,
   fetchHealthOpsAdmissionSession,
@@ -476,7 +468,6 @@ export default function HealthServiceSessionScreen({ route, navigation }: Props)
     cardId,
     sessionId,
     workflowSessionId,
-    appointmentBookingId,
     sessionSource,
     serviceId,
     serviceName,
@@ -497,19 +488,16 @@ export default function HealthServiceSessionScreen({ route, navigation }: Props)
   const typography = HEALTH_THEME_TYPOGRAPHY;
 
   const initialSessionSource: 'broadcasts' | 'health_ops' = sessionSource === 'health_ops' ? 'health_ops' : 'broadcasts';
-  const initialBookingId = String(appointmentBookingId || '').trim();
   // `sessionId` can be a legacy broadcast session id (e.g. `session-...`), not a health-ops workflow id.
   // Only trust explicit `workflowSessionId` for health-ops runtime calls.
   const initialWorkflowSessionId = String(workflowSessionId || '').trim();
 
   const [resolvedSessionSource, setResolvedSessionSource] = useState<'broadcasts' | 'health_ops'>(initialSessionSource);
-  const [resolvedBookingId, setResolvedBookingId] = useState(initialBookingId);
   const [resolvedWorkflowSessionId, setResolvedWorkflowSessionId] = useState(initialWorkflowSessionId);
   const [workflowContextLoading, setWorkflowContextLoading] = useState(false);
   const [workflowContextError, setWorkflowContextError] = useState('');
   const [workflowContextResolvedOnce, setWorkflowContextResolvedOnce] = useState(false);
 
-  const cleanBookingId = String(resolvedBookingId || '').trim();
   const cleanServiceId = String(serviceId || '').trim();
   const cleanWorkflowSessionId = String(resolvedWorkflowSessionId || '').trim();
 
@@ -517,9 +505,6 @@ export default function HealthServiceSessionScreen({ route, navigation }: Props)
   const [workflowRuntimeLoading, setWorkflowRuntimeLoading] = useState(false);
   const [workflowRuntime, setWorkflowRuntime] = useState<any | null>(null);
   const [viewerWalletMicro, setViewerWalletMicro] = useState<number | null>(null);
-  const [appointmentLoading, setAppointmentLoading] = useState(false);
-  const [appointmentError, setAppointmentError] = useState('');
-  const [appointmentBooking, setAppointmentBooking] = useState<any | null>(null);
   const [videoLoading, setVideoLoading] = useState(false);
   const [videoBusy, setVideoBusy] = useState(false);
   const [videoError, setVideoError] = useState('');
@@ -610,11 +595,7 @@ export default function HealthServiceSessionScreen({ route, navigation }: Props)
   const isHealthOpsSession =
     resolvedSessionSource === 'health_ops' ||
     !!cleanWorkflowSessionId ||
-    !!cleanBookingId ||
-    !!appointmentBooking ||
     hasWorkflowRuntimeEngines;
-  const appointmentStatus = String(appointmentBooking?.status || '').trim().toLowerCase();
-  const appointmentCanMutate = appointmentStatus === 'booked';
   const videoSessionId = String(videoSession?.id || '').trim();
   const videoStatus = String(videoSession?.status || '').trim().toLowerCase();
   const videoStepState =
@@ -860,17 +841,6 @@ export default function HealthServiceSessionScreen({ route, navigation }: Props)
     [basePriceCents, dateKey, memberPriceCents, statusLabel, timeValue],
   );
 
-  const bookingRows = useMemo(
-    () =>
-      [
-        appointmentBooking?.slot_start ? `Start: ${toDateTimeLabel(appointmentBooking.slot_start)}` : '',
-        appointmentBooking?.slot_end ? `End: ${toDateTimeLabel(appointmentBooking.slot_end)}` : '',
-        appointmentBooking?.timezone ? `Timezone: ${String(appointmentBooking.timezone)}` : '',
-        appointmentStatus ? `Booking status: ${appointmentStatus.toUpperCase()}` : '',
-      ].filter(Boolean),
-    [appointmentBooking, appointmentStatus],
-  );
-
   const resolveWorkflowContext = useCallback(
     async ({ quiet = false }: { quiet?: boolean } = {}) => {
       if (cleanWorkflowSessionId || !cleanServiceId) return;
@@ -889,22 +859,13 @@ export default function HealthServiceSessionScreen({ route, navigation }: Props)
         }
 
         const nextWorkflowSessionId = String(start?.data?.session?.id || '').trim();
-        const nextBookingId = String(start?.data?.booking?.id || '').trim();
         const nextSource =
-          String(start?.source || '').trim().toLowerCase() === 'health_ops' || !!nextWorkflowSessionId || !!nextBookingId
+          String(start?.source || '').trim().toLowerCase() === 'health_ops' || !!nextWorkflowSessionId
             ? 'health_ops'
             : 'broadcasts';
-        const booking = start?.data?.booking;
 
         if (nextWorkflowSessionId) {
           setResolvedWorkflowSessionId(nextWorkflowSessionId);
-        }
-        if (nextBookingId) {
-          setResolvedBookingId(nextBookingId);
-        }
-        if (booking && typeof booking === 'object') {
-          setAppointmentBooking(booking);
-          setAppointmentError('');
         }
         setResolvedSessionSource(nextSource);
         setWorkflowContextError('');
@@ -1059,39 +1020,6 @@ export default function HealthServiceSessionScreen({ route, navigation }: Props)
     },
     [loadVideoItemComments, loadVideoItems, videoCommentDraftByItem, videoEngineSessionId],
   );
-
-  const loadAppointmentBooking = useCallback(
-    async ({ quiet = false }: { quiet?: boolean } = {}) => {
-      if (!cleanBookingId) return;
-      setAppointmentLoading(true);
-      try {
-        const response = await fetchAppointmentBooking(cleanBookingId);
-        if (!response?.success) {
-          throw new Error(response?.message || 'Unable to load appointment booking.');
-        }
-        const booking = response?.data?.booking || response?.booking;
-        if (!booking || typeof booking !== 'object') {
-          throw new Error('Appointment booking payload is missing.');
-        }
-        setAppointmentBooking(booking);
-        setAppointmentError('');
-      } catch (error: any) {
-        const message = error?.message || 'Unable to load appointment booking.';
-        setAppointmentError(message);
-        if (!quiet) {
-          Alert.alert('Appointment', message);
-        }
-      } finally {
-        setAppointmentLoading(false);
-      }
-    },
-    [cleanBookingId],
-  );
-
-  useEffect(() => {
-    if (!isHealthOpsSession || !cleanBookingId) return;
-    loadAppointmentBooking({ quiet: true }).catch(() => undefined);
-  }, [cleanBookingId, isHealthOpsSession, loadAppointmentBooking]);
 
   const bootstrapVideoSession = useCallback(
     async ({ quiet = false }: { quiet?: boolean } = {}) => {
@@ -3006,89 +2934,6 @@ export default function HealthServiceSessionScreen({ route, navigation }: Props)
     },
     [reminderSessionId],
   );
-
-  const openAppointmentICS = useCallback(async () => {
-    if (!cleanBookingId) {
-      Alert.alert('Appointment', 'Booking reference is unavailable.');
-      return;
-    }
-    try {
-      const url = getAppointmentIcsUrl(cleanBookingId);
-      const canOpen = await Linking.canOpenURL(url).catch(() => false);
-      if (!canOpen) {
-        throw new Error('Calendar export is unavailable on this device.');
-      }
-      await Linking.openURL(url);
-    } catch (error: any) {
-      Alert.alert('Appointment', error?.message || 'Unable to open calendar export.');
-    }
-  }, [cleanBookingId]);
-
-  const rescheduleToNextAvailable = useCallback(async () => {
-    if (!cleanBookingId) {
-      Alert.alert('Appointment', 'Booking reference is unavailable.');
-      return;
-    }
-    if (!cleanServiceId) {
-      Alert.alert('Appointment', 'Service reference is unavailable.');
-      return;
-    }
-
-    setBusy(true);
-    try {
-      const currentStart = String(appointmentBooking?.slot_start || '').trim();
-      const anchorRaw = currentStart || new Date().toISOString();
-      const anchorParsed = new Date(anchorRaw);
-      const anchor = Number.isNaN(anchorParsed.getTime()) ? new Date() : anchorParsed;
-      const fromDate = new Date(anchor.getFullYear(), anchor.getMonth(), anchor.getDate());
-      fromDate.setDate(fromDate.getDate() + 1);
-      const toDate = new Date(fromDate.getFullYear(), fromDate.getMonth(), fromDate.getDate());
-      toDate.setDate(toDate.getDate() + 14);
-
-      const slots = await fetchAppointmentSlots(cleanServiceId, toIsoDateKey(fromDate), toIsoDateKey(toDate));
-      if (!slots?.success) {
-        throw new Error(slots?.message || 'Unable to load available slots.');
-      }
-
-      const days = Array.isArray(slots?.data?.days) ? slots.data.days : [];
-      let nextSlot: { iso: string; label: string } | null = null;
-
-      for (const day of days) {
-        const daySlots = Array.isArray(day?.slots) ? day.slots : [];
-        for (const slot of daySlots) {
-          if (!slot?.is_available) continue;
-          const slotStartIso = String(slot?.slot_start_utc || slot?.slot_start || '').trim();
-          if (!slotStartIso || slotStartIso === currentStart) continue;
-          nextSlot = {
-            iso: slotStartIso,
-            label: String(slot?.label || '').trim() || toDateTimeLabel(slotStartIso),
-          };
-          break;
-        }
-        if (nextSlot) break;
-      }
-
-      if (!nextSlot) {
-        Alert.alert('Appointment', 'No next available slot was found in the next 14 days.');
-        return;
-      }
-
-      const response = await rescheduleAppointmentBooking(cleanBookingId, nextSlot.iso);
-      if (!response?.success) {
-        throw new Error(response?.message || 'Unable to reschedule appointment.');
-      }
-      const booking = response?.data?.booking || response?.booking;
-      if (booking && typeof booking === 'object') {
-        setAppointmentBooking(booking);
-      }
-      setAppointmentError('');
-      Alert.alert('Appointment rescheduled', `New slot: ${nextSlot.label}`);
-    } catch (error: any) {
-      Alert.alert('Appointment', error?.message || 'Unable to reschedule appointment.');
-    } finally {
-      setBusy(false);
-    }
-  }, [appointmentBooking?.slot_start, cleanBookingId, cleanServiceId]);
 
   const cancelBooking = useCallback(async () => {
     if (!cleanBookingId) {

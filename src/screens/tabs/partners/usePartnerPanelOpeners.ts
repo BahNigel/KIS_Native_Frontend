@@ -7,6 +7,7 @@ type PanelOpeners = {
   openAutomation: () => void;
   openReports: () => void;
   openGovernance: () => void;
+  openComplaints: () => void;
 };
 
 export const usePartnerPanelOpeners = ({
@@ -18,6 +19,7 @@ export const usePartnerPanelOpeners = ({
   openAutomation,
   openReports,
   openGovernance,
+  openComplaints,
 }: PanelOpeners) => {
   return {
     handleOpenRecruitment: () => {
@@ -47,6 +49,10 @@ export const usePartnerPanelOpeners = ({
     handleOpenGovernance: () => {
       closePanel();
       openGovernance();
+    },
+    handleOpenComplaints: () => {
+      closePanel();
+      openComplaints();
     },
   };
 };

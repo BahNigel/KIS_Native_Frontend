@@ -216,7 +216,7 @@ export default function BroadcastFeedCard({
   );
 
   return (
-    <View style={[styles.card, { backgroundColor: palette.card, borderColor: palette.divider }]}>
+    <View style={[styles.card, { backgroundColor: palette.card, borderColor: palette.primaryStrong }]}>
       {/* ───── Header (avatar + source + time + menu) ───── */}
       <View style={styles.headerRow}>
         <Image
@@ -464,7 +464,7 @@ export default function BroadcastFeedCard({
 const makeStyles = (_tokens: any) =>
   StyleSheet.create({
     card: {
-      borderWidth: 2,
+      borderWidth: 1,
       borderRadius: 26,
       padding: 16,
       gap: 10,

@@ -502,7 +502,7 @@ export default function AdmissionBedManager({ institutionId, engineKey }: Props)
             </View>
 
             {room.expanded ? (
-              <View style={{ marginTop: spacing.md }}>
+              <View style={{ marginTop: -130 }}>
                 {room.image ? (
                   <Image
                     source={{ uri: room.image }}

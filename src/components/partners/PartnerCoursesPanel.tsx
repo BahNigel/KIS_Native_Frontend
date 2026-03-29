@@ -143,7 +143,9 @@ export default function PartnerCoursesPanel({
   const [bundleItemForm, setBundleItemForm] = useState(emptyBundleItem);
   const [couponForm, setCouponForm] = useState(emptyCoupon);
   const [seatPoolForm, setSeatPoolForm] = useState(emptySeatPool);
-  const isCcPartner = (partnerName ?? '').toLowerCase().includes('christian community');
+  const normalizedPartnerName = (partnerName ?? '').toLowerCase();
+  const isKcniPartner =
+    normalizedPartnerName.includes('kcni') || normalizedPartnerName.includes('christian community');
 
   const backdropOpacity = panelTranslateX.interpolate({
     inputRange: [0, panelWidth],
@@ -167,10 +169,10 @@ export default function PartnerCoursesPanel({
   }, [isOpen, loadCourses]);
 
   useEffect(() => {
-    if (!isCcPartner && courseForm.is_bible_course) {
+    if (!isKcniPartner && courseForm.is_bible_course) {
       setCourseForm((prev) => ({ ...prev, is_bible_course: false }));
     }
-  }, [isCcPartner, courseForm.is_bible_course]);
+  }, [isKcniPartner, courseForm.is_bible_course]);
 
   const createCourse = async () => {
     if (!partnerId) return;
@@ -185,7 +187,7 @@ export default function PartnerCoursesPanel({
         title: courseForm.title,
         subtitle: courseForm.subtitle,
         description: courseForm.description,
-        is_bible_course: isCcPartner ? courseForm.is_bible_course : false,
+        is_bible_course: isKcniPartner ? courseForm.is_bible_course : false,
         is_free: courseForm.is_free,
       },
       { errorMessage: 'Unable to create course.' },
@@ -539,20 +541,20 @@ export default function PartnerCoursesPanel({
               style={[styles.settingsTextInput, { borderColor: palette.divider, color: palette.text, minHeight: 80 }]}
             />
             <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
-              {isCcPartner ? (
-                <KISButton
-                  title={courseForm.is_bible_course ? 'Bible Course' : 'Partner Course'}
-                  size="sm"
-                  variant="outline"
-                  onPress={() => setCourseForm((prev) => ({ ...prev, is_bible_course: !prev.is_bible_course }))}
-                />
-              ) : (
-                <View style={{ justifyContent: 'center' }}>
-                  <Text style={{ color: palette.subtext, fontSize: 12 }}>
-                    Bible courses are CC only.
-                  </Text>
-                </View>
-              )}
+            {isKcniPartner ? (
+              <KISButton
+                title={courseForm.is_bible_course ? 'Bible Course' : 'Partner Course'}
+                size="sm"
+                variant="outline"
+                onPress={() => setCourseForm((prev) => ({ ...prev, is_bible_course: !prev.is_bible_course }))}
+              />
+            ) : (
+              <View style={{ justifyContent: 'center' }}>
+                <Text style={{ color: palette.subtext, fontSize: 12 }}>
+                    Bible courses are KCNI only.
+                </Text>
+              </View>
+            )}
               <KISButton
                 title={courseForm.is_free ? 'Free' : 'Paid'}
                 size="sm"

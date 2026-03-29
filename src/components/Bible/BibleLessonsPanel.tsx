@@ -33,7 +33,7 @@ export default function BibleLessonsPanel() {
   const [partnerCourses, setPartnerCourses] = useState<Course[]>([]);
   const [selectedCourse, setSelectedCourse] = useState<Course | null>(null);
   const [detailVisible, setDetailVisible] = useState(false);
-  const hasCcPartnerLessons = partnerCourses.length > 0;
+  const hasKcniPartnerLessons = partnerCourses.length > 0;
 
   const normalizeCourse = useCallback((course: Course) => ({
     ...course,
@@ -188,7 +188,7 @@ export default function BibleLessonsPanel() {
     <BibleSectionCard>
       <Text style={[styles.title, { color: palette.text }]}>Bible lessons & courses</Text>
       <Text style={{ color: palette.subtext, marginBottom: 8 }}>
-        Bible courses are available only from the CC partner. Other partners can publish general lessons.
+        Bible courses are available only from the KCNI partner. Other partners can publish general lessons.
       </Text>
 
       <View style={styles.sectionHeader}>
@@ -199,14 +199,14 @@ export default function BibleLessonsPanel() {
         {bibleCourses.map(renderCourse)}
       </View>
 
-      {hasCcPartnerLessons ? (
+      {hasKcniPartnerLessons ? (
         <>
-          <View style={[styles.sectionHeader, { marginTop: 16 }]}>
-            <Text style={[styles.sectionTitle, { color: palette.text }]}>CC partner lessons</Text>
+          <View style={[styles.sectionHeader, { marginTop: 16 }]}> 
+            <Text style={[styles.sectionTitle, { color: palette.text }]}>KCNI partner lessons</Text>
             <Text style={{ color: palette.subtext, fontSize: 12 }}>{partnerCourses.length} courses</Text>
           </View>
           <Text style={{ color: palette.subtext }}>
-            Member-only lessons for CC partners. Paid lessons show pricing.
+            Member-only lessons for KCNI partners. Paid lessons show pricing.
           </Text>
           <View style={{ gap: 12 }}>
             {partnerCourses.map(renderCourse)}
@@ -214,7 +214,7 @@ export default function BibleLessonsPanel() {
         </>
       ) : (
         <Text style={{ color: palette.subtext, marginTop: 12 }}>
-          Join the CC partner to access CC lessons.
+          Join the KCNI partner to access KCNI lessons.
         </Text>
       )}
 

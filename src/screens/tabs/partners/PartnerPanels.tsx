@@ -14,6 +14,7 @@ import PartnerReportsPanel from '@/components/partners/PartnerReportsPanel';
 import PartnerSettingsPanel from '@/components/partners/settings/PartnerSettingsPanel';
 import PartnerLinksPanel from '@/components/partners/PartnerLinksPanel';
 import PartnerCoursesPanel from '@/components/partners/PartnerCoursesPanel';
+import PartnerComplaintsPanel from '@/components/partners/PartnerComplaintsPanel';
 import type { PartnerProfileLink } from '@/screens/broadcast/education/api/education.models';
 import type { PartnerOrganizationApp } from '@/screens/tabs/partners/hooks/usePartnerOrganizationApps';
 
@@ -35,6 +36,7 @@ type Props = {
     onOpenGovernance: () => void;
     onOpenFeature: (feature: any) => void;
     onOpenOrgProfile: () => void;
+    onOpenComplaints: () => void;
   };
   createPanel: {
     isOpen: boolean;
@@ -139,6 +141,12 @@ type Props = {
     onSetRole: (profileKey: PartnerProfileLink['profileKey'], role: PartnerProfileLink['role']) => void;
     onRefresh: () => void;
   };
+  complaintsPanel: {
+    isOpen: boolean;
+    panelWidth: number;
+    panelTranslateX: any;
+    onClose: () => void;
+  };
 };
 
 export default function PartnerPanels({
@@ -158,6 +166,7 @@ export default function PartnerPanels({
   appsPanel,
   coursesPanel,
   linksPanel,
+  complaintsPanel,
 }: Props) {
   return (
     <>
@@ -177,6 +186,7 @@ export default function PartnerPanels({
         onOpenGovernance={settingsPanel.onOpenGovernance}
         onOpenFeature={settingsPanel.onOpenFeature}
         onOpenOrgProfile={settingsPanel.onOpenOrgProfile}
+        onOpenComplaints={settingsPanel.onOpenComplaints}
       />
 
       <PartnerCreatePanel
@@ -293,19 +303,25 @@ export default function PartnerPanels({
           partnerName={coursesPanel.partnerName}
           onClose={coursesPanel.onClose}
         />
-        <PartnerLinksPanel
-          isOpen={linksPanel.isOpen}
-          panelWidth={linksPanel.panelWidth}
-          panelTranslateX={linksPanel.panelTranslateX}
-          partnerId={selectedPartnerId}
-          links={linksPanel.links}
-          loading={linksPanel.loading}
-          error={linksPanel.error}
-          onClose={linksPanel.onClose}
-          onToggleLink={linksPanel.onToggleLink}
-          onSetRole={linksPanel.onSetRole}
-          onRefresh={linksPanel.onRefresh}
-        />
-      </>
-    );
-  }
+      <PartnerLinksPanel
+        isOpen={linksPanel.isOpen}
+        panelWidth={linksPanel.panelWidth}
+        panelTranslateX={linksPanel.panelTranslateX}
+        partnerId={selectedPartnerId}
+        links={linksPanel.links}
+        loading={linksPanel.loading}
+        error={linksPanel.error}
+        onClose={linksPanel.onClose}
+        onToggleLink={linksPanel.onToggleLink}
+        onSetRole={linksPanel.onSetRole}
+        onRefresh={linksPanel.onRefresh}
+      />
+      <PartnerComplaintsPanel
+        isOpen={complaintsPanel.isOpen}
+        panelWidth={complaintsPanel.panelWidth}
+        panelTranslateX={complaintsPanel.panelTranslateX}
+        onClose={complaintsPanel.onClose}
+      />
+    </>
+  );
+}

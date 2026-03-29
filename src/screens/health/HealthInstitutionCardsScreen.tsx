@@ -28,12 +28,16 @@ import {
   fetchInstitutionProfileEditor,
   fetchInstitutionLandingPage,
 } from '@/services/healthDashboardService';
-import { startHealthServiceSession } from '@/services/healthOpsAppointmentService';
 import { HEALTH_DASHBOARD_DEFAULT_SERVICES } from '@/features/health-dashboard/defaults';
 import {
   HEALTH_DASHBOARD_INSTITUTION_TYPES,
   type HealthDashboardInstitutionType,
 } from '@/features/health-dashboard/models';
+import {
+  filterHealthEngineNames,
+  sanitizeServiceEngineFields,
+  sanitizeServiceList,
+} from '@/features/health-dashboard/serviceCatalogPolicy';
 import {
   normalizeBookingEngineKey,
   resolveBookingEnginesFromKeys,
@@ -129,8 +133,6 @@ const normalizeStringList = (value: unknown): string[] => {
 const extractServiceEngineTokensFromRaw = (raw: any): string[] => {
   if (!raw || typeof raw !== 'object') return [];
   const tokens: string[] = [
-    ...normalizeStringList(raw?.availableEngines),
-    ...normalizeStringList(raw?.available_engines),
     ...normalizeStringList(raw?.engineNames),
     ...normalizeStringList(raw?.engine_names),
     ...normalizeStringList(raw?.mediumNames),
@@ -148,7 +150,7 @@ const extractServiceEngineTokensFromRaw = (raw: any): string[] => {
       if (mediumName) tokens.push(mediumName);
     });
   }
-  return Array.from(new Set(tokens));
+  return Array.from(new Set(filterHealthEngineNames(tokens)));
 };
 
 const resolveServiceEngineDescriptors = (service: ServiceDefinition): BookingEngineDescriptor[] => {
@@ -251,7 +253,7 @@ const normalizeService = (raw: any, index: number): ServiceDefinition | null => 
       ...normalizeStringList(raw?.engine_names),
     ]),
   );
-  return {
+  return sanitizeServiceEngineFields({
     id,
     name,
     description,
@@ -259,7 +261,7 @@ const normalizeService = (raw: any, index: number): ServiceDefinition | null => 
     basePriceCents: typeof cents === 'number' && cents >= 0 ? cents : undefined,
     mediumNames,
     availableEngines,
-  };
+  });
 };
 
 const resolveInstitutionServices = (institution: any): ServiceDefinition[] => {
@@ -285,7 +287,7 @@ const resolveInstitutionServices = (institution: any): ServiceDefinition[] => {
     }
     return 'clinic' as HealthDashboardInstitutionType;
   })();
-  return [...(HEALTH_DASHBOARD_DEFAULT_SERVICES[normalizedType] || [])];
+  return sanitizeServiceList([...(HEALTH_DASHBOARD_DEFAULT_SERVICES[normalizedType] || [])]);
 };
 
 const resolveAvailability = (institution: any) =>
@@ -708,14 +710,8 @@ const mergeCardRows = (
     const key = `${dateKey}:${serviceId}`;
     const accessMode: 'slots' | 'all_day' = row.accessMode === 'all_day' ? 'all_day' : 'slots';
     const timeOptions = accessMode === 'slots' ? getCardTimeOptions(row) : [];
-    const normalizedRow: HealthCardRow = {
-      ...row,
-      id: String(row?.id || `${key}:${index}`).trim() || `${key}:${index}`,
-      dateKey,
-      accessMode,
-      timeOptions,
-      timeValue: accessMode === 'all_day' ? 'All day' : timeOptions.join(', '),
-      service: {
+    const normalizedService =
+      sanitizeServiceEngineFields({
         id: serviceId,
         name: String(row?.service?.name || '').trim() || prettifyServiceId(serviceId) || 'Health Service',
         description: String(row?.service?.description || '').trim(),
@@ -725,7 +721,23 @@ const mergeCardRows = (
           : undefined,
         mediumNames: normalizeStringList(row?.service?.mediumNames),
         availableEngines: normalizeStringList(row?.service?.availableEngines),
-      },
+      }) || {
+        id: serviceId,
+        name: String(row?.service?.name || '').trim() || prettifyServiceId(serviceId) || 'Health Service',
+        description: String(row?.service?.description || '').trim(),
+        active: row?.service?.active !== false,
+        basePriceCents: Number.isFinite(Number(row?.service?.basePriceCents))
+          ? Number(row?.service?.basePriceCents)
+          : undefined,
+      };
+    const normalizedRow: HealthCardRow = {
+      ...row,
+      id: String(row?.id || `${key}:${index}`).trim() || `${key}:${index}`,
+      dateKey,
+      accessMode,
+      timeOptions,
+      timeValue: accessMode === 'all_day' ? 'All day' : timeOptions.join(', '),
+      service: normalizedService,
     };
 
     const existing = map.get(key);
@@ -771,16 +783,21 @@ const mergeCardRows = (
         ...normalizeStringList(normalizedRow.service?.availableEngines),
       ]),
     );
-
-    map.set(key, {
-      ...existing,
-      ...(source === 'secondary' && normalizedRow.id ? { id: normalizedRow.id } : {}),
-      service: {
+    const mergedService =
+      sanitizeServiceEngineFields({
         ...(shouldUseSecondaryService ? normalizedRow.service : existing.service),
         basePriceCents: mergedBasePrice,
         mediumNames: mergedMediumNames,
         availableEngines: mergedAvailableEngines,
-      },
+      }) || {
+        ...(shouldUseSecondaryService ? normalizedRow.service : existing.service),
+        basePriceCents: mergedBasePrice,
+      };
+
+    map.set(key, {
+      ...existing,
+      ...(source === 'secondary' && normalizedRow.id ? { id: normalizedRow.id } : {}),
+      service: mergedService,
       isBroadcasted: !!existing.isBroadcasted || !!normalizedRow.isBroadcasted,
       accessMode: mergedAccessMode,
       timeOptions: mergedTimes,
@@ -1035,7 +1052,8 @@ export default function HealthInstitutionCardsScreen({ navigation, route }: Prop
       const apiBroadcastedCardIds = collectBroadcastedCardIds(payload);
       const rawCards: HealthCardRow[] = apiCards.map((item: any, index: number) => {
         const service =
-          normalizeService(item?.service, index) || {
+          normalizeService(item?.service, index) ||
+          sanitizeServiceEngineFields({
             id: String(item?.service?.id || `service_${index + 1}`),
             name: String(item?.service?.name || 'Service'),
             description: String(item?.service?.description || ''),
@@ -1051,6 +1069,14 @@ export default function HealthInstitutionCardsScreen({ navigation, route }: Prop
               ...normalizeStringList(item?.service?.availableEngines),
               ...normalizeStringList(item?.service?.available_engines),
             ],
+          }) || {
+            id: String(item?.service?.id || `service_${index + 1}`),
+            name: String(item?.service?.name || 'Service'),
+            description: String(item?.service?.description || ''),
+            active: true,
+            basePriceCents: Number.isFinite(Number(item?.service?.basePriceCents))
+              ? Number(item.service.basePriceCents)
+              : undefined,
           };
         const dateKey = String(item?.date || item?.dateKey || '');
         const cardId = String(item?.id || `${dateKey}:${service.id}:${index}`);
@@ -1399,46 +1425,7 @@ export default function HealthInstitutionCardsScreen({ navigation, route }: Prop
           : explicitFlowKeys.length > 0
             ? explicitFlowKeys
             : resolveConfiguredEngineFlowKeys(inferredEnginesForFallback);
-      const start = await startHealthServiceSession({
-        institutionId,
-        cardId: card.id,
-        serviceId,
-        date: card.dateKey,
-        time: bookingTime,
-      });
-      if (!start?.success) {
-        if (Number(start?.status) === 402) {
-          const requiredMicro = Number(start?.data?.required_micro || 0);
-          const availableMicro = Number(start?.data?.available_micro || 0);
-          if (requiredMicro > 0 || availableMicro > 0) {
-            Alert.alert(
-              'Insufficient KISC balance',
-              `You need ${toKisc(requiredMicro)} KISC but you only have ${toKisc(availableMicro)} KISC.`,
-            );
-          } else {
-            Alert.alert('Insufficient KISC balance', 'Your KIS Coin balance is too low for this service.');
-          }
-          return;
-        }
-        throw new Error(start?.message || 'Unable to start this session.');
-      }
-
       const sessions = Array.isArray(start?.data?.service_sessions) ? start.data.service_sessions : [];
-      const startedSession = sessions.find(
-        (item: any) =>
-          cardIdsMatchForSession(item?.card_id || item?.cardId, card.id) &&
-          String(item?.status || '') === 'started',
-      ) || sessions.find(
-        (item: any) =>
-          String(item?.service_id || item?.serviceId || '').trim() === String(card.service.id || '').trim() &&
-          String(item?.status || '') === 'started',
-      );
-      const legacySessionId = String(startedSession?.id || '');
-      const workflowSessionId = String(start?.data?.session?.id || '').trim();
-      const appointmentBookingId = String(start?.data?.booking?.id || '').trim();
-      const sessionSource = String(start?.source || '').trim().toLowerCase() === 'health_ops' ? 'health_ops' : 'broadcasts';
-      const sessionId = workflowSessionId || legacySessionId;
-
       const memberPriceCents = Number.isFinite(Number(card.service.basePriceCents))
         ? Math.round((Number(card.service.basePriceCents) * (100 - membershipDiscountPercent)) / 100)
         : undefined;
@@ -1447,10 +1434,7 @@ export default function HealthInstitutionCardsScreen({ navigation, route }: Prop
         institutionType: route.params.institutionType,
         institutionName: institution?.name || institutionName,
         cardId: card.id,
-        sessionId: sessionId || undefined,
-        workflowSessionId: workflowSessionId || undefined,
-        appointmentBookingId: appointmentBookingId || undefined,
-        sessionSource,
+        sessionSource: 'broadcasts',
         serviceId,
         serviceName: card.service.name,
         serviceDescription: card.service.description,

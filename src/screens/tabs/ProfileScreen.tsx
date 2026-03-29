@@ -4,6 +4,7 @@ import {
   Alert,
   Animated,
   DeviceEventEmitter,
+  Image,
   Linking,
   Pressable,
   ScrollView,
@@ -11,7 +12,7 @@ import {
   View,
 } from 'react-native';
 import { useKISTheme } from '@/theme/useTheme';
-import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
+import { useFocusEffect, useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import KISButton from '@/constants/KISButton';
@@ -22,8 +23,11 @@ import { useAuth } from '../../../App';
 import { launchImageLibrary, Asset } from 'react-native-image-picker';
 import { profileLayout, styles } from './profile/profile.styles';
 import { useProfileController } from './profile/useProfileController';
-import { getRequest } from '@/network/get';
 import ROUTES from '@/network';
+import { getRequest } from '@/network/get';
+import { postRequest } from '@/network/post';
+import { patchRequest } from '@/network/patch';
+import { deleteRequest } from '@/network/delete';
 import {
   deleteInAppNotification,
   fetchInAppNotifications,
@@ -49,6 +53,34 @@ import type {
   MainTabsParamList,
   RootStackParamList,
 } from '@/navigation/types';
+
+const ESCROW_PENDING_STATUSES = new Set(['pending', 'awaiting_satisfaction', 'dispute']);
+const CANCELLED_BOOKING_STATUSES = new Set(['cancelled', 'canceled', 'rejected', 'void']);
+
+const getBookingServiceId = (booking: any) => {
+  if (!booking) return null;
+  return (
+    booking?.service_details?.id ||
+    (booking?.service_id ? String(booking.service_id) : null) ||
+    (booking?.service && typeof booking.service.id === 'string' ? booking.service.id : null) ||
+    (booking?.service ? String(booking.service) : null) ||
+    null
+  );
+};
+
+const dedupeBookingsByService = (bookings: any[]) => {
+  const seen = new Map<string, any>();
+  bookings.forEach((booking) => {
+    if (!booking) return;
+    const fallbackId = booking?.id ?? booking?.booking_id ?? booking?.reference ?? '';
+    const serviceId = getBookingServiceId(booking) || (fallbackId ? String(fallbackId) : '');
+    if (!serviceId) return;
+    if (!seen.has(serviceId)) {
+      seen.set(serviceId, booking);
+    }
+  });
+  return Array.from(seen.values());
+};
 import {
   BROADCAST_PROFILE_DEFINITIONS,
   EditItemModal,
@@ -67,10 +99,25 @@ import type {
   EducationFormState,
   FeedMediaType,
   FeedMediaOptions,
-  MarketFormState,
   HealthInstitutionType,
+  MarketFormState,
+  ShopStatus,
 } from './profile-screen';
 import { HealthManagementModal } from './profile-screen/HealthManagementModal';
+import ShopEditorDrawer from '@/screens/market/ShopEditorDrawer';
+import { resolveShopImageUri } from '@/utils/shopAssets';
+
+const DEFAULT_MARKET_FORM: MarketFormState = {
+  name: '',
+  description: '',
+  employeeSlots: '1',
+  status: 'active',
+  featuredImage: '',
+  featuredImageFile: null,
+  slug: '',
+};
+
+const getShopPreviewUri = (shop?: any) => resolveShopImageUri(shop);
 
 export default function ProfileScreen() {
   const { palette } = useKISTheme();
@@ -95,12 +142,31 @@ export default function ProfileScreen() {
   const [panelFeedDeletingId, setPanelFeedDeletingId] = useState<string | null>(null);
   const [panelFeedBroadcastingId, setPanelFeedBroadcastingId] = useState<string | null>(null);
   const managementPanelOffset = useRef(new Animated.Value(profileLayout.SCREEN_WIDTH)).current;
-  const [marketForm, setMarketForm] = useState<MarketFormState>({
-    name: '',
-    products: '3',
-  });
+  const [marketForm, setMarketForm] = useState<MarketFormState>(DEFAULT_MARKET_FORM);
   const [marketFormMode, setMarketFormMode] = useState<'add' | 'edit'>('add');
   const [marketFormLoading, setMarketFormLoading] = useState(false);
+  const [shopEditorVisible, setShopEditorVisible] = useState(false);
+  const [shopEditorMode, setShopEditorMode] = useState<'create' | 'edit'>('create');
+  const [activeShop, setActiveShop] = useState<any | null>(null);
+  const [commerceShops, setCommerceShops] = useState<any[]>([]);
+  const [commerceShopsLoading, setCommerceShopsLoading] = useState(false);
+  const currentUserId = useMemo(() => {
+    const userId = c.profile?.user?.id;
+    return userId ? String(userId) : null;
+  }, [c.profile?.user?.id]);
+  const activeShopOwnerId = useMemo(() => {
+    const ownerId = activeShop?.owner;
+    return ownerId ? String(ownerId) : null;
+  }, [activeShop?.owner]);
+  const canDeleteActiveShop = useMemo(() => {
+    return Boolean(activeShopOwnerId && currentUserId && activeShopOwnerId === currentUserId);
+  }, [activeShopOwnerId, currentUserId]);
+  const updateMarketFormField = useCallback(
+    (changes: Partial<MarketFormState>) => {
+      setMarketForm((prev) => ({ ...prev, ...changes }));
+    },
+    [],
+  );
   const [educationForm, setEducationForm] = useState<EducationFormState>({
     title: '',
     summary: '',
@@ -120,6 +186,9 @@ export default function ProfileScreen() {
   const [loadingNotifications, setLoadingNotifications] = useState(false);
   const [deletingNotificationId, setDeletingNotificationId] = useState<string | null>(null);
   const [deletingGalleryItemId, setDeletingGalleryItemId] = useState<string | null>(null);
+  const [appointments, setAppointments] = useState<any[]>([]);
+  const [providerAppointments, setProviderAppointments] = useState<any[]>([]);
+  const [appointmentsLoading, setAppointmentsLoading] = useState(false);
 
   const loadInAppNotifications = useCallback(async () => {
     setLoadingNotifications(true);
@@ -130,6 +199,59 @@ export default function ProfileScreen() {
       setLoadingNotifications(false);
     }
   }, []);
+
+  const userId = useMemo(() => c.profile?.user?.id, [c.profile?.user?.id]);
+  const loadAppointments = useCallback(async () => {
+    if (!userId) return;
+    setAppointmentsLoading(true);
+    try {
+      const response = await getRequest(ROUTES.commerce.serviceBookings, {
+        errorMessage: 'Unable to load appointments.',
+        forceNetwork: true,
+      });
+        if (response?.success) {
+          const payload = response.data ?? response ?? {};
+          const records = Array.isArray(payload)
+            ? payload
+            : Array.isArray((payload as any).results)
+            ? (payload as any).results
+            : [];
+          const normalizedUserId = String(userId);
+          const activeRecords = records.filter((booking) => {
+            const status = ((booking?.status ?? '') as string).toLowerCase();
+            return !CANCELLED_BOOKING_STATUSES.has(status);
+          });
+          const payerBookings = dedupeBookingsByService(
+            activeRecords.filter((booking) => String(booking?.user) === normalizedUserId),
+          );
+          const providerBookings = dedupeBookingsByService(
+            activeRecords.filter((booking) => String(booking?.provider_details?.id) === normalizedUserId),
+          );
+          setAppointments(payerBookings);
+          setProviderAppointments(providerBookings);
+        }
+    } catch (error) {
+      console.error('Failed to load appointments', error);
+    } finally {
+      setAppointmentsLoading(false);
+    }
+  }, [userId]);
+
+  const openRemoteLink = useCallback((url: string) => {
+    if (!url) return;
+    Linking.openURL(url).catch(() => {
+      Alert.alert('Meeting link', 'Unable to open the meeting link.');
+    });
+  }, []);
+
+  const pendingServicePayments = useMemo(
+    () => appointments.filter((booking) => ESCROW_PENDING_STATUSES.has(booking?.escrow_status)),
+    [appointments],
+  );
+  const pendingReceivePayments = useMemo(
+    () => providerAppointments.filter((booking) => ESCROW_PENDING_STATUSES.has(booking?.escrow_status)),
+    [providerAppointments],
+  );
 
   const detectMediaTypeFromAsset = useCallback((asset?: Asset | null): FeedMediaType => {
     if (!asset?.type) return 'file';
@@ -185,21 +307,6 @@ export default function ProfileScreen() {
   }, [managementPanelKey, c]);
 
   console.log("Kis wallet check from c: ", c)
-
-  const parseFormCount = useCallback((value: string, fallback: number) => {
-    const parsed = Number(value);
-    if (!Number.isFinite(parsed)) return fallback;
-    return Math.max(fallback, Math.floor(parsed));
-  }, []);
-
-  const buildShopProducts = useCallback((name: string, count: number) => {
-    const safeCount = Math.max(1, count);
-    const label = name.trim().replace(/\s+/g, ' ');
-    return Array.from({ length: safeCount }).map((_, idx) => ({
-      name: `${label} Product ${idx + 1}`,
-      sku: `${label.substring(0, 3).toUpperCase() || 'PRD'}-${idx + 1}`,
-    }));
-  }, []);
 
   const accountTier = c.profile?.account?.tier;
   const points = c.profile?.account?.points ?? 0;
@@ -553,6 +660,14 @@ export default function ProfileScreen() {
   const rootNavigation =
     tabsNavigation.getParent<NativeStackNavigationProp<RootStackParamList>>();
 
+  const openBookingDetails = useCallback(
+    (bookingId: string) => {
+      if (!bookingId) return;
+      rootNavigation?.navigate('ServiceBookingDetails', { bookingId });
+    },
+    [rootNavigation],
+  );
+
   useEffect(() => {
     const requestedKey = requestedBroadcastProfileKey;
     if (!requestedKey) return;
@@ -562,12 +677,25 @@ export default function ProfileScreen() {
     tabsNavigation.setParams({ broadcastProfileKey: undefined });
   }, [tabsNavigation, managementPanelKey, openManagementPanel, requestedBroadcastProfileKey]);
 
-  const openMarketLandingBuilder = useCallback(() => {
-    rootNavigation?.navigate('ProfileLandingEditor', {
-      kind: 'market',
-      profileLabel: 'Market Profile',
-    });
-  }, [rootNavigation]);
+  const openMarketLandingBuilder = useCallback(
+    (shop?: any) => {
+      rootNavigation?.navigate('ProfileLandingEditor', {
+        kind: 'market',
+        profileLabel: shop?.name ? `${shop.name} landing page` : 'Market Profile',
+        shopId: shop?.id,
+        shopName: shop?.name,
+      });
+    },
+    [rootNavigation],
+  );
+
+  const handleViewShopDashboard = useCallback(
+    (shop: any) => {
+      if (!shop) return;
+      rootNavigation?.navigate('ShopDashboard', { shop });
+    },
+    [rootNavigation],
+  );
 
   const openEducationLandingBuilder = useCallback(() => {
     rootNavigation?.navigate('ProfileLandingEditor', {
@@ -625,11 +753,10 @@ export default function ProfileScreen() {
     BROADCAST_PROFILE_DEFINITIONS.find((def) => def.profileKey === managementPanelKey);
 
   const resetMarketForm = useCallback(() => {
-    setMarketForm({
-      name: '',
-      products: '3',
-    });
+    setMarketForm(DEFAULT_MARKET_FORM);
     setMarketFormMode('add');
+    setActiveShop(null);
+    setShopEditorMode('create');
   }, []);
 
   const resetEducationForm = useCallback(() => {
@@ -648,13 +775,110 @@ export default function ProfileScreen() {
     });
   }, []);
 
-  const handleMarketFormNameChange = useCallback((value: string) => {
-    setMarketForm((prev) => ({ ...prev, name: value }));
+  const unwrapList = useCallback((payload: any) => {
+    if (!payload) return [];
+    if (Array.isArray(payload)) return payload;
+    if (Array.isArray(payload?.results)) return payload.results;
+    return [];
   }, []);
 
-  const handleMarketFormProductsChange = useCallback((value: string) => {
-    setMarketForm((prev) => ({ ...prev, products: value }));
-  }, []);
+  const manageableRoles = useMemo(() => new Set(['owner', 'manager', 'admin']), []);
+
+  const manageableShops = useMemo(() => {
+    if (!currentUserId) {
+      return [];
+    }
+    return commerceShops.reduce<any[]>((list, shop) => {
+      if (!shop) return list;
+      const ownerId = shop.owner ? String(shop.owner) : '';
+      const isOwner = ownerId === currentUserId;
+      const members = Array.isArray(shop.team_members) ? shop.team_members : [];
+      let isManager = false;
+      let isAdmin = false;
+      let hasRole = false;
+      for (const member of members) {
+        if (!member) continue;
+        const memberUserId = member.user ? String(member.user) : '';
+        if (memberUserId !== currentUserId) continue;
+        const role = ((member.role || '') as string).toLowerCase();
+        if (role === 'manager') {
+          isManager = true;
+        }
+        if (role === 'admin') {
+          isAdmin = true;
+        }
+        if (manageableRoles.has(role)) {
+          hasRole = true;
+        }
+      }
+      if (isOwner || hasRole || isAdmin) {
+        list.push({
+          ...shop,
+          canEdit: isOwner || isManager,
+        });
+      }
+      return list;
+    }, []);
+  }, [commerceShops, currentUserId, manageableRoles]);
+
+  const loadCommerceShops = useCallback(async () => {
+    if (!currentUserId) {
+      setCommerceShops([]);
+      return;
+    }
+    setCommerceShopsLoading(true);
+    try {
+      const queryWithOwner = `${ROUTES.commerce.shops}`;
+      const ownerParams = { owner: currentUserId };
+      const response = await getRequest(queryWithOwner, {
+        params: ownerParams,
+        errorMessage: 'Unable to load your shops.',
+      });
+      let shops = response?.success ? unwrapList(response.data) : [];
+      if (!shops.length) {
+        const fallbackResponse = await getRequest(queryWithOwner, {
+          errorMessage: 'Unable to load your shops.',
+        });
+        if (fallbackResponse?.success) {
+          shops = unwrapList(fallbackResponse.data);
+        } else {
+          if (fallbackResponse?.message) {
+            console.warn('Unable to load commerce shops:', fallbackResponse.message);
+          }
+        }
+      } else if (!response?.success && response?.message) {
+        console.warn('Unable to load commerce shops:', response.message);
+      }
+      if (shops.length) {
+        console.log('[ProfileScreen] loaded shop example', shops[0]?.featuredImage ?? shops[0]?.image_url ?? 'no image');
+      }
+      setCommerceShops(shops);
+    } catch (error: any) {
+      console.warn('Unable to load commerce shops:', error?.message ?? error);
+      setCommerceShops([]);
+    } finally {
+      setCommerceShopsLoading(false);
+    }
+  }, [currentUserId, unwrapList]);
+
+  useFocusEffect(
+    useCallback(() => {
+      void loadCommerceShops();
+    }, [loadCommerceShops]),
+  );
+
+  useFocusEffect(
+    useCallback(() => {
+      void loadAppointments();
+    }, [loadAppointments]),
+  );
+
+  useEffect(() => {
+    if (!currentUserId) {
+      setCommerceShops([]);
+    }
+  }, [currentUserId]);
+
 
   const handleEducationFormTitleChange = useCallback((value: string) => {
     setEducationForm((prev) => ({ ...prev, title: value }));
@@ -757,20 +981,41 @@ export default function ProfileScreen() {
   }, []);
 
   const beginMarketEdit = useCallback((shop: any) => {
+    const previewUri = getShopPreviewUri(shop);
     setMarketForm({
       id: shop.id,
-      name: shop.name,
-      products: String(Math.max(1, Array.isArray(shop.products) ? shop.products.length : 1)),
+      name: shop.name ?? '',
+      description: shop.description ?? '',
+      employeeSlots: String(shop.employee_slots ?? 1),
+      status: (shop.status as ShopStatus) ?? 'active',
+      featuredImage: previewUri,
+      featuredImageFile: null,
+      slug: shop.slug ?? '',
     });
     setMarketFormMode('edit');
+    setActiveShop(shop);
   }, []);
 
-  const unwrapList = useCallback((payload: any) => {
-    if (!payload) return [];
-    if (Array.isArray(payload)) return payload;
-    if (Array.isArray(payload?.results)) return payload.results;
-    return [];
-  }, []);
+  const openShopEditorForCreate = useCallback(() => {
+    resetMarketForm();
+    setShopEditorMode('create');
+    setShopEditorVisible(true);
+  }, [resetMarketForm]);
+
+  const openShopEditorForEdit = useCallback(
+    (shop: any) => {
+      beginMarketEdit(shop);
+      setShopEditorMode('edit');
+      setShopEditorVisible(true);
+    },
+    [beginMarketEdit],
+  );
+
+  const closeShopEditor = useCallback(() => {
+    setShopEditorVisible(false);
+    setActiveShop(null);
+    resetMarketForm();
+  }, [resetMarketForm]);
 
   const formatLessonTime = useCallback((value?: string | null) => {
     if (!value) return 'Starts soon';
@@ -860,47 +1105,63 @@ export default function ProfileScreen() {
       Alert.alert('Market profile', 'Provide a shop name.');
       return;
     }
-    const count = parseFormCount(marketForm.products, 1);
-    const products = buildShopProducts(name, count);
-    const shops = managementPanelData?.shops ?? [];
-    const nextShops =
-      marketFormMode === 'edit' && marketForm.id
-        ? shops.map((shop: any) => (shop.id === marketForm.id ? { ...shop, name, products } : shop))
-        : [...shops, { name, products }];
-
+    const employeeSlotCount = Math.max(1, Number.parseInt(marketForm.employeeSlots, 10) || 1);
+    if (!marketForm.id && !marketForm.featuredImageFile) {
+      Alert.alert('Market profile', 'Upload a shop image before publishing.');
+      return;
+    }
+    const formData = new FormData();
+    formData.append('name', name);
+    formData.append('description', marketForm.description.trim());
+    formData.append('employee_slots', String(employeeSlotCount));
+    formData.append('status', marketForm.status);
+    if (marketForm.featuredImageFile) {
+      formData.append('image_file', marketForm.featuredImageFile as any);
+    }
     setMarketFormLoading(true);
     try {
-      await c.manageProfileSection('market_profile', { shops: nextShops });
+      const endpoint = marketForm.id ? `${ROUTES.commerce.shops}${marketForm.id}/` : ROUTES.commerce.shops;
+      const response = marketForm.id
+        ? await patchRequest(endpoint, formData, { errorMessage: 'Unable to update shop.' })
+        : await postRequest(endpoint, formData, { errorMessage: 'Unable to create shop.' });
+      if (!response?.success) {
+        throw new Error(response?.message || 'Unable to save shop.');
+      }
+      await loadCommerceShops();
+      Alert.alert('Market profile', marketForm.id ? 'Shop updated.' : 'Shop created.');
       resetMarketForm();
+      closeShopEditor();
     } catch (error: any) {
-      Alert.alert('Market profile', error?.message || 'Unable to update shops.');
+      Alert.alert('Market profile', error?.message || 'Unable to save shop.');
     } finally {
       setMarketFormLoading(false);
     }
-  }, [
-    buildShopProducts,
-    c,
-    managementPanelData,
-    marketForm,
-    marketFormMode,
-    parseFormCount,
-    resetMarketForm,
-  ]);
+  }, [marketForm, resetMarketForm, closeShopEditor, loadCommerceShops]);
 
   const handleMarketFormDelete = useCallback(async () => {
     if (!marketForm.id) return;
-    const shops = managementPanelData?.shops ?? [];
-    const nextShops = shops.filter((shop: any) => shop.id !== marketForm.id);
+    if (!canDeleteActiveShop) {
+      Alert.alert('Market profile', 'Only the shop owner can delete this shop.');
+      return;
+    }
     setMarketFormLoading(true);
     try {
-      await c.manageProfileSection('market_profile', { shops: nextShops });
+      const res = await deleteRequest(`${ROUTES.commerce.shops}${marketForm.id}/`, {
+        errorMessage: 'Unable to delete shop.',
+      });
+      if (!res?.success) {
+        throw new Error(res?.message || 'Unable to delete shop.');
+      }
+      await loadCommerceShops();
+      Alert.alert('Market profile', 'Shop deleted.');
       resetMarketForm();
+      closeShopEditor();
     } catch (error: any) {
       Alert.alert('Market profile', error?.message || 'Unable to delete shop.');
     } finally {
       setMarketFormLoading(false);
     }
-  }, [c, managementPanelData, marketForm.id, resetMarketForm]);
+  }, [marketForm.id, resetMarketForm, closeShopEditor, loadCommerceShops, canDeleteActiveShop]);
 
   const handleEducationFormSave = useCallback(async () => {
     const title = educationForm.title.trim();
@@ -1028,26 +1289,18 @@ export default function ProfileScreen() {
     }
 
     if (managementPanelKey === 'market') {
-      const shops: any[] = Array.isArray(managementPanelData?.shops) ? managementPanelData.shops : [];
       return (
         <MarketManagementModal
           palette={palette}
           title={panelTitle}
           subtitle={panelHint ?? ''}
-          shops={shops}
-          marketForm={marketForm}
-          marketFormMode={marketFormMode}
-          marketFormLoading={marketFormLoading}
-          beginMarketEdit={beginMarketEdit}
-          handleMarketFormSave={handleMarketFormSave}
-          handleMarketFormDelete={handleMarketFormDelete}
-          resetMarketForm={resetMarketForm}
-          onMarketFormNameChange={handleMarketFormNameChange}
-          onMarketFormProductsChange={handleMarketFormProductsChange}
-          attachments={attachments}
-          panelAttachmentUploading={panelAttachmentUploading}
-          handleAttachProfileFile={handleAttachProfileFile}
+          shops={manageableShops}
+          loading={commerceShopsLoading}
+          onCreateShop={openShopEditorForCreate}
+          onEditShop={openShopEditorForEdit}
+          onViewDashboard={handleViewShopDashboard}
           onOpenLandingBuilder={openMarketLandingBuilder}
+          onRefresh={loadCommerceShops}
         />
       );
     }
@@ -1107,7 +1360,7 @@ export default function ProfileScreen() {
   return (
     <View style={[styles.wrap, { backgroundColor: palette.bg }]}>
       <ScrollView contentContainerStyle={styles.scroll}>
-        {c.loading ? (
+        {c.loading && !c.profile ? (
           <View style={{ gap: 16 }}>
             <View style={[styles.card, { backgroundColor: palette.card }]}>
               <Skeleton height={160} radius={18} />
@@ -1194,7 +1447,94 @@ export default function ProfileScreen() {
               partnerProfilesLimitLabel={partnerProfilesLimitLabel}
               partnerProfilesLimitValue={partnerProfilesLimitValue}
               partnerProfilesIsUnlimited={partnerProfilesIsUnlimited}
+              pendingServicePayments={pendingServicePayments}
+              pendingReceivePayments={pendingReceivePayments}
+              onOpenBookingDetails={openBookingDetails}
             />
+
+            <View
+              style={[
+                styles.card,
+                {
+                  borderColor: palette.divider,
+                  backgroundColor: palette.surface,
+                  borderWidth: 1,
+                  marginTop: 12,
+                  gap: 10,
+                },
+              ]}
+            >
+              <Text style={[styles.title, { color: palette.text }]}>Appointments</Text>
+              <Text style={[styles.subtext, { color: palette.subtext }]}>
+                Your booked services appear here with confirmed meeting details once payment settles.
+              </Text>
+              <View style={{ gap: 10 }}>
+                {appointmentsLoading ? (
+                  <Text style={{ color: palette.subtext }}>Loading appointments...</Text>
+                ) : appointments.length ? (
+                  appointments.map((booking) => {
+                    const scheduledAt = new Date(booking.scheduled_at);
+                    const formattedDate = scheduledAt.toLocaleString(undefined, {
+                      weekday: 'short',
+                      month: 'short',
+                      day: 'numeric',
+                      hour: 'numeric',
+                      minute: '2-digit',
+                    });
+                    const paymentStatus = booking.deposit_cents && booking.status === 'confirmed' ? 'Paid' : 'Pending';
+                    const remoteAvailable = Boolean(
+                      booking.remote_meeting_link && booking.status === 'confirmed',
+                    );
+                    return (
+                      <View
+                        key={booking.id}
+                        style={{
+                          borderRadius: 12,
+                          borderWidth: 1,
+                          borderColor: palette.divider,
+                          padding: 12,
+                          backgroundColor: palette.card,
+                        }}
+                      >
+                        <Text style={{ color: palette.text, fontWeight: '600' }}>
+                          {booking.service_name || 'Service appointment'}
+                        </Text>
+                        <Text style={{ color: palette.subtext, fontSize: 12 }}>
+                          {booking.shop_name || 'Provider'} • {formattedDate}
+                        </Text>
+                        <Text style={{ color: palette.subtext, fontSize: 12, marginTop: 4 }}>
+                          Status: {booking.status || 'pending'} • Payment: {paymentStatus} •{' '}
+                          {remoteAvailable ? 'Remote' : 'In-person'}
+                        </Text>
+                        {remoteAvailable && (
+                          <Pressable
+                            onPress={() => openRemoteLink(booking.remote_meeting_link)}
+                            style={{ marginTop: 8 }}
+                          >
+                            <Text style={{ color: palette.primaryStrong, fontSize: 12, marginBottom: 4 }}>
+                              Meeting link (paid)
+                            </Text>
+                            <Text style={{ color: palette.text, fontSize: 11, opacity: 0.8 }}>
+                              {booking.remote_meeting_link}
+                            </Text>
+                          </Pressable>
+                        )}
+                        <View style={{ marginTop: 10, flexDirection: 'row' }}>
+                          <KISButton
+                            title="Details"
+                            size="xs"
+                            variant="outline"
+                            onPress={() => openBookingDetails(String(booking.id))}
+                          />
+                        </View>
+                      </View>
+                    );
+                  })
+                ) : (
+                  <Text style={{ color: palette.subtext }}>No appointments booked yet.</Text>
+                )}
+              </View>
+            </View>
 
             <View
               style={[
@@ -1327,10 +1667,10 @@ export default function ProfileScreen() {
         >
         <View style={styles.managementPanelHeader}>
           <View style={{ flex: 1 }}>
-            <Text style={[styles.managementPanelTitle, { color: palette.text }]}>
+            <Text style={[styles.managementPanelTitle, { color: palette.text }]}> 
               {managementPanelDefinition?.label ?? 'Profile console'}
             </Text>
-            <Text style={[styles.managementPanelSubtitle, { color: palette.subtext }]}>
+            <Text style={[styles.managementPanelSubtitle, { color: palette.subtext }]}> 
               {managementPanelDefinition?.helper}
             </Text>
           </View>
@@ -1341,6 +1681,19 @@ export default function ProfileScreen() {
           {renderManagementPanelContent()}
         </Animated.View>
       )}
+
+      <ShopEditorDrawer
+        visible={shopEditorVisible}
+        mode={shopEditorMode}
+        marketForm={marketForm}
+        loading={marketFormLoading}
+        onChangeField={updateMarketFormField}
+        onClose={closeShopEditor}
+        onSave={handleMarketFormSave}
+        onDelete={marketFormMode === 'edit' && canDeleteActiveShop ? handleMarketFormDelete : undefined}
+        activeShop={activeShop}
+        canDeleteShop={canDeleteActiveShop}
+      />
 
       {/* Bottom Sheet host */}
       {c.activeSheet && (

@@ -11,6 +11,7 @@ const billingRoutes = {
   dispute: (id: string) => `${API_BASE_URL}/api/v1/billing/disputes/${id}/`,
   disputeResolve: (id: string) => `${API_BASE_URL}/api/v1/billing/disputes/${id}/resolve/`,
   pricingInsights: `${API_BASE_URL}/api/v1/billing/pricing-insights/`,
+  walletReceipt: `${API_BASE_URL}/api/v1/billing/wallet/receipt/`,
 };
 
 export default billingRoutes;

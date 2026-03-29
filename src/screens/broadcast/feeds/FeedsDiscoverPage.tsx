@@ -81,6 +81,7 @@ export default function FeedsDiscoverPage({
   };
 
   const activeFeedItems = showTrendingOnly ? trendingFeeds : displayItems;
+  console.log('FeedsDiscoverPage render: items count:',activeFeedItems);
 
   return (
     <ScrollView

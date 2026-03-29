@@ -31,6 +31,7 @@ type Props = {
   onOpenGovernance?: () => void;
   onOpenFeature?: (feature: { key: string; title: string; description?: string }) => void;
   onOpenOrgProfile?: () => void;
+  onOpenComplaints?: () => void;
 };
 
 export default function PartnerSettingsPanel({
@@ -168,6 +169,10 @@ export default function PartnerSettingsPanel({
                   }
                   if (feature.key === 'data_exports') {
                     onOpenReports?.();
+                    return;
+                  }
+                  if (feature.key === 'complaints') {
+                    onOpenComplaints?.();
                     return;
                   }
                   if (onOpenFeature) {

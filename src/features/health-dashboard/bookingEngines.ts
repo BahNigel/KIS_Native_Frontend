@@ -1,4 +1,8 @@
 import type { KISIconName } from '@/constants/kisIcons';
+import {
+  blocksHealthServiceMapping,
+  filterBookingEngineKeys,
+} from './serviceCatalogPolicy';
 
 export type BookingEngineKey =
   | 'appointment'
@@ -218,14 +222,20 @@ const extractMediumNames = (service: any): string[] => {
       if (mediumName) names.push(mediumName);
     });
   }
-  return Array.from(new Set(names.map((name) => name.toLowerCase())));
+  return Array.from(
+    new Set(
+      names
+        .filter((name) => !blocksHealthServiceMapping(name))
+        .map((name) => name.toLowerCase()),
+    ),
+  );
 };
 
 const extractDeclaredEngines = (service: any): BookingEngineKey[] => {
-  const values = [
+  const values = filterBookingEngineKeys([
     ...normalizeStringList(service?.availableEngines),
     ...normalizeStringList(service?.available_engines),
-  ];
+  ]);
   const out: BookingEngineKey[] = [];
   values.forEach((value) => {
     const normalized = normalizeBookingEngineKey(value);
@@ -287,7 +297,7 @@ const inferBookingEngineKeys = (
     detected.add('payment');
   }
 
-  const ordered = ENGINE_ORDER.filter((engine) => detected.has(engine));
+  const ordered = ENGINE_ORDER.filter((engine) => detected.has(engine) && filterBookingEngineKeys([engine]).length > 0);
   return ordered.length > 0 ? ordered : ['appointment', 'payment'];
 };
 

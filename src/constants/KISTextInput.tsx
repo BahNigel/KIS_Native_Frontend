@@ -54,7 +54,6 @@ type LayoutOverrides = {
 
 type Props = TextInputProps & {
   label?: string;
-  helperText?: string;
   errorText?: string;
   /** If you want to mark error state without showing a message */
   error?: boolean;
@@ -85,7 +84,6 @@ const SIZE_PRESETS: Record<
 
 export default function KISTextInput({
   label,
-  helperText,
   errorText,
   error,
   left,
@@ -318,9 +316,7 @@ export default function KISTextInput({
 
       {!!errorText ? <Text style={[errorStyle, { marginTop: 6 }]}>{errorText}</Text> : null}
 
-      {!errorText && !!helperText ? (
-        <Text style={[helperStyle, { marginTop: 6 }]}>{helperText}</Text>
-      ) : null}
+      
     </View>
   );
 }

@@ -9,7 +9,6 @@ import KISButton from '@/constants/KISButton';
 import { KISIcon } from '@/constants/kisIcons';
 import { resolveBackendAssetUrl } from '@/network';
 import { resolveBookingEnginesFromKeys } from '@/features/health-dashboard/bookingEngines';
-import { startHealthServiceSession } from '@/services/healthOpsAppointmentService';
 import { fetchHealthProfileState } from '@/services/healthProfileService';
 import {
   fetchInstitutionLandingPage,
@@ -430,7 +429,7 @@ export default function BroadcastHealthcarePage({ searchTerm, searchContext }: P
     [loadHealthcareBroadcasts],
   );
 
-  const handleBookNow = useCallback(
+const handleBookNow = useCallback(
     async (args: {
       institutionId: string;
       institutionName: string;
@@ -457,52 +456,12 @@ export default function BroadcastHealthcarePage({ searchTerm, searchContext }: P
         return;
       }
 
-      const start = await startHealthServiceSession({
-        institutionId,
-        cardId,
-        serviceId: args.serviceId,
-        date: args.date,
-        time: args.time,
-      });
-      if (!start?.success) {
-        if (Number(start?.status) === 402) {
-          const requiredMicro = Number(start?.data?.required_micro || 0);
-          const availableMicro = Number(start?.data?.available_micro || 0);
-          if (requiredMicro > 0 || availableMicro > 0) {
-            Alert.alert(
-              'Insufficient KIS balance',
-              `You need ${toKisc(requiredMicro)} KISC but you only have ${toKisc(availableMicro)} KISC.`,
-            );
-          } else {
-            Alert.alert('Insufficient KIS balance', 'Your KIS Coin balance is too low for this service.');
-          }
-          return;
-        }
-        throw new Error(start?.message || 'Unable to start this session.');
-      }
-
-      const sessions = Array.isArray(start?.data?.service_sessions) ? start.data.service_sessions : [];
-      const startedSession = sessions.find(
-        (item: any) =>
-          String(item?.card_id || item?.cardId || '') === cardId &&
-          String(item?.status || '') === 'started',
-      );
-      const legacySessionId = String(startedSession?.id || '');
-      const workflowSessionId = String(start?.data?.session?.id || '').trim();
-      const appointmentBookingId = String(start?.data?.booking?.id || '').trim();
-      const sessionSource = String(start?.source || '').trim().toLowerCase() === 'health_ops' ? 'health_ops' : 'broadcasts';
-      const sessionId = workflowSessionId || legacySessionId;
-      console.log('sessionSource 1', sessionSource, 'sessionId', sessionId, 'workflowSessionId', workflowSessionId, 'appointmentBookingId', appointmentBookingId);
-
       navigation.navigate('HealthServiceSession', {
         institutionId,
         institutionType: (args.institutionType as any) || undefined,
         institutionName: args.institutionName,
         cardId,
-        sessionId: sessionId || undefined,
-        workflowSessionId: workflowSessionId || undefined,
-        appointmentBookingId: appointmentBookingId || undefined,
-        sessionSource,
+        sessionSource: 'broadcasts',
         serviceId: args.serviceId,
         serviceName: args.serviceName,
         serviceDescription: args.serviceDescription,
@@ -635,16 +594,16 @@ export default function BroadcastHealthcarePage({ searchTerm, searchContext }: P
         };
 
         return (
-          <View
-            key={item.id}
-            style={{
-              borderWidth: 3,
-              borderColor: palette.divider,
-              borderRadius: 18,
-              backgroundColor: palette.card,
-              overflow: 'hidden',
-            }}
-          >
+        <View
+          key={item.id}
+          style={{
+            borderWidth: 1,
+            borderColor: palette.primaryStrong,
+            borderRadius: 18,
+            backgroundColor: palette.card,
+            overflow: 'hidden',
+          }}
+        >
             <View style={{ height: 170, backgroundColor: palette.surface, alignItems: 'center', justifyContent: 'center' }}>
               {logoUrl ? (
                 <Image source={{ uri: logoUrl }} resizeMode="cover" style={{ width: '100%', height: '100%' }} />

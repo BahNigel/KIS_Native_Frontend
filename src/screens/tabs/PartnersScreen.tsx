@@ -27,6 +27,7 @@ import { usePartnerOrganizationAppsPanel } from './partners/usePartnerOrganizati
 import { usePartnerScreenActions } from './partners/usePartnerScreenActions';
 import { usePartnerCoursesPanel } from './partners/usePartnerCoursesPanel';
 import { usePartnerLinksPanel } from './partners/usePartnerLinksPanel';
+import { usePartnerComplaintsPanel } from './partners/usePartnerComplaintsPanel';
 import usePartnerProfileLinks from './partners/usePartnerProfileLinks';
 import { PartnerOrganizationAppsProvider } from '@/context/partners/PartnerOrganizationAppsContext';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -237,6 +238,7 @@ export default function PartnersScreen({ setHidNav, onOpenInfo }: any) {
     open: openLinksPanel,
     close: closeLinksPanel,
   } = usePartnerLinksPanel(width);
+  const complaintsPanel = usePartnerComplaintsPanel(width);
   const {
     onGroupPress,
     onFeedPress,
@@ -259,6 +261,7 @@ export default function PartnersScreen({ setHidNav, onOpenInfo }: any) {
     handleOpenAutomation,
     handleOpenReports,
     handleOpenGovernance,
+    handleOpenComplaints,
   } = usePartnerPanelOpeners({
     closePanel,
     openRecruitment: openRecruitmentPanel,
@@ -268,6 +271,7 @@ export default function PartnersScreen({ setHidNav, onOpenInfo }: any) {
     openAutomation: openAutomationPanel,
     openReports: openReportsPanel,
     openGovernance: openGovernancePanel,
+    openComplaints: complaintsPanel.open,
   });
 
   const handleOpenOrganizationApps = useCallback(() => {
@@ -357,6 +361,7 @@ export default function PartnersScreen({ setHidNav, onOpenInfo }: any) {
     isOrgProfilePanelOpen,
     isCoursesPanelOpen,
     isOrganizationAppsPanelOpen: isOrgAppsPanelOpen,
+    isComplaintsPanelOpen: complaintsPanel.isOpen,
   });
 
   return (
@@ -425,6 +430,7 @@ export default function PartnersScreen({ setHidNav, onOpenInfo }: any) {
             onOpenGovernance: handleOpenGovernance,
             onOpenFeature: handleOpenFeature,
             onOpenOrgProfile: handleOpenOrgProfile,
+            onOpenComplaints: handleOpenComplaints,
           },
           createPanel: {
           isOpen: isCreatePanelOpen,
@@ -523,6 +529,12 @@ export default function PartnersScreen({ setHidNav, onOpenInfo }: any) {
           onToggleLink: toggleLink,
           onSetRole: setRole,
           onRefresh: refreshLinks,
+        },
+        complaintsPanel: {
+          isOpen: complaintsPanel.isOpen,
+          panelWidth: complaintsPanel.panelWidth,
+          panelTranslateX: complaintsPanel.panelTranslateX,
+          onClose: complaintsPanel.close,
         },
       }}
       />

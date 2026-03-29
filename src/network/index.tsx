@@ -36,7 +36,7 @@ const ROUTES: any = {
   ...miscRoutes,
   ...adminRoutes,
   ...personalizationRoutes,
-  ...billingRoutes,
+  billing: billingRoutes,
 };
 
 // Keep health analytics endpoints and admin analytics endpoints under one key.
@@ -104,9 +104,6 @@ export const resolveBackendAssetUrl = (value?: string | null): string | undefine
     }
     try {
       const parsed = new URL(trimmed);
-      if (NEST_API_HOST && parsed.host === NEST_API_HOST) {
-        return trimmed;
-      }
       const pathAndSearch = `${parsed.pathname}${parsed.search}${parsed.hash}`;
       const hostIsLocal =
         parsed.hostname === '127.0.0.1' ||
@@ -115,6 +112,9 @@ export const resolveBackendAssetUrl = (value?: string | null): string | undefine
       if (hostIsLocal) {
         const normalizedBase = API_BASE_URL.replace(/\/$/, '');
         return `${normalizedBase}${pathAndSearch}`;
+      }
+      if (NEST_API_HOST && parsed.host === NEST_API_HOST) {
+        return trimmed;
       }
       return trimmed;
     } catch {

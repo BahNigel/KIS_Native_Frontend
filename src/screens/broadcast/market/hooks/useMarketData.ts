@@ -48,7 +48,7 @@ export default function useMarketData({ ownerId = null, q = '' }: Params) {
     return `${MARKET_FEED_ENDPOINT}${qs}`;
   }, [q]);
 
-  const loadHome = useCallback(async () => {
+  const loadHome = useCallback(async (forceNetwork = false) => {
     setLoadingHome(true);
     const res = await getRequest(feedQuery, { errorMessage: 'Unable to load market.' });
     const payload = normalizeHome(res?.data ?? res);
@@ -57,27 +57,53 @@ export default function useMarketData({ ownerId = null, q = '' }: Params) {
     setLoadingHome(false);
   }, [feedQuery]);
 
-  const loadMine = useCallback(async () => {
-    if (!ownerId) return;
-    setLoadingMine(true);
-
-    const [shopsRes, productsRes] = await Promise.all([
-      getRequest(`${MARKET_SHOPS_ENDPOINT}?owner=${encodeURIComponent(ownerId)}`, {
+  const fetchShops = useCallback(
+    async (params?: Record<string, string>) => {
+      const response = await getRequest(MARKET_SHOPS_ENDPOINT, {
+        params,
         errorMessage: 'Unable to load shops.',
-      }),
-      getRequest(`${MARKET_PRODUCTS_ENDPOINT}?owner=${encodeURIComponent(ownerId)}`, {
+      });
+      return normalizeList<MarketShop>(response);
+    },
+    [],
+  );
+
+  const fetchProducts = useCallback(
+    async (params?: Record<string, string>) => {
+      const response = await getRequest(MARKET_PRODUCTS_ENDPOINT, {
+        params,
         errorMessage: 'Unable to load products.',
-      }),
-    ]);
+      });
+      return normalizeList<MarketProduct>(response);
+    },
+    [],
+  );
 
-    const shops = normalizeList<MarketShop>(shopsRes);
-    const products = normalizeList<MarketProduct>(productsRes);
+  const loadMine = useCallback(async () => {
+    setLoadingMine(true);
+    try {
+      const ownerParams = ownerId ? { owner: ownerId } : undefined;
+      let shops = await fetchShops(ownerParams);
+      let products = await fetchProducts(ownerParams);
 
-    if (!mountedRef.current) return;
-    setMyShops(shops);
-    setMyProducts(products);
-    setLoadingMine(false);
-  }, [ownerId]);
+      if (ownerParams && !shops.length) {
+        shops = await fetchShops();
+        products = await fetchProducts();
+      }
+
+      if (!mountedRef.current) return;
+      setMyShops(shops);
+      setMyProducts(products);
+    } catch (error: any) {
+      console.warn('Unable to load market owner data:', error?.message ?? error);
+      if (!mountedRef.current) return;
+      setMyShops([]);
+      setMyProducts([]);
+    } finally {
+      if (!mountedRef.current) return;
+      setLoadingMine(false);
+    }
+  }, [fetchProducts, fetchShops, ownerId]);
 
   const reloadAll = useCallback(async () => {
     await Promise.all([loadHome(), loadMine()]);
@@ -101,9 +127,18 @@ export default function useMarketData({ ownerId = null, q = '' }: Params) {
   const broadcastProduct = useCallback(async (productId: string) => {
     const res = await postRequest(MARKET_BROADCAST_PRODUCT_ENDPOINT(productId), {}, { errorMessage: 'Unable to broadcast product.' });
     if (res?.success === false) return { ok: false };
+    await reloadAll();
     DeviceEventEmitter.emit('broadcast.refresh');
     return { ok: true };
-  }, []);
+  }, [reloadAll]);
+
+  const unpublishProduct = useCallback(async (productId: string) => {
+    const res = await deleteRequest(MARKET_BROADCAST_PRODUCT_ENDPOINT(productId), { errorMessage: 'Unable to remove broadcast.' });
+    if (res?.success === false) return { ok: false };
+    await reloadAll();
+    DeviceEventEmitter.emit('broadcast.refresh');
+    return { ok: true };
+  }, [reloadAll]);
 
   const deleteShop = useCallback(async (shopId: string) => {
     const res = await deleteRequest(`${MARKET_SHOPS_ENDPOINT}${shopId}/`, { errorMessage: 'Unable to delete shop.' });
@@ -173,6 +208,7 @@ export default function useMarketData({ ownerId = null, q = '' }: Params) {
     joinShop,
     subscribeProduct,
     broadcastProduct,
+    unpublishProduct,
 
     deleteShop,
     deleteProduct,

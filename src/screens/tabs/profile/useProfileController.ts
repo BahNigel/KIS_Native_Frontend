@@ -486,6 +486,10 @@ export const useProfileController = (opts: {
         counterparty_user_id: String(row?.counterparty_user_id || row?.meta?.counterparty?.user_id || ''),
         created_at: String(row?.created_at || new Date().toISOString()),
         metadata: row?.meta || row?.metadata || {},
+        receipt_url: String(
+          row?.receipt_url || row?.meta?.receipt_url || row?.metadata?.receipt_url || '',
+        ),
+        receipt_pdf_url: String(row?.receipt_pdf_url || ''),
       }));
       setWalletLedger(mapped);
       return;
@@ -574,7 +578,7 @@ export const useProfileController = (opts: {
       form.append('media_options', JSON.stringify(mediaOptions ?? {}));
       const res = await postRequest(ROUTES.broadcasts.feedProfile, form);
       if (res?.success) {
-        await loadBroadcastProfiles();
+        void loadBroadcastProfiles();
         return res.data?.feed ?? null;
       }
       throw new Error(res?.message || 'Unable to add broadcast item.');
@@ -603,7 +607,7 @@ export const useProfileController = (opts: {
       form.append('media_options', JSON.stringify(mediaOptions ?? {}));
       const res = await patchRequest(ROUTES.broadcasts.feedEntry(id), form);
       if (res?.success) {
-        await loadBroadcastProfiles();
+        void loadBroadcastProfiles();
         return res.data?.feed ?? null;
       }
       throw new Error(res?.message || 'Unable to update broadcast item.');
@@ -678,11 +682,15 @@ export const useProfileController = (opts: {
         }
       }
 
+      console.log('loading check - profile request start');
+      const startTime = Date.now();
       const res = await getRequest(ROUTES.profiles.me, {
         cacheKey: CacheConfig.userProfile.key,
         cacheType: CacheConfig.userProfile.type,
         forceNetwork,
       });
+
+      console.log('loading check - profile request finished in', Date.now() - startTime, 'ms');
 
       if (res.success) {
         const payload = res.data as ProfilePayload;
@@ -690,7 +698,7 @@ export const useProfileController = (opts: {
         profileNetworkFreshUntilRef.current = Date.now() + 60 * 1000;
         loadKisWallet(payload?.account?.wallet_balance_cents);
         loadWalletLedger();
-        await loadBroadcastProfiles();
+        void loadBroadcastProfiles();
         await AsyncStorage.setItem(PROFILE_CACHE_KEY, JSON.stringify(payload));
       } else {
         if (Number(res?.status) === 429) {

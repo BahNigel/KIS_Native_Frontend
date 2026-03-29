@@ -359,7 +359,6 @@ export function EditProfileModal(props: EditProfileModalProps) {
             label="Country code (auto from location)"
             value={draftProfile?.country_code}
             editable={false}
-            helperText="Country code is managed automatically from your device location."
           />
         </View>
         <View style={{ flex: 2 }}>
